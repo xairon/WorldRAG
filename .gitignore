@@ -47,5 +47,6 @@ neo4j_data/
 *.log
 logs/
 
-# Claude Code
-.claude/
+# Claude Code (keep settings.json and rules, ignore local state)
+.claude/settings.local.json
+.claude/*.jsonl

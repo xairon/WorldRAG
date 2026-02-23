@@ -1,0 +1,125 @@
+# WorldRAG Ontology — Layer 3: The Primal Hunter (series-specific)
+#
+# Series-specific entities and relationships unique to The Primal Hunter by Zogarth.
+# This layer extends litrpg.yaml with Primal Hunter-specific concepts.
+
+extends: litrpg.yaml
+
+series_info:
+  name: "The Primal Hunter"
+  author: "Zogarth"
+  genre: "LitRPG / Progression Fantasy"
+  grade_system: [F, E, D, C, B, A, S, SS, SSS]
+  protagonist: "Jake Thayne"
+
+node_types:
+  Bloodline:
+    properties:
+      name: { type: string, required: true, unique: true }
+      description: { type: string }
+      owner_name: { type: string }
+      effects: { type: string_array }
+      origin: { type: string }
+
+  PrimordialChurch:
+    properties:
+      deity_name: { type: string, required: true, unique: true }
+      domain: { type: string }
+      blessing_effects: { type: string_array }
+
+  AlchemyRecipe:
+    properties:
+      name: { type: string, required: true }
+      ingredients: { type: string_array }
+      effects: { type: string_array }
+      rarity: { type: string }
+
+  Profession:
+    properties:
+      name: { type: string, required: true }
+      tier: { type: string }
+      type: { type: enum, values: [crafting, combat, utility, social] }
+      description: { type: string }
+
+  Floor:
+    properties:
+      number: { type: integer, required: true }
+      name: { type: string }
+      description: { type: string }
+      dungeon_name: { type: string }
+
+relationship_types:
+  HAS_BLOODLINE:
+    from: Character
+    to: Bloodline
+    properties:
+      awakened_chapter: { type: integer }
+      evolution_chapter: { type: integer }
+
+  WORSHIPS:
+    from: Character
+    to: PrimordialChurch
+    properties:
+      blessing: { type: string }
+      valid_from_chapter: { type: integer }
+
+  CRAFTS:
+    from: Character
+    to: AlchemyRecipe
+    properties:
+      first_crafted_chapter: { type: integer }
+
+  HAS_PROFESSION:
+    from: Character
+    to: Profession
+    properties:
+      valid_from_chapter: { type: integer, required: true }
+      valid_to_chapter: { type: integer }
+
+  CLEARS_FLOOR:
+    from: Character
+    to: Floor
+    properties:
+      cleared_chapter: { type: integer }
+
+# Additional regex patterns specific to Primal Hunter
+regex_patterns:
+  bloodline_notification:
+    pattern: '\[Bloodline\s+(?:Awakened|Evolved|Activated):\s*(.+?)\]'
+    entity_type: Bloodline
+    captures: { name: 1 }
+
+  profession_obtained:
+    pattern: 'Profession\s+(?:Obtained|Acquired|Gained):\s*(.+?)\s*(?:\((.+?)\))?(?:\n|$)'
+    entity_type: Profession
+    captures: { name: 1, tier: 2 }
+
+  blessing_received:
+    pattern: '\[Blessing\s+(?:of|from)\s+(.+?)(?:\s+received|\])'
+    entity_type: Blessing
+    captures: { deity: 1 }
+
+  grade_reference:
+    pattern: '\b([FEDCBAS]{1,3})-grade\b'
+    entity_type: GradeReference
+    captures: { grade: 1 }
+
+  nevermore_floor:
+    pattern: '(?:Floor|Level)\s+(\d+)\s+(?:of\s+)?Nevermore'
+    entity_type: Floor
+    captures: { number: 1 }
+
+# Few-shot examples for LangExtract prompts (embedded in Passe 1-4 prompts)
+few_shot_examples:
+  character_extraction:
+    - input: "Jake drew his bow, channeling Arcane Powershot. The arrow flew true, striking the C-grade beast."
+      entities:
+        - { name: "Jake Thayne", type: "Character", role: "protagonist" }
+        - { name: "Arcane Powershot", type: "Skill", skill_type: "active" }
+
+  system_extraction:
+    - input: "[Skill Acquired: Mark of the Ambitious Hunter - Legendary]\n+5 Perception, +3 Agility"
+      entities:
+        - { name: "Mark of the Ambitious Hunter", type: "Skill", rank: "legendary" }
+        - { type: "StatIncrease", stat: "Perception", value: 5 }
+        - { type: "StatIncrease", stat: "Agility", value: 3 }

@@ -1,0 +1,267 @@
+# WorldRAG Ontology — Layer 1: Core Narrative (universal, all genres)
+#
+# Academic foundations:
+#   - CIDOC-CRM (ISO 21127): Event-temporal model
+#   - SEM (VU Amsterdam): Simple Event Model (Event → Actor → Place → Time)
+#   - DOLCE: Temporal taxonomy (state_change | action | process | achievement)
+#   - OntoMedia (Southampton): Narrative entities, fabula/sjuzhet distinction
+#   - FRBRoo/LRMoo: Bibliographic hierarchy (Series → Book → Chapter)
+#   - Wikidata: Temporal qualifiers (valid_from/valid_to)
+#   - Bamman et al. (CMU): Computational character model (roles, agency, sentiment)
+#   - GOLEM (MDPI 2025): Formal fiction ontology (validation reference)
+#
+# Temporal model: Chapter-based integers (not datetime)
+#   All temporal relations use valid_from_chapter / valid_to_chapter
+
+node_types:
+  # === BIBLIOGRAPHIC (FRBRoo/LRMoo) ===
+  Series:
+    properties:
+      name: { type: string, required: true, unique: true }
+      author: { type: string }
+      genre: { type: string }
+      description: { type: string }
+
+  Book:
+    properties:
+      title: { type: string, required: true }
+      order_in_series: { type: integer, required: true }
+      total_chapters: { type: integer }
+      publication_date: { type: string }
+    constraints:
+      - unique: [title, order_in_series]
+
+  Chapter:
+    properties:
+      number: { type: integer, required: true }
+      title: { type: string }
+      book_id: { type: string, required: true }
+      summary: { type: string }
+      word_count: { type: integer }
+    constraints:
+      - unique: [book_id, number]
+
+  Chunk:
+    properties:
+      text: { type: string, required: true }
+      position: { type: integer, required: true }
+      chapter_id: { type: string, required: true }
+      token_count: { type: integer }
+      embedding: { type: vector, dimension: 1024 }
+
+  # === CHARACTERS (OntoMedia + Wikidata + Bamman) ===
+  Character:
+    properties:
+      name: { type: string, required: true }
+      canonical_name: { type: string, required: true, unique: true }
+      aliases: { type: string_array }
+      description: { type: string }
+      role: { type: enum, values: [protagonist, antagonist, mentor, sidekick, ally, minor, neutral] }
+      species: { type: string }
+      gender: { type: string }
+      first_appearance_chapter: { type: integer }
+    indexes:
+      - fulltext: [name, canonical_name, aliases, description]
+
+  Faction:
+    properties:
+      name: { type: string, required: true, unique: true }
+      description: { type: string }
+      type: { type: string }
+      alignment: { type: string }
+
+  # === EVENTS (SEM + DOLCE + LODE) ===
+  Event:
+    properties:
+      name: { type: string, required: true }
+      description: { type: string }
+      event_type: { type: enum, values: [action, state_change, achievement, process, dialogue] }
+      significance: { type: enum, values: [minor, moderate, major, critical, arc_defining] }
+      chapter_start: { type: integer, required: true }
+      chapter_end: { type: integer }  # null for punctual events
+      fabula_order: { type: integer }  # in-universe chronological order (OntoMedia)
+      is_flashback: { type: boolean, default: false }
+    indexes:
+      - fulltext: [name, description]
+
+  # === NARRATIVE STRUCTURE (Propp + Narratology) ===
+  Arc:
+    properties:
+      name: { type: string, required: true }
+      description: { type: string }
+      arc_type: { type: enum, values: [main_plot, subplot, character_arc, world_arc] }
+      chapter_start: { type: integer }
+      chapter_end: { type: integer }
+      status: { type: enum, values: [active, completed, abandoned] }
+
+  NarrativeFunction:
+    properties:
+      name: { type: string, required: true }
+      propp_code: { type: string }  # optional Propp function code
+      description: { type: string }
+
+  # === WORLD (CIDOC-CRM places) ===
+  Location:
+    properties:
+      name: { type: string, required: true, unique: true }
+      description: { type: string }
+      location_type: { type: enum, values: [city, dungeon, realm, continent, pocket_dimension, planet, forest, mountain, building, region] }
+      parent_location_name: { type: string }
+    indexes:
+      - fulltext: [name, description]
+
+  # === ITEMS & OBJECTS ===
+  Item:
+    properties:
+      name: { type: string, required: true }
+      description: { type: string }
+      item_type: { type: enum, values: [weapon, armor, consumable, artifact, key_item, tool, material] }
+      rarity: { type: enum, values: [common, uncommon, rare, epic, legendary, unique] }
+
+  # === CONCEPTS & LORE ===
+  Concept:
+    properties:
+      name: { type: string, required: true, unique: true }
+      description: { type: string }
+      domain: { type: string }  # e.g., "magic", "politics", "cosmology"
+
+  Prophecy:
+    properties:
+      name: { type: string, required: true }
+      description: { type: string }
+      status: { type: enum, values: [unfulfilled, fulfilled, subverted] }
+
+relationship_types:
+  # === BIBLIOGRAPHIC ===
+  CONTAINS_WORK:
+    from: Series
+    to: Book
+    properties:
+      position: { type: integer }
+
+  HAS_CHAPTER:
+    from: Book
+    to: Chapter
+    properties:
+      position: { type: integer }
+
+  HAS_CHUNK:
+    from: Chapter
+    to: Chunk
+    properties:
+      position: { type: integer }
+
+  # === CHARACTER RELATIONS ===
+  RELATES_TO:
+    from: Character
+    to: Character
+    properties:
+      type: { type: enum, values: [ally, enemy, mentor, family, romantic, rival, patron, subordinate] }
+      subtype: { type: string }  # father, mother, sibling, spouse
+      sentiment: { type: float }  # -1.0 to 1.0
+      valid_from_chapter: { type: integer, required: true }
+      valid_to_chapter: { type: integer }
+      context: { type: string }
+
+  MEMBER_OF:
+    from: Character
+    to: Faction
+    properties:
+      role: { type: enum, values: [leader, member, founder, defector] }
+      valid_from_chapter: { type: integer, required: true }
+      valid_to_chapter: { type: integer }
+
+  # === EVENTS ===
+  PARTICIPATES_IN:
+    from: Character
+    to: Event
+    properties:
+      role: { type: enum, values: [agent, patient, beneficiary, witness, cause] }
+
+  OCCURS_AT:
+    from: Event
+    to: Location
+
+  CAUSES:
+    from: Event
+    to: Event
+
+  ENABLES:
+    from: Event
+    to: Event
+
+  OCCURS_BEFORE:
+    from: Event
+    to: Event
+
+  PART_OF:
+    from: Event
+    to: Arc
+
+  # === GROUNDING (LangExtract source offsets) ===
+  GROUNDED_IN:
+    from: "*"  # any entity
+    to: Chunk
+    properties:
+      char_offset_start: { type: integer, required: true }
+      char_offset_end: { type: integer, required: true }
+
+  MENTIONED_IN:
+    from: "*"
+    to: Chunk
+    properties:
+      char_offset_start: { type: integer }
+      char_offset_end: { type: integer }
+
+  # === NARRATIVE STRUCTURE ===
+  STRUCTURED_BY:
+    from: Arc
+    to: NarrativeFunction
+    properties:
+      order: { type: integer }
+
+  FULFILLS:
+    from: Event
+    to: NarrativeFunction
+
+  # === WORLD ===
+  LOCATION_PART_OF:
+    from: Location
+    to: Location
+
+  CONNECTED_TO:
+    from: Location
+    to: Location
+    properties:
+      method: { type: string }
+
+  LOCATED_AT:
+    from: Character
+    to: Location
+    properties:
+      valid_from_chapter: { type: integer, required: true }
+      valid_to_chapter: { type: integer }
+
+  # === ITEMS ===
+  POSSESSES:
+    from: Character
+    to: Item
+    properties:
+      valid_from_chapter: { type: integer, required: true }
+      valid_to_chapter: { type: integer }
+      acquisition_method: { type: enum, values: [loot, craft, gift, purchase, quest_reward, found] }
+
+  # === COHERENCE (retcons, epistemic status) ===
+  RETCONNED_BY:
+    from: "*"  # any fact node
+    to: "*"
+    properties:
+      retcon_chapter: { type: integer }
+      reason: { type: string }
+
+  PERCEIVED_BY:
+    from: Event
+    to: Character
+    properties:
+      reliability: { type: enum, values: [narrator, character_pov, system, flashback] }
+      confidence: { type: float }  # 0.0 to 1.0

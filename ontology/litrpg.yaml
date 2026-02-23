@@ -1,0 +1,161 @@
+# WorldRAG Ontology — Layer 2: LitRPG / Fantasy / Sci-Fi
+#
+# Genre-specific entities for progression fantasy and LitRPG systems.
+# Extends Layer 1 Core Narrative with game-like progression mechanics.
+
+extends: core.yaml
+
+node_types:
+  # === PROGRESSION SYSTEM ===
+  System:
+    properties:
+      name: { type: string, required: true, unique: true }
+      description: { type: string }
+      system_type: { type: enum, values: [cultivation, class_based, skill_based, stat_based, hybrid] }
+
+  Class:
+    properties:
+      name: { type: string, required: true }
+      description: { type: string }
+      tier: { type: integer }
+      requirements: { type: string_array }
+      system_name: { type: string }
+    constraints:
+      - unique: [name, system_name]
+    indexes:
+      - fulltext: [name, description]
+
+  Skill:
+    properties:
+      name: { type: string, required: true }
+      description: { type: string }
+      skill_type: { type: enum, values: [active, passive, racial, class, profession, unique] }
+      rank: { type: enum, values: [common, uncommon, rare, epic, legendary, transcendent, divine] }
+      effects: { type: string_array }
+      system_name: { type: string }
+    constraints:
+      - unique: [name, system_name]
+    indexes:
+      - fulltext: [name, description]
+
+  Title:
+    properties:
+      name: { type: string, required: true, unique: true }
+      description: { type: string }
+      effects: { type: string_array }
+      requirements: { type: string }
+
+  Level:
+    properties:
+      value: { type: integer, required: true }
+      realm: { type: string }  # e.g., "mortal", "D-grade", "C-grade"
+      stage: { type: string }  # e.g., "early", "middle", "late", "peak"
+
+  # === CREATURES & RACES ===
+  Race:
+    properties:
+      name: { type: string, required: true, unique: true }
+      description: { type: string }
+      traits: { type: string_array }
+      typical_abilities: { type: string_array }
+
+  Creature:
+    properties:
+      name: { type: string, required: true }
+      description: { type: string }
+      species: { type: string }
+      threat_level: { type: string }  # e.g., "F-grade", "E-grade", etc.
+      habitat: { type: string }
+
+relationship_types:
+  # === CHARACTER PROGRESSION ===
+  HAS_CLASS:
+    from: Character
+    to: Class
+    properties:
+      valid_from_chapter: { type: integer, required: true }
+      valid_to_chapter: { type: integer }
+      acquisition_event: { type: string }
+
+  HAS_SKILL:
+    from: Character
+    to: Skill
+    properties:
+      valid_from_chapter: { type: integer, required: true }
+      valid_to_chapter: { type: integer }
+      skill_level: { type: integer }
+
+  HAS_TITLE:
+    from: Character
+    to: Title
+    properties:
+      acquired_chapter: { type: integer, required: true }
+
+  AT_LEVEL:
+    from: Character
+    to: Level
+    properties:
+      valid_from_chapter: { type: integer, required: true }
+      valid_to_chapter: { type: integer }
+
+  IS_RACE:
+    from: Character
+    to: Race
+
+  # === SYSTEM EVOLUTION ===
+  EVOLVES_INTO:
+    from: Class
+    to: Class
+    properties:
+      requirements: { type: string }
+
+  SKILL_EVOLVES_INTO:
+    from: Skill
+    to: Skill
+
+  BELONGS_TO:
+    from: Skill
+    to: Class
+
+  # === CREATURES ===
+  INHABITS:
+    from: Creature
+    to: Location
+
+# Regex extraction patterns for blue boxes / system notifications
+# Used by Passe 0 (regex pre-extraction, $0 cost)
+regex_patterns:
+  skill_acquired:
+    pattern: '\[(?:Skill|Ability)\s+(?:Acquired|Learned|Gained):\s*(.+?)(?:\s*-\s*(.+?))?\]'
+    entity_type: Skill
+    captures: { name: 1, rank: 2 }
+
+  level_up:
+    pattern: 'Level:\s*(\d+)\s*(?:→|->|=>)\s*(\d+)'
+    entity_type: Level
+    captures: { old_value: 1, new_value: 2 }
+
+  class_obtained:
+    pattern: 'Class:\s*(.+?)\s*\((.+?)\)'
+    entity_type: Class
+    captures: { name: 1, tier_info: 2 }
+
+  title_earned:
+    pattern: 'Title\s+(?:earned|obtained|acquired):\s*(.+?)(?:\n|$)'
+    entity_type: Title
+    captures: { name: 1 }
+
+  stat_increase:
+    pattern: '\+(\d+)\s+(Strength|Agility|Endurance|Vitality|Toughness|Wisdom|Intelligence|Perception|Willpower|Charisma)'
+    entity_type: StatIncrease
+    captures: { value: 1, stat_name: 2 }
+
+  evolution:
+    pattern: '(?:Evolution|Upgrade|Breakthrough).*?(?:→|->|=>)\s*(.+?)(?:\n|$)'
+    entity_type: Evolution
+    captures: { target: 1 }
+
+  blue_box_generic:
+    pattern: '\[([^\[\]]{5,200})\]'
+    entity_type: SystemNotification
+    captures: { content: 1 }
