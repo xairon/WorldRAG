@@ -18,7 +18,7 @@ from neo4j import AsyncGraphDatabase
 from redis.asyncio import Redis
 
 from app.api.middleware import RequestContextMiddleware
-from app.api.routes import admin, books, health
+from app.api.routes import admin, books, graph, health
 from app.config import settings
 from app.core.cost_tracker import CostTracker
 from app.core.dead_letter import DeadLetterQueue
@@ -126,6 +126,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router, prefix="/api")
     app.include_router(admin.router, prefix="/api")
     app.include_router(books.router, prefix="/api")
+    app.include_router(graph.router, prefix="/api")
 
     return app
 
