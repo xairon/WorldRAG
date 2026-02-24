@@ -94,6 +94,24 @@ class DeadLetterQueue:
         """Return the number of entries in the DLQ."""
         return await self.redis.llen(self.key)
 
+    async def remove_by_book_chapter(self, book_id: str, chapter: int) -> int:
+        """Remove all entries for a specific book/chapter. Returns count removed."""
+        entries = await self.redis.lrange(self.key, 0, -1)
+        removed = 0
+        for raw in entries:
+            entry = DLQEntry.from_json(raw)
+            if entry.book_id == book_id and entry.chapter == chapter:
+                await self.redis.lrem(self.key, 1, raw)
+                removed += 1
+        if removed:
+            logger.info(
+                "dlq_removed_entries",
+                book_id=book_id,
+                chapter=chapter,
+                removed=removed,
+            )
+        return removed
+
     async def clear(self) -> int:
         """Clear all entries from the DLQ. Returns count of removed entries."""
         count = await self.redis.llen(self.key)

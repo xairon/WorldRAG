@@ -74,6 +74,9 @@ class ExtractionPipelineState(TypedDict, total=False):
     passes_completed: Annotated[list[str], operator.add]
     errors: Annotated[list[dict[str, Any]], operator.add]
 
+    # -- Reconciliation --
+    alias_map: dict[str, str]
+
     # -- Metrics --
     total_cost_usd: float
     total_entities: int

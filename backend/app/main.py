@@ -133,6 +133,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         logger.warning("arq_pool_connection_failed", error=type(e).__name__)
     app.state.arq_pool = arq_pool
 
+    # --- Ontology ---
+    from app.core.ontology_loader import get_ontology
+
+    ontology = get_ontology(genre="litrpg", series="primal_hunter")
+    app.state.ontology = ontology
+
     # --- Auth mode ---
     auth_mode = "api_key" if settings.api_key else "dev (no auth)"
     logger.info("worldrag_started", auth_mode=auth_mode)

@@ -770,21 +770,96 @@ class EntityRepository(Neo4jRepository):
 
     # ── Grounding links ────────────────────────────────────────────────
 
+    # Mapping from LangExtract extraction_class to Neo4j label + match property
+    _GROUNDING_LABEL_MAP: dict[str, tuple[str, str]] = {
+        "character": ("Character", "canonical_name"),
+        "skill": ("Skill", "name"),
+        "class": ("Class", "name"),
+        "title": ("Title", "name"),
+        "event": ("Event", "name"),
+        "location": ("Location", "name"),
+        "item": ("Item", "name"),
+        "creature": ("Creature", "name"),
+        "faction": ("Faction", "name"),
+        "concept": ("Concept", "name"),
+    }
+
     async def store_grounding(
         self,
         book_id: str,
         chapter_number: int,
         grounded: list[GroundedEntity],
     ) -> int:
-        """Store grounding links between entities and chunks.
+        """Store GROUNDED_IN relationships between entities and chapter.
 
-        Creates GROUNDED_IN relationships with character offsets
-        from the source text for highlighting in the reader.
+        Creates proper graph relationships with char offsets for each
+        grounded entity mention, enabling reader text highlighting.
+
+        Uses a label-aware UNWIND strategy: groups entities by Neo4j label,
+        then runs one MERGE per label group (Neo4j doesn't allow variable labels).
+        Also stores a JSON summary on the Chapter node for quick access.
         """
         if not grounded:
             return 0
 
-        data = [
+        linked = 0
+
+        # Group by entity type for label-aware Cypher
+        by_label: dict[str, list[dict]] = {}
+        for g in grounded:
+            label_info = self._GROUNDING_LABEL_MAP.get(g.entity_type)
+            if label_info is None:
+                continue
+            label, prop = label_info
+            if label not in by_label:
+                by_label[label] = []
+            by_label[label].append(
+                {
+                    "entity_name": g.entity_name,
+                    "match_prop": prop,
+                    "char_start": g.char_offset_start,
+                    "char_end": g.char_offset_end,
+                    "extraction_text": g.extraction_text[:200],
+                    "pass_name": g.pass_name,
+                }
+            )
+
+        # Create GROUNDED_IN relationships per label group
+        for label, entries in by_label.items():
+            # Neo4j doesn't support variable labels — build query per label
+            prop_name = entries[0]["match_prop"]
+            query = f"""
+                UNWIND $entries AS e
+                MATCH (chapter:Chapter {{book_id: $book_id, number: $chapter_num}})
+                MATCH (entity:{label} {{{prop_name}: e.entity_name}})
+                MERGE (entity)-[g:GROUNDED_IN]->(chapter)
+                ON CREATE SET
+                    g.char_offset_start = e.char_start,
+                    g.char_offset_end = e.char_end,
+                    g.extraction_text = e.extraction_text,
+                    g.pass_name = e.pass_name
+                ON MATCH SET
+                    g.char_offset_start = CASE
+                        WHEN e.char_start < g.char_offset_start
+                        THEN e.char_start ELSE g.char_offset_start END,
+                    g.char_offset_end = CASE
+                        WHEN e.char_end > g.char_offset_end
+                        THEN e.char_end ELSE g.char_offset_end END
+            """
+            await self.execute_write(
+                query,
+                {
+                    "book_id": book_id,
+                    "chapter_num": chapter_number,
+                    "entries": entries,
+                },
+            )
+            linked += len(entries)
+
+        # Also store summary JSON on the Chapter for quick access
+        import json
+
+        summary = [
             {
                 "entity_type": g.entity_type,
                 "entity_name": g.entity_name,
@@ -794,13 +869,6 @@ class EntityRepository(Neo4jRepository):
             }
             for g in grounded
         ]
-
-        # Store grounding data on the chapter node as JSON
-        # (actual chunk-level grounding requires chunk offset mapping)
-        import json
-
-        grounding_json = json.dumps(data, default=str)
-
         await self.execute_write(
             """
             MATCH (c:Chapter {book_id: $book_id, number: $chapter})
@@ -810,7 +878,7 @@ class EntityRepository(Neo4jRepository):
             {
                 "book_id": book_id,
                 "chapter": chapter_number,
-                "grounding_json": grounding_json,
+                "grounding_json": json.dumps(summary, default=str),
                 "count": len(grounded),
             },
         )
@@ -819,9 +887,11 @@ class EntityRepository(Neo4jRepository):
             "grounding_stored",
             book_id=book_id,
             chapter=chapter_number,
-            count=len(grounded),
+            total_grounded=len(grounded),
+            linked=linked,
+            labels=list(by_label.keys()),
         )
-        return len(grounded)
+        return linked
 
     # ── Bulk upsert from extraction result ─────────────────────────────
 

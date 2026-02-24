@@ -2,8 +2,8 @@
 
 Orchestrates the full pipeline for a single chapter:
   1. Check cost ceiling
-  2. Run LangGraph extraction (4 passes)
-  3. Reconcile entities (dedup + alias resolution)
+  2. Run LangGraph extraction (4 passes + reconcile)
+  3. Apply alias map to normalize entity names
   4. Persist to Neo4j via EntityRepository
   5. Update chapter status
 
@@ -18,7 +18,6 @@ from app.core.exceptions import CostCeilingError
 from app.core.logging import get_logger
 from app.repositories.entity_repo import EntityRepository
 from app.services.extraction import extract_chapter
-from app.services.extraction.reconciler import reconcile_chapter_result
 
 if TYPE_CHECKING:
     from neo4j import AsyncDriver
@@ -88,7 +87,8 @@ async def build_chapter_graph(
         text_length=len(chapter.text),
     )
 
-    # 1. Extract entities via LangGraph
+    # 1. Extract + reconcile entities via LangGraph
+    #    (graph includes: route → [passes 1-4] → merge → reconcile)
     extraction_result = await extract_chapter(
         chapter_text=chapter.text,
         book_id=book_id,
@@ -98,17 +98,14 @@ async def build_chapter_graph(
         regex_matches_json=regex_matches_json,
     )
 
-    # 2. Reconcile (dedup + normalize)
-    reconciliation = await reconcile_chapter_result(extraction_result)
+    # 2. Apply alias map to normalize names (alias_map from graph reconcile step)
+    _apply_alias_map(extraction_result, extraction_result.alias_map)
 
-    # 3. Apply alias map to normalize names
-    _apply_alias_map(extraction_result, reconciliation.alias_map)
-
-    # 4. Persist to Neo4j
+    # 3. Persist to Neo4j
     entity_repo = EntityRepository(driver)
     counts = await entity_repo.upsert_extraction_result(extraction_result)
 
-    # 5. Update chapter status
+    # 4. Update chapter status
     await book_repo.update_chapter_status(
         book_id,
         chapter_number,
@@ -119,7 +116,7 @@ async def build_chapter_graph(
         "chapter_number": chapter_number,
         "total_entities": extraction_result.total_entities,
         "passes_completed": extraction_result.passes_completed,
-        "aliases_resolved": len(reconciliation.alias_map),
+        "aliases_resolved": len(extraction_result.alias_map),
         "neo4j_counts": counts,
     }
 
@@ -274,18 +271,23 @@ def _apply_alias_map(
         rel.source = alias_map.get(rel.source, rel.source)
         rel.target = alias_map.get(rel.target, rel.target)
 
-    # Normalize system owners
+    # Normalize system entity names and owners
     for skill in result.systems.skills:
+        skill.name = alias_map.get(skill.name, skill.name)
         skill.owner = alias_map.get(skill.owner, skill.owner)
     for cls in result.systems.classes:
+        cls.name = alias_map.get(cls.name, cls.name)
         cls.owner = alias_map.get(cls.owner, cls.owner)
     for title in result.systems.titles:
+        title.name = alias_map.get(title.name, title.name)
         title.owner = alias_map.get(title.owner, title.owner)
     for level in result.systems.level_changes:
         level.character = alias_map.get(
             level.character,
             level.character,
         )
+    for stat in result.systems.stat_changes:
+        stat.character = alias_map.get(stat.character, stat.character)
 
     # Normalize event participants and names
     for event in result.events.events:
