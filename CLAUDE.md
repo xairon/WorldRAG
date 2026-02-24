@@ -15,7 +15,7 @@ WorldRAG is a SOTA Knowledge Graph construction system for fiction novel univers
 - **Orchestration**: LangGraph (3 separate graphs: extraction, reader, chat)
 - **Monitoring**: LangFuse (self-hosted) + structlog
 - **Task Queue**: arq + Redis
-- **Embeddings**: VoyageAI (voyage-3.5) via batch pipeline
+- **Embeddings**: Local BGE-M3 (default, GPU) or VoyageAI (optional API)
 - **Reranker**: Cohere (rerank-v3.5) — built, not yet wired to query
 - **Checkpointing**: PostgreSQL (LangGraph AsyncPostgresSaver) — connected, not yet used
 
@@ -76,7 +76,7 @@ WorldRAG/
 ├── backend/app/          # FastAPI backend
 │   ├── api/              # Routes + middleware + auth + dependencies
 │   ├── core/             # Logging, resilience, rate limiting, cost tracking, DLQ
-│   ├── llm/              # LLM providers, embeddings (Voyage), reranker (Cohere)
+│   ├── llm/              # LLM providers, embeddings (local BGE-M3 or Voyage), reranker (Cohere)
 │   ├── schemas/          # Pydantic models
 │   ├── repositories/     # Neo4j data access (base, book_repo, entity_repo)
 │   ├── services/         # Business logic + extraction pipeline + embedding
@@ -104,7 +104,7 @@ Loaded at runtime by `OntologyLoader` (app/core/ontology_loader.py) with enum va
 - **Entity resolution**: Exact match → Fuzzy (thefuzz) → Embedding similarity + LLM-as-Judge
 - **Temporality**: Chapter-based (valid_from_chapter/valid_to_chapter), not datetime
 - **Source grounding**: Every entity links back to its source chunk with char offsets
-- **Cost optimization**: Gemini 2.5 Flash for extraction, GPT-4o-mini for reconciliation
+- **Cost optimization**: Gemini 2.5 Flash for extraction + reconciliation (single API key)
 - **Async workers**: POST /books/{id}/extract enqueues arq job, auto-chains embedding on completion
 - **Fulltext search**: entity_fulltext Neo4j index with Lucene escaping + CONTAINS fallback
 
@@ -130,9 +130,9 @@ Extract (arq worker — async)
 
 Embed (arq worker — async)
   → Fetch chunks without embeddings
-  → VoyageAI batch embed (128/batch)
+  → Local BGE-M3 batch embed (128/batch, GPU) or VoyageAI API
   → UNWIND write-back to Neo4j
-  → Cost tracking
+  → Cost tracking (local = free)
   → [Status: embedded]
 ```
 
@@ -147,7 +147,7 @@ Embed (arq worker — async)
 - Gemini provider (providers.py: get_gemini_client, instructor.from_gemini, LangChain ChatGoogleGenerativeAI)
 - LangExtract api_key pass-through (all 4 extraction passes forward settings.gemini_api_key)
 - Cost ceiling enforcement (build_book_graph / build_chapter_graph check CostTracker before each chapter)
-- Embedding pipeline (VoyageAI batch → Neo4j vector write-back)
+- Embedding pipeline (local BGE-M3 or VoyageAI → Neo4j vector write-back)
 - arq background workers (extraction + embedding tasks, auto-chaining)
 - Book ingestion API (upload, CRUD, async extract, job polling)
 - Graph explorer API (search, subgraph, neighbors, timeline, character profile)

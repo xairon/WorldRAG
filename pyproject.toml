@@ -24,9 +24,10 @@ dependencies = [
     "langchain-core>=0.3",
     "langchain-openai>=0.3",
     "langchain-anthropic>=0.3",
+    "langchain-google-genai>=2.0",
     "langgraph-checkpoint-postgres>=2.0",
     # Embeddings & Reranking
-    "voyageai>=0.3",
+    "sentence-transformers>=3.0",  # Local embeddings (BGE-M3, free)
     "cohere>=5.0",
     # Task queue
     "arq>=0.26",
@@ -52,6 +53,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+voyage = [
+    "voyageai>=0.3",  # Optional: Voyage AI API embeddings
+]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
