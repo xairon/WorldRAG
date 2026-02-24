@@ -251,6 +251,10 @@ class ChapterExtractionResult(BaseModel):
     events: EventExtractionResult = Field(default_factory=EventExtractionResult)
     lore: LoreExtractionResult = Field(default_factory=LoreExtractionResult)
     grounded_entities: list[GroundedEntity] = Field(default_factory=list)
+    alias_map: dict[str, str] = Field(
+        default_factory=dict,
+        description="Reconciliation alias map {alias -> canonical_name}",
+    )
     total_entities: int = 0
     total_cost_usd: float = 0.0
     passes_completed: list[str] = Field(default_factory=list)

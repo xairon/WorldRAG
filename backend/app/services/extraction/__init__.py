@@ -1,13 +1,13 @@
 """Extraction pipeline orchestrator — LangGraph StateGraph.
 
 Builds and compiles the extraction graph that processes each chapter
-through 4 parallel extraction passes:
+through 4 parallel extraction passes + reconciliation:
 
-  Route → [Pass 1: Characters | Pass 2: Systems | Pass 3: Events | Pass 4: Lore] → Merge
+  Route → [Pass 1-4 parallel] → Merge → Reconcile → END
 
 The router decides which passes to run based on keyword analysis.
 Passes run in parallel via LangGraph's Send mechanism.
-The merge node combines results into a unified ChapterExtractionResult.
+The merge node combines results and the reconcile node deduplicates.
 
 Usage:
     graph = build_extraction_graph()
@@ -111,6 +111,60 @@ async def merge_results(state: ExtractionPipelineState) -> dict[str, Any]:
     }
 
 
+# ── Reconcile node ─────────────────────────────────────────────────────
+
+
+async def reconcile_in_graph(state: ExtractionPipelineState) -> dict[str, Any]:
+    """LangGraph node: Run 3-tier dedup on all extracted entities.
+
+    Builds a temporary ChapterExtractionResult from state, runs the
+    reconciler, and returns the alias_map for downstream use.
+
+    Args:
+        state: ExtractionPipelineState after merge.
+
+    Returns:
+        State update with alias_map.
+    """
+    from app.services.extraction.reconciler import reconcile_chapter_result
+
+    book_id = state.get("book_id", "")
+    chapter_number = state.get("chapter_number", 0)
+
+    # Build temporary result from state for reconciliation
+    temp_result = ChapterExtractionResult(
+        book_id=book_id,
+        chapter_number=chapter_number,
+        characters=state.get("characters", CharacterExtractionResult()),
+        systems=state.get("systems", SystemExtractionResult()),
+        events=state.get("events", EventExtractionResult()),
+        lore=state.get("lore", LoreExtractionResult()),
+    )
+
+    try:
+        reconciliation = await reconcile_chapter_result(temp_result)
+        alias_map = reconciliation.alias_map
+
+        logger.info(
+            "extraction_reconcile_completed",
+            book_id=book_id,
+            chapter=chapter_number,
+            aliases_resolved=len(alias_map),
+        )
+    except Exception:
+        logger.exception(
+            "extraction_reconcile_failed",
+            book_id=book_id,
+            chapter=chapter_number,
+        )
+        alias_map = {}
+
+    return {
+        "alias_map": alias_map,
+        "passes_completed": ["reconcile"],
+    }
+
+
 # ── Fan-out routing ─────────────────────────────────────────────────────
 
 
@@ -142,11 +196,12 @@ def build_extraction_graph() -> StateGraph:
     """Build and compile the extraction pipeline LangGraph.
 
     Graph structure:
-        START → route → [characters | systems | events | lore] → merge → END
+        START → route → [characters | systems | events | lore] → merge → reconcile → END
 
     The route node decides which passes to run.
     Selected passes execute in parallel via Send.
     The merge node combines all results.
+    The reconcile node deduplicates entities (3-tier dedup).
 
     Returns:
         Compiled LangGraph StateGraph.
@@ -160,6 +215,7 @@ def build_extraction_graph() -> StateGraph:
     builder.add_node("events", extract_events)
     builder.add_node("lore", extract_lore)
     builder.add_node("merge", merge_results)
+    builder.add_node("reconcile", reconcile_in_graph)
 
     # ── Edges ──
     # START → route
@@ -174,8 +230,9 @@ def build_extraction_graph() -> StateGraph:
     builder.add_edge("events", "merge")
     builder.add_edge("lore", "merge")
 
-    # merge → END
-    builder.add_edge("merge", END)
+    # merge → reconcile → END
+    builder.add_edge("merge", "reconcile")
+    builder.add_edge("reconcile", END)
 
     graph = builder.compile()
 
@@ -200,7 +257,7 @@ async def extract_chapter(
 ) -> ChapterExtractionResult:
     """Extract all entities from a single chapter.
 
-    High-level entry point that builds the graph, invokes it,
+    High-level entry point that invokes the LangGraph extraction pipeline
     and returns a structured ChapterExtractionResult.
 
     Args:
@@ -228,6 +285,7 @@ async def extract_chapter(
         "errors": [],
         "total_cost_usd": 0.0,
         "total_entities": 0,
+        "alias_map": {},
     }
 
     logger.info(
@@ -248,6 +306,7 @@ async def extract_chapter(
         events=final_state.get("events", EventExtractionResult()),
         lore=final_state.get("lore", LoreExtractionResult()),
         grounded_entities=final_state.get("grounded_entities", []),
+        alias_map=final_state.get("alias_map", {}),
         total_entities=final_state.get("total_entities", 0),
         total_cost_usd=final_state.get("total_cost_usd", 0.0),
         passes_completed=final_state.get("passes_completed", []),
@@ -262,6 +321,7 @@ async def extract_chapter(
         total_entities=result.total_entities,
         passes=result.passes_completed,
         grounded=len(result.grounded_entities),
+        aliases=len(final_state.get("alias_map", {})),
     )
 
     return result

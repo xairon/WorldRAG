@@ -96,6 +96,7 @@ WorldRAG/
 3. **Layer 3 (Series)**: Per-series config (Bloodline, Profession, etc.)
 
 Defined in `ontology/*.yaml`, enforced via Cypher constraints in `scripts/init_neo4j.cypher`.
+Loaded at runtime by `OntologyLoader` (app/core/ontology_loader.py) with enum validation.
 
 ## Important Patterns
 
@@ -119,8 +120,10 @@ Upload (epub/pdf/txt)
 
 Extract (arq worker — async)
   → LangGraph: route → [characters|systems|events|lore] (parallel fan-out)
-  → Reconcile (deduplicate Characters + Skills)
+  → Reconcile in-graph (deduplicate all 10 entity types via LangGraph node)
+  → Apply alias_map normalization (names, owners, stat_changes)
   → Persist entities to Neo4j (entity_repo.py — 11 types)
+  → Create GROUNDED_IN relationships (label-aware UNWIND)
   → DLQ for failed chapters
   → [Status: extracted]
   → Auto-enqueue embedding job
@@ -148,7 +151,12 @@ Embed (arq worker — async)
 - arq background workers (extraction + embedding tasks, auto-chaining)
 - Book ingestion API (upload, CRUD, async extract, job polling)
 - Graph explorer API (search, subgraph, neighbors, timeline, character profile)
-- Admin API (cost tracking, DLQ inspection)
+- Admin API (cost tracking, DLQ inspection, retry endpoints)
+- DLQ retry mechanism (single chapter + bulk retry-all, re-enqueue via arq)
+- Ontology runtime loader (3-layer YAML loading: core → genre → series, enum validation, FastAPI dependency)
+- GROUNDED_IN relationships (label-aware UNWIND per entity type, source chunk offsets)
+- Reconciliation integrated in LangGraph (reconcile node after merge, alias_map in state)
+- alias_map normalization (stat_changes.character, skill/class/title names, all lore entities)
 - Frontend: books management, D3 force graph explorer, chat placeholder
 - Docker Compose (Neo4j, Redis, PostgreSQL, LangFuse)
 - 211 tests passing (golden dataset, unit, integration)
@@ -159,5 +167,3 @@ Embed (arq worker — async)
 - Functional chat frontend (currently placeholder)
 - LangGraph PostgreSQL checkpointing
 - Dockerfile for app containerization
-- Ontology runtime loader (YAMLs exist but not consumed by code)
-- DLQ retry mechanism (inspect/clear exists, re-queue does not)
