@@ -19,7 +19,7 @@ The system combines regex pre-extraction for structured game-like elements (skil
 - **3-layer ontology**: Core (universal) + Genre (LitRPG) + Series (Primal Hunter) -- extensible to any fiction genre
 - **Async background processing**: arq workers for extraction and embedding, with automatic job chaining
 - **Cost optimization**: Gemini 2.5 Flash for extraction ($0.15/M), GPT-4o-mini for reconciliation ($0.15/M), Voyage 3.5 for embeddings ($0.06/M)
-- **Production resilience**: circuit breakers per LLM provider, rate limiters, tenacity retries, dead letter queue
+- **Production resilience**: circuit breakers per LLM provider, rate limiters, tenacity retries, dead letter queue with retry
 - **Interactive graph explorer**: D3 force-directed visualization with entity search, filtering, and character profiles
 - **211 tests**: golden dataset validation, unit tests, all mocked (no external dependencies)
 
@@ -48,7 +48,7 @@ graph LR
 | 3 | [Data Model](./data-model.md) | Neo4j schema: 14 node labels, 11+ relationship types, all indexes | Backend developers |
 | 4 | [Ontology](./ontology.md) | 3-layer ontology system with academic foundations | Researchers, domain experts |
 | 5 | [Extraction Pipeline](./extraction-pipeline.md) | Deep dive: regex, 4 LLM passes, dedup, grounding, embedding | ML engineers, backend devs |
-| 6 | [API Reference](./api-reference.md) | All 20 REST endpoints with schemas and examples | Frontend developers, integrators |
+| 6 | [API Reference](./api-reference.md) | All 24 REST endpoints with schemas and examples | Frontend developers, integrators |
 | 7 | [Testing](./testing.md) | Test strategy, golden dataset methodology, 211 tests | QA, contributors |
 | 8 | [Deployment](./deployment.md) | Dev setup, Docker Compose, environment variables, workers | DevOps, new contributors |
 
@@ -85,10 +85,18 @@ See [Deployment Guide](./deployment.md) for detailed instructions and production
 
 - Full extraction pipeline (regex + 4 parallel LLM passes via LangGraph)
 - Entity persistence to Neo4j (11 entity types, 13 upsert methods)
+- Full reconciler (all 10 entity types, integrated as LangGraph node)
 - 3-tier deduplication (exact, fuzzy, LLM-as-Judge)
+- Alias map normalization (stat_changes, skill/class/title names, all lore entities)
+- GROUNDED_IN relationships (label-aware UNWIND per entity type, source chunk offsets)
+- Gemini provider (native google.genai + instructor.from_gemini + LangChain)
+- LangExtract api_key pass-through (all 4 extraction passes forward settings.gemini_api_key)
+- Cost ceiling enforcement (per-chapter and per-book limits with CostTracker)
 - Embedding pipeline (Voyage AI, batch 128, vector write-back)
 - Background workers (arq: extraction + embedding with auto-chaining)
-- REST API (20 endpoints: books, graph explorer, admin)
+- Ontology runtime loader (3-layer YAML loading, enum validation, FastAPI dependency)
+- DLQ retry mechanism (single chapter + bulk retry-all, re-enqueue via arq)
+- REST API (24 endpoints: books, graph explorer, admin with retry)
 - Frontend (book management, D3 graph explorer, dashboard)
 - Infrastructure (Docker Compose: Neo4j, Redis, PostgreSQL, LangFuse)
 - 211 tests passing (golden dataset + unit tests)
@@ -97,8 +105,5 @@ See [Deployment Guide](./deployment.md) for detailed instructions and production
 
 - Chat/RAG query pipeline (hybrid retrieval: vector + rerank + LLM generate)
 - Chat and Reader LangGraph agents
-- Complete reconciler (currently only Characters + Skills; missing 6 entity types)
 - LangGraph PostgreSQL checkpointing
-- Gemini provider integration in providers.py
 - Application Dockerfile for containerized deployment
-- Ontology runtime loader (YAML files exist but are not dynamically consumed)

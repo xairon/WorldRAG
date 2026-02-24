@@ -352,7 +352,15 @@ Workers are idempotent — multiple instances safely process different chapters.
 curl -H "Authorization: Bearer $ADMIN_KEY" \
   http://localhost:8000/api/v1/admin/dlq
 
-# Clear all failures
+# Retry a single failed chapter
+curl -X POST -H "Authorization: Bearer $ADMIN_KEY" \
+  http://localhost:8000/api/v1/admin/dlq/retry/{book_id}/{chapter}
+
+# Retry all failed chapters (one job per book)
+curl -X POST -H "Authorization: Bearer $ADMIN_KEY" \
+  http://localhost:8000/api/v1/admin/dlq/retry-all
+
+# Clear all failures without retrying
 curl -X POST -H "Authorization: Bearer $ADMIN_KEY" \
   http://localhost:8000/api/v1/admin/dlq/clear
 ```

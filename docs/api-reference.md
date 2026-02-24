@@ -541,6 +541,58 @@ Purge all DLQ entries.
 
 **Response** `200`: `{"cleared": 3}`
 
+### `POST /admin/dlq/retry/{book_id}/{chapter}` — Retry Single Chapter
+
+Remove a specific DLQ entry and re-enqueue the extraction job via arq.
+
+**Parameters**:
+
+| Name | In | Type | Required | Description |
+|------|-----|------|----------|-------------|
+| `book_id` | path | string | ✅ | Book UUID |
+| `chapter` | path | int | ✅ | Chapter number |
+
+**Response** `200` (success):
+```json
+{
+  "retried": true,
+  "book_id": "uuid-string",
+  "chapter": 67,
+  "entries_removed": 1,
+  "job_id": "retry:uuid-string:67"
+}
+```
+
+**Response** `200` (not found):
+```json
+{
+  "retried": false,
+  "reason": "No DLQ entry found for book='uuid-string' chapter=67"
+}
+```
+
+### `POST /admin/dlq/retry-all` — Retry All Failed Chapters
+
+Re-enqueue all failed chapters from the DLQ. Groups entries by `book_id` and enqueues one extraction job per book. Clears the entire DLQ after enqueuing.
+
+**Response** `200`:
+```json
+{
+  "retried": 3,
+  "books": ["uuid-1", "uuid-2"],
+  "jobs_enqueued": 2,
+  "entries_cleared": 3
+}
+```
+
+**Response** `200` (empty DLQ):
+```json
+{
+  "retried": 0,
+  "jobs_enqueued": 0
+}
+```
+
 ---
 
 ## Endpoint Summary
@@ -579,6 +631,8 @@ graph LR
         A3["GET /admin/dlq"]
         A4["GET /admin/dlq/size"]
         A5["POST /admin/dlq/clear"]
+        A6["POST /admin/dlq/retry/:id/:ch"]
+        A7["POST /admin/dlq/retry-all"]
     end
 
     style Health fill:#2d4a2d,stroke:#4ad94a,color:#fff
@@ -611,8 +665,10 @@ graph LR
 | 20 | `GET` | `/admin/dlq` | Admin | DLQ entries |
 | 21 | `GET` | `/admin/dlq/size` | Admin | DLQ count |
 | 22 | `POST` | `/admin/dlq/clear` | Admin | Purge DLQ |
+| 23 | `POST` | `/admin/dlq/retry/{book_id}/{chapter}` | Admin | Retry single chapter |
+| 24 | `POST` | `/admin/dlq/retry-all` | Admin | Retry all failed chapters |
 
-**Total**: 22 endpoints (3 health + 7 books + 7 graph + 5 admin)
+**Total**: 24 endpoints (3 health + 7 books + 7 graph + 7 admin)
 
 ---
 

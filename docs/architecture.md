@@ -119,10 +119,11 @@ sequenceDiagram
         W->>LG: extract_chapter(text, genre)
         LG->>LG: route -> fan-out [chars|sys|evt|lore]
         LG->>LG: merge results
-        LG-->>W: ChapterExtractionResult
-        W->>Rec: reconcile (dedup chars + skills)
-        Rec-->>W: ReconciliationResult
+        LG->>LG: reconcile (dedup all 10 entity types)
+        LG-->>W: ChapterExtractionResult + alias_map
+        W->>W: apply alias_map normalization
         W->>ER: upsert_extraction_result (13 methods)
+        W->>ER: store_grounding (GROUNDED_IN rels)
     end
 
     rect rgb(230, 255, 230)
@@ -153,15 +154,17 @@ flowchart LR
     P2 --> Merge
     P3 --> Merge
     P4 --> Merge
-    Merge --> END([END])
+    Merge --> Reconcile[reconcile_in_graph]
+    Reconcile --> END([END])
 
     style P1 fill:#4A90D9,color:#fff
     style P2 fill:#7B68EE,color:#fff
     style P3 fill:#E8853D,color:#fff
     style P4 fill:#50C878,color:#fff
+    style Reconcile fill:#50C878,color:#fff
 ```
 
-**State management**: The `ExtractionPipelineState` TypedDict carries 17 fields. Three fields use `operator.add` reducers (`grounded_entities`, `passes_completed`, `errors`) so that parallel branches automatically merge their lists when converging at the `merge` node.
+**State management**: The `ExtractionPipelineState` TypedDict carries 18 fields. Three fields use `operator.add` reducers (`grounded_entities`, `passes_completed`, `errors`) so that parallel branches automatically merge their lists when converging at the `merge` node. The `alias_map` field carries the reconciliation output (entity name deduplication) from the `reconcile` node through to the final result.
 
 **Routing rules**:
 - Pass 1 (Characters): **always runs** -- characters appear in every chapter
@@ -289,7 +292,7 @@ stateDiagram-v2
 | Voyage AI | 200 | 15 | `voyage_breaker` |
 | Cohere | 80 | 10 | `cohere_breaker` |
 
-**Dead Letter Queue**: Failed chapter extractions are pushed to a Redis-backed DLQ (`DeadLetterQueue`) with metadata (book_id, chapter, error_type, timestamp, attempt_count). Entries can be inspected via `GET /api/admin/dlq` and cleared via `POST /api/admin/dlq/clear`.
+**Dead Letter Queue**: Failed chapter extractions are pushed to a Redis-backed DLQ (`DeadLetterQueue`) with metadata (book_id, chapter, error_type, timestamp, attempt_count). Entries can be inspected via `GET /api/admin/dlq`, cleared via `POST /api/admin/dlq/clear`, retried individually via `POST /api/admin/dlq/retry/{book_id}/{chapter}`, or bulk-retried via `POST /api/admin/dlq/retry-all`.
 
 ## Cross-Cutting Concerns
 

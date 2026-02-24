@@ -107,11 +107,13 @@ graph TB
 **Why LangExtract**:
 - **Source grounding**: Every extracted entity comes with `char_interval` (start_pos, end_pos) -- exact character offsets into the source text. This is critical for provenance: we can always show the user exactly where an entity was found.
 - **Multi-pass extraction**: LangExtract supports configurable extraction passes (`langextract_passes: 2`) that refine results across multiple LLM calls.
+- **Native Gemini support**: LangExtract accepts an `api_key` parameter for direct Gemini integration -- no LangChain wrapper needed for extraction passes. All 4 passes forward `settings.gemini_api_key`.
 - **Model-agnostic**: Works with any LLM provider (we use Gemini 2.5 Flash for cost optimization).
 
 **Why Instructor**:
 - **Pydantic output validation**: Define the expected output as a Pydantic model, and Instructor ensures the LLM returns exactly that schema. If validation fails, it retries with the error message.
 - **Type safety**: `CharacterExtractionResult`, `SystemExtractionResult`, etc. are all Pydantic models with field-level validation.
+- **Multi-provider**: `providers.py` provides `get_instructor_client(provider)` supporting OpenAI, Anthropic, and Gemini backends. The Gemini backend uses `instructor.from_gemini(google.genai.Client(...))`.
 - **Used for reconciliation**: The 3-tier deduplication's LLM-as-Judge step uses Instructor to produce `EntityMergeCandidate` objects with structured confidence scores.
 
 ## Orchestration: LangGraph over asyncio.gather or Celery
