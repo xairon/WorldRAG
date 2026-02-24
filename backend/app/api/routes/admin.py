@@ -1,6 +1,7 @@
 """Admin endpoints for monitoring, costs, and DLQ management.
 
 Provides operational visibility into the extraction pipeline.
+All admin endpoints require the admin API key.
 """
 
 from __future__ import annotations
@@ -9,6 +10,7 @@ from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends
 
+from app.api.auth import require_admin
 from app.api.dependencies import get_cost_tracker, get_dlq
 from app.core.logging import get_logger
 
@@ -20,7 +22,7 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
-@router.get("/costs")
+@router.get("/costs", dependencies=[Depends(require_admin)])
 async def get_costs(
     cost_tracker: CostTracker = Depends(get_cost_tracker),
 ) -> dict:
@@ -28,7 +30,7 @@ async def get_costs(
     return cost_tracker.summary()
 
 
-@router.get("/costs/{book_id}")
+@router.get("/costs/{book_id}", dependencies=[Depends(require_admin)])
 async def get_book_costs(
     book_id: str,
     cost_tracker: CostTracker = Depends(get_cost_tracker),
@@ -48,7 +50,7 @@ async def get_book_costs(
     }
 
 
-@router.get("/dlq")
+@router.get("/dlq", dependencies=[Depends(require_admin)])
 async def list_dlq(
     dlq: DeadLetterQueue = Depends(get_dlq),
 ) -> dict:
@@ -70,7 +72,7 @@ async def list_dlq(
     }
 
 
-@router.get("/dlq/size")
+@router.get("/dlq/size", dependencies=[Depends(require_admin)])
 async def dlq_size(
     dlq: DeadLetterQueue = Depends(get_dlq),
 ) -> dict:
@@ -79,7 +81,7 @@ async def dlq_size(
     return {"size": size}
 
 
-@router.post("/dlq/clear")
+@router.post("/dlq/clear", dependencies=[Depends(require_admin)])
 async def clear_dlq(
     dlq: DeadLetterQueue = Depends(get_dlq),
 ) -> dict:

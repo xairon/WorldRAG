@@ -6,11 +6,14 @@ subgraph retrieval for the frontend Graph Explorer component.
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 
+from app.api.auth import require_auth
 from app.api.dependencies import get_neo4j
+from app.core.exceptions import NotFoundError
 from app.core.logging import get_logger
 from app.repositories.base import Neo4jRepository
 
@@ -21,24 +24,26 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/graph", tags=["graph"])
 
 # Allowed node labels for parameterised queries (whitelist, no injection)
-ALLOWED_LABELS = frozenset({
-    "Character",
-    "Skill",
-    "Class",
-    "Title",
-    "Event",
-    "Location",
-    "Item",
-    "Creature",
-    "Faction",
-    "Concept",
-})
+ALLOWED_LABELS = frozenset(
+    {
+        "Character",
+        "Skill",
+        "Class",
+        "Title",
+        "Event",
+        "Location",
+        "Item",
+        "Creature",
+        "Faction",
+        "Concept",
+    }
+)
 
 
 # ── Graph statistics ────────────────────────────────────────────────────────
 
 
-@router.get("/stats")
+@router.get("/stats", dependencies=[Depends(require_auth)])
 async def graph_stats(
     book_id: str | None = None,
     driver: AsyncDriver = Depends(get_neo4j),
@@ -50,38 +55,42 @@ async def graph_stats(
     repo = Neo4jRepository(driver)
 
     if book_id:
-        nodes = await repo.execute_read(
-            """
-            MATCH (n)
-            WHERE n.book_id = $book_id OR (n:Book AND n.id = $book_id)
-            WITH labels(n)[0] AS label, count(n) AS cnt
-            RETURN label, cnt ORDER BY cnt DESC
-            """,
-            {"book_id": book_id},
-        )
-        rels = await repo.execute_read(
-            """
-            MATCH ()-[r]->()
-            WHERE r.book_id = $book_id
-            WITH type(r) AS rel_type, count(r) AS cnt
-            RETURN rel_type, cnt ORDER BY cnt DESC
-            """,
-            {"book_id": book_id},
+        nodes, rels = await asyncio.gather(
+            repo.execute_read(
+                """
+                MATCH (n)
+                WHERE n.book_id = $book_id OR (n:Book AND n.id = $book_id)
+                WITH labels(n)[0] AS label, count(n) AS cnt
+                RETURN label, cnt ORDER BY cnt DESC
+                """,
+                {"book_id": book_id},
+            ),
+            repo.execute_read(
+                """
+                MATCH ()-[r]->()
+                WHERE r.book_id = $book_id
+                WITH type(r) AS rel_type, count(r) AS cnt
+                RETURN rel_type, cnt ORDER BY cnt DESC
+                """,
+                {"book_id": book_id},
+            ),
         )
     else:
-        nodes = await repo.execute_read(
-            """
-            MATCH (n)
-            WITH labels(n)[0] AS label, count(n) AS cnt
-            RETURN label, cnt ORDER BY cnt DESC
-            """
-        )
-        rels = await repo.execute_read(
-            """
-            MATCH ()-[r]->()
-            WITH type(r) AS rel_type, count(r) AS cnt
-            RETURN rel_type, cnt ORDER BY cnt DESC
-            """
+        nodes, rels = await asyncio.gather(
+            repo.execute_read(
+                """
+                MATCH (n)
+                WITH labels(n)[0] AS label, count(n) AS cnt
+                RETURN label, cnt ORDER BY cnt DESC
+                """
+            ),
+            repo.execute_read(
+                """
+                MATCH ()-[r]->()
+                WITH type(r) AS rel_type, count(r) AS cnt
+                RETURN rel_type, cnt ORDER BY cnt DESC
+                """
+            ),
         )
 
     return {
@@ -95,9 +104,9 @@ async def graph_stats(
 # ── Entity search ──────────────────────────────────────────────────────────
 
 
-@router.get("/search")
+@router.get("/search", dependencies=[Depends(require_auth)])
 async def search_entities(
-    q: str = Query(..., min_length=1, description="Search query"),
+    q: str = Query(..., min_length=1, max_length=200, description="Search query"),
     label: str | None = Query(None, description="Filter by node label"),
     book_id: str | None = None,
     limit: int = Query(20, ge=1, le=100),
@@ -105,45 +114,27 @@ async def search_entities(
 ) -> list[dict]:
     """Full-text search across all entity types.
 
+    Uses the `entity_fulltext` Neo4j index when available (O(1) lookup),
+    with automatic fallback to CONTAINS scan if the index doesn't exist.
     Returns matching nodes with label, name, description, and score.
     """
     repo = Neo4jRepository(driver)
 
-    # Use CONTAINS for simple search (fulltext index requires separate setup)
-    if label and label in ALLOWED_LABELS:
-        results = await repo.execute_read(
-            f"""
-            MATCH (n:{label})
-            WHERE toLower(n.name) CONTAINS toLower($q)
-                  {"AND n.book_id = $book_id" if book_id else ""}
-            RETURN labels(n)[0] AS label, n.name AS name,
-                   n.description AS description,
-                   n.canonical_name AS canonical_name,
-                   elementId(n) AS id
-            LIMIT $limit
-            """,
-            {"q": q, "book_id": book_id, "limit": limit},
+    # Escape Lucene special characters for fulltext query
+    lucene_query = _escape_lucene(q)
+
+    # Try fulltext index first, fall back to CONTAINS if index is missing
+    try:
+        results = await _search_fulltext(
+            repo,
+            lucene_query,
+            label,
+            book_id,
+            limit,
         )
-    else:
-        results = await repo.execute_read(
-            """
-            MATCH (n)
-            WHERE n.name IS NOT NULL
-              AND toLower(n.name) CONTAINS toLower($q)
-              AND NOT n:Book AND NOT n:Chapter AND NOT n:Chunk
-              $book_filter
-            RETURN labels(n)[0] AS label, n.name AS name,
-                   n.description AS description,
-                   n.canonical_name AS canonical_name,
-                   elementId(n) AS id
-            ORDER BY size(n.name)
-            LIMIT $limit
-            """.replace(
-                "$book_filter",
-                "AND n.book_id = $book_id" if book_id else "",
-            ),
-            {"q": q, "book_id": book_id, "limit": limit},
-        )
+    except Exception:
+        logger.debug("fulltext_index_unavailable, falling back to CONTAINS")
+        results = await _search_contains(repo, q, label, book_id, limit)
 
     return results
 
@@ -151,7 +142,7 @@ async def search_entities(
 # ── Entity detail ───────────────────────────────────────────────────────────
 
 
-@router.get("/entity/{entity_id}")
+@router.get("/entity/{entity_id}", dependencies=[Depends(require_auth)])
 async def get_entity(
     entity_id: str,
     driver: AsyncDriver = Depends(get_neo4j),
@@ -168,7 +159,7 @@ async def get_entity(
     )
 
     if not results:
-        raise HTTPException(status_code=404, detail="Entity not found")
+        raise NotFoundError("Entity not found")
 
     row = results[0]
     return {
@@ -181,7 +172,7 @@ async def get_entity(
 # ── Neighborhood (expand node) ──────────────────────────────────────────────
 
 
-@router.get("/neighbors/{entity_id}")
+@router.get("/neighbors/{entity_id}", dependencies=[Depends(require_auth)])
 async def get_neighbors(
     entity_id: str,
     depth: int = Query(1, ge=1, le=3),
@@ -225,7 +216,7 @@ async def get_neighbors(
 # ── Subgraph for a book ────────────────────────────────────────────────────
 
 
-@router.get("/subgraph/{book_id}")
+@router.get("/subgraph/{book_id}", dependencies=[Depends(require_auth)])
 async def get_book_subgraph(
     book_id: str,
     label: str | None = Query(None, description="Filter by node label"),
@@ -240,50 +231,47 @@ async def get_book_subgraph(
     """
     repo = Neo4jRepository(driver)
 
-    # Build label filter
-    label_clause = ""
-    if label and label in ALLOWED_LABELS:
-        label_clause = f"AND (n:{label} OR m:{label})"
-
-    chapter_clause = ""
-    if chapter is not None:
-        chapter_clause = """
-            AND (r.valid_from_chapter IS NULL
-                 OR r.valid_from_chapter <= $chapter)
-            AND (r.valid_to_chapter IS NULL
-                 OR r.valid_to_chapter >= $chapter)
-        """
-
+    # Fully parameterized — no f-string interpolation of labels
     results = await repo.execute_read(
-        f"""
+        """
         MATCH (n)-[r]-(m)
         WHERE (n.book_id = $book_id OR m.book_id = $book_id)
           AND NOT n:Chunk AND NOT n:Book AND NOT n:Chapter
           AND NOT m:Chunk AND NOT m:Book AND NOT m:Chapter
-          {label_clause}
-          {chapter_clause}
+          AND (CASE WHEN $has_label THEN ($label IN labels(n) OR $label IN labels(m)) ELSE true END)
+          AND (CASE WHEN $has_chapter
+               THEN (r.valid_from_chapter IS NULL OR r.valid_from_chapter <= $chapter)
+                    AND (r.valid_to_chapter IS NULL OR r.valid_to_chapter >= $chapter)
+               ELSE true END)
         WITH n, r, m
         LIMIT $limit
-        RETURN collect(DISTINCT {{
+        RETURN collect(DISTINCT {
             id: elementId(n),
             labels: labels(n),
             name: n.name,
             description: n.description
-        }}) + collect(DISTINCT {{
+        }) + collect(DISTINCT {
             id: elementId(m),
             labels: labels(m),
             name: m.name,
             description: m.description
-        }}) AS nodes,
-        collect(DISTINCT {{
+        }) AS nodes,
+        collect(DISTINCT {
             id: elementId(r),
             type: type(r),
             source: elementId(startNode(r)),
             target: elementId(endNode(r)),
             properties: properties(r)
-        }}) AS edges
+        }) AS edges
         """,
-        {"book_id": book_id, "chapter": chapter, "limit": limit},
+        {
+            "book_id": book_id,
+            "chapter": chapter,
+            "limit": limit,
+            "label": label if label and label in ALLOWED_LABELS else "",
+            "has_label": label is not None and label in ALLOWED_LABELS,
+            "has_chapter": chapter is not None,
+        },
     )
 
     if not results:
@@ -305,7 +293,7 @@ async def get_book_subgraph(
 # ── Character detail (profile) ─────────────────────────────────────────────
 
 
-@router.get("/characters/{name}")
+@router.get("/characters/{name}", dependencies=[Depends(require_auth)])
 async def get_character_profile(
     name: str,
     book_id: str | None = None,
@@ -318,87 +306,84 @@ async def get_character_profile(
     """
     repo = Neo4jRepository(driver)
 
-    book_filter = "AND ch.book_id = $book_id" if book_id else ""
-
-    # Main character data
+    # Main character data (parameterized book filter)
     chars = await repo.execute_read(
-        f"""
+        """
         MATCH (ch:Character)
-        WHERE ch.canonical_name = $name OR ch.name = $name
-              OR $name IN ch.aliases
-              {book_filter}
+        WHERE (ch.canonical_name = $name OR ch.name = $name
+              OR $name IN ch.aliases)
+              AND (CASE WHEN $has_book THEN ch.book_id = $book_id ELSE true END)
         RETURN properties(ch) AS props, elementId(ch) AS id
         LIMIT 1
         """,
-        {"name": name, "book_id": book_id},
+        {"name": name, "book_id": book_id, "has_book": book_id is not None},
     )
 
     if not chars:
-        raise HTTPException(status_code=404, detail="Character not found")
+        raise NotFoundError("Character not found")
 
     char = chars[0]
 
-    # Related entities
-    skills = await repo.execute_read(
-        """
-        MATCH (ch:Character)-[r:HAS_SKILL]->(s:Skill)
-        WHERE elementId(ch) = $id
-        RETURN s.name AS name, s.rank AS rank, s.skill_type AS type,
-               s.description AS description,
-               r.valid_from_chapter AS since_chapter
-        ORDER BY r.valid_from_chapter
-        """,
-        {"id": char["id"]},
-    )
-
-    classes = await repo.execute_read(
-        """
-        MATCH (ch:Character)-[r:HAS_CLASS]->(c:Class)
-        WHERE elementId(ch) = $id
-        RETURN c.name AS name, c.tier AS tier, c.description AS description,
-               r.valid_from_chapter AS since_chapter
-        ORDER BY r.valid_from_chapter
-        """,
-        {"id": char["id"]},
-    )
-
-    titles = await repo.execute_read(
-        """
-        MATCH (ch:Character)-[r:HAS_TITLE]->(t:Title)
-        WHERE elementId(ch) = $id
-        RETURN t.name AS name, t.description AS description,
-               r.acquired_chapter AS acquired_chapter
-        ORDER BY r.acquired_chapter
-        """,
-        {"id": char["id"]},
-    )
-
-    relationships = await repo.execute_read(
-        """
-        MATCH (ch:Character)-[r:RELATES_TO]-(other:Character)
-        WHERE elementId(ch) = $id
-        RETURN other.name AS name, r.type AS rel_type,
-               r.subtype AS subtype, r.context AS context,
-               r.valid_from_chapter AS since_chapter
-        ORDER BY r.valid_from_chapter
-        """,
-        {"id": char["id"]},
-    )
-
-    events = await repo.execute_read(
-        """
-        MATCH (ch:Character)-[:PARTICIPATES_IN]->(ev:Event)
-        WHERE elementId(ch) = $id
-        RETURN ev.name AS name, ev.description AS description,
-               ev.event_type AS type, ev.significance AS significance,
-               ev.chapter_start AS chapter
-        ORDER BY ev.chapter_start
-        """,
-        {"id": char["id"]},
+    # Related entities — fetch all in parallel
+    char_id = char["id"]
+    skills, classes, titles, relationships, events = await asyncio.gather(
+        repo.execute_read(
+            """
+            MATCH (ch:Character)-[r:HAS_SKILL]->(s:Skill)
+            WHERE elementId(ch) = $id
+            RETURN s.name AS name, s.rank AS rank, s.skill_type AS type,
+                   s.description AS description,
+                   r.valid_from_chapter AS since_chapter
+            ORDER BY r.valid_from_chapter
+            """,
+            {"id": char_id},
+        ),
+        repo.execute_read(
+            """
+            MATCH (ch:Character)-[r:HAS_CLASS]->(c:Class)
+            WHERE elementId(ch) = $id
+            RETURN c.name AS name, c.tier AS tier, c.description AS description,
+                   r.valid_from_chapter AS since_chapter
+            ORDER BY r.valid_from_chapter
+            """,
+            {"id": char_id},
+        ),
+        repo.execute_read(
+            """
+            MATCH (ch:Character)-[r:HAS_TITLE]->(t:Title)
+            WHERE elementId(ch) = $id
+            RETURN t.name AS name, t.description AS description,
+                   r.acquired_chapter AS acquired_chapter
+            ORDER BY r.acquired_chapter
+            """,
+            {"id": char_id},
+        ),
+        repo.execute_read(
+            """
+            MATCH (ch:Character)-[r:RELATES_TO]-(other:Character)
+            WHERE elementId(ch) = $id
+            RETURN other.name AS name, r.type AS rel_type,
+                   r.subtype AS subtype, r.context AS context,
+                   r.valid_from_chapter AS since_chapter
+            ORDER BY r.valid_from_chapter
+            """,
+            {"id": char_id},
+        ),
+        repo.execute_read(
+            """
+            MATCH (ch:Character)-[:PARTICIPATES_IN]->(ev:Event)
+            WHERE elementId(ch) = $id
+            RETURN ev.name AS name, ev.description AS description,
+                   ev.event_type AS type, ev.significance AS significance,
+                   ev.chapter_start AS chapter
+            ORDER BY ev.chapter_start
+            """,
+            {"id": char_id},
+        ),
     )
 
     return {
-        "id": char["id"],
+        "id": char_id,
         "properties": char["props"],
         "skills": skills,
         "classes": classes,
@@ -411,7 +396,7 @@ async def get_character_profile(
 # ── Timeline ────────────────────────────────────────────────────────────────
 
 
-@router.get("/timeline/{book_id}")
+@router.get("/timeline/{book_id}", dependencies=[Depends(require_auth)])
 async def get_timeline(
     book_id: str,
     significance: str | None = Query(
@@ -423,23 +408,22 @@ async def get_timeline(
     """Get event timeline for a book, ordered by chapter."""
     repo = Neo4jRepository(driver)
 
-    sig_clause = ""
+    sig_levels_map = {
+        "critical": ["critical", "arc_defining"],
+        "major": ["major", "critical", "arc_defining"],
+        "moderate": ["moderate", "major", "critical", "arc_defining"],
+        "minor": ["minor", "moderate", "major", "critical", "arc_defining"],
+    }
+
+    allowed: list[str] = []
     if significance:
-        sig_levels = {
-            "critical": ["critical", "arc_defining"],
-            "major": ["major", "critical", "arc_defining"],
-            "moderate": ["moderate", "major", "critical", "arc_defining"],
-            "minor": ["minor", "moderate", "major", "critical", "arc_defining"],
-        }
-        allowed = sig_levels.get(significance, [])
-        if allowed:
-            sig_clause = "AND ev.significance IN $allowed"
+        allowed = sig_levels_map.get(significance, [])
 
     results = await repo.execute_read(
-        f"""
+        """
         MATCH (ev:Event)
         WHERE ev.book_id = $book_id
-              {sig_clause}
+              AND (CASE WHEN $has_sig THEN ev.significance IN $allowed ELSE true END)
         OPTIONAL MATCH (ev)<-[:PARTICIPATES_IN]-(ch:Character)
         OPTIONAL MATCH (ev)-[:OCCURS_AT]->(loc:Location)
         RETURN ev.name AS name, ev.description AS description,
@@ -450,13 +434,104 @@ async def get_timeline(
         ORDER BY ev.chapter_start
         LIMIT $limit
         """,
-        {"book_id": book_id, "allowed": sig_levels.get(significance, []), "limit": limit},
+        {"book_id": book_id, "allowed": allowed, "has_sig": len(allowed) > 0, "limit": limit},
     )
 
     return results
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
+
+
+_LUCENE_SPECIAL = frozenset('+-&|!(){}[]^"~*?:\\/')
+
+
+def _escape_lucene(text: str) -> str:
+    """Escape Lucene special characters for fulltext queries."""
+    return "".join(f"\\{ch}" if ch in _LUCENE_SPECIAL else ch for ch in text)
+
+
+async def _search_fulltext(
+    repo: Neo4jRepository,
+    lucene_query: str,
+    label: str | None,
+    book_id: str | None,
+    limit: int,
+) -> list[dict]:
+    """Search using the entity_fulltext index (fast, indexed)."""
+    # Append wildcard for prefix matching
+    ft_query = f"{lucene_query}*" if lucene_query else "*"
+
+    return await repo.execute_read(
+        """
+        CALL db.index.fulltext.queryNodes('entity_fulltext', $ft_query)
+        YIELD node AS n, score
+        WHERE (CASE WHEN $has_label THEN $label IN labels(n) ELSE true END)
+          AND (CASE WHEN $has_book THEN n.book_id = $book_id ELSE true END)
+        RETURN labels(n) AS labels, n.name AS name,
+               n.description AS description,
+               n.canonical_name AS canonical_name,
+               elementId(n) AS id, score
+        ORDER BY score DESC
+        LIMIT $limit
+        """,
+        {
+            "ft_query": ft_query,
+            "label": label if label and label in ALLOWED_LABELS else "",
+            "has_label": label is not None and label in ALLOWED_LABELS,
+            "book_id": book_id,
+            "has_book": book_id is not None,
+            "limit": limit,
+        },
+    )
+
+
+async def _search_contains(
+    repo: Neo4jRepository,
+    q: str,
+    label: str | None,
+    book_id: str | None,
+    limit: int,
+) -> list[dict]:
+    """Fallback CONTAINS scan when fulltext index is unavailable."""
+    if label and label in ALLOWED_LABELS:
+        return await repo.execute_read(
+            """
+            MATCH (n)
+            WHERE $label IN labels(n)
+              AND toLower(n.name) CONTAINS toLower($q)
+              AND (CASE WHEN $has_book THEN n.book_id = $book_id ELSE true END)
+            RETURN labels(n) AS labels, n.name AS name,
+                   n.description AS description,
+                   n.canonical_name AS canonical_name,
+                   elementId(n) AS id
+            LIMIT $limit
+            """,
+            {
+                "q": q,
+                "label": label,
+                "book_id": book_id,
+                "has_book": book_id is not None,
+                "limit": limit,
+            },
+        )
+
+    return await repo.execute_read(
+        """
+        MATCH (n)
+        WHERE n.name IS NOT NULL
+          AND toLower(n.name) CONTAINS toLower($q)
+          AND NOT n:Book AND NOT n:Chapter AND NOT n:Chunk
+          AND (CASE WHEN $has_book THEN n.book_id = $book_id ELSE true END)
+        RETURN labels(n) AS labels, n.name AS name,
+               n.description AS description,
+               n.canonical_name AS canonical_name,
+               elementId(n) AS id
+        ORDER BY size(n.name)
+        LIMIT $limit
+        """,
+        {"q": q, "book_id": book_id, "has_book": book_id is not None, "limit": limit},
+    )
 
 
 def _format_subgraph(results: list[dict]) -> dict:
@@ -470,20 +545,24 @@ def _format_subgraph(results: list[dict]) -> dict:
     for row in results:
         for node in row.get("nodes", []):
             if hasattr(node, "labels"):
-                nodes.append({
-                    "id": node.element_id,
-                    "labels": list(node.labels),
-                    "name": node.get("name", ""),
-                    "description": node.get("description", ""),
-                })
+                nodes.append(
+                    {
+                        "id": node.element_id,
+                        "labels": list(node.labels),
+                        "name": node.get("name", ""),
+                        "description": node.get("description", ""),
+                    }
+                )
 
         for rel in row.get("relationships", []):
             if hasattr(rel, "type"):
-                edges.append({
-                    "id": rel.element_id,
-                    "type": rel.type,
-                    "source": rel.start_node.element_id,
-                    "target": rel.end_node.element_id,
-                })
+                edges.append(
+                    {
+                        "id": rel.element_id,
+                        "type": rel.type,
+                        "source": rel.start_node.element_id,
+                        "target": rel.end_node.element_id,
+                    }
+                )
 
     return {"nodes": nodes, "edges": edges}

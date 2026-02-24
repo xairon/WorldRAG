@@ -21,6 +21,7 @@ from app.services.extraction.reconciler import reconcile_chapter_result
 if TYPE_CHECKING:
     from neo4j import AsyncDriver
 
+    from app.core.dead_letter import DeadLetterQueue
     from app.repositories.book_repo import BookRepository
     from app.schemas.book import ChapterData
     from app.schemas.extraction import ChapterExtractionResult
@@ -84,7 +85,9 @@ async def build_chapter_graph(
 
     # 5. Update chapter status
     await book_repo.update_chapter_status(
-        book_id, chapter_number, "extracted",
+        book_id,
+        chapter_number,
+        "extracted",
     )
 
     stats = {
@@ -112,6 +115,7 @@ async def build_book_graph(
     genre: str = "litrpg",
     series_name: str = "",
     chapter_regex_matches: dict[int, str] | None = None,
+    dlq: DeadLetterQueue | None = None,
 ) -> dict[str, Any]:
     """Process all chapters of a book through the KG pipeline.
 
@@ -125,6 +129,7 @@ async def build_book_graph(
         genre: Book genre.
         series_name: Series name.
         chapter_regex_matches: Mapping of chapter_number -> regex JSON.
+        dlq: Optional dead letter queue for failed chapters.
 
     Returns:
         Dict with aggregate processing stats.
@@ -147,7 +152,8 @@ async def build_book_graph(
     for chapter in chapters:
         try:
             regex_json = chapter_regex_matches.get(
-                chapter.number, "[]",
+                chapter.number,
+                "[]",
             )
 
             stats = await build_chapter_graph(
@@ -163,14 +169,20 @@ async def build_book_graph(
             total_entities += stats["total_entities"]
             chapter_stats.append(stats)
 
-        except Exception as e:
+        except Exception as exc:
             logger.exception(
                 "graph_build_chapter_failed",
                 book_id=book_id,
                 chapter=chapter.number,
-                error=str(e),
             )
             failed_chapters.append(chapter.number)
+            if dlq is not None:
+                await dlq.push_failure(
+                    book_id=book_id,
+                    chapter=chapter.number,
+                    error=exc,
+                    metadata={"genre": genre, "series_name": series_name},
+                )
 
     # Update final status
     final_status = "extracted" if not failed_chapters else "partial"
@@ -203,7 +215,8 @@ def _apply_alias_map(
         char.name = alias_map.get(char.name, char.name)
         if char.canonical_name:
             char.canonical_name = alias_map.get(
-                char.canonical_name, char.canonical_name,
+                char.canonical_name,
+                char.canonical_name,
             )
 
     # Normalize relationship references
@@ -220,14 +233,13 @@ def _apply_alias_map(
         title.owner = alias_map.get(title.owner, title.owner)
     for level in result.systems.level_changes:
         level.character = alias_map.get(
-            level.character, level.character,
+            level.character,
+            level.character,
         )
 
     # Normalize event participants
     for event in result.events.events:
-        event.participants = [
-            alias_map.get(p, p) for p in event.participants
-        ]
+        event.participants = [alias_map.get(p, p) for p in event.participants]
 
     # Normalize item owners
     for item in result.lore.items:

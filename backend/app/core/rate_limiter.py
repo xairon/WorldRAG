@@ -6,6 +6,8 @@ Each provider has its own limiter to respect API rate limits.
 
 from __future__ import annotations
 
+import asyncio
+
 from aiolimiter import AsyncLimiter
 
 from app.core.logging import get_logger
@@ -18,7 +20,7 @@ class ProviderRateLimiter:
 
     Combines:
     - Token bucket rate limiting (requests per time window)
-    - Concurrency semaphore (max parallel requests)
+    - Concurrency semaphore (max parallel requests, enforced)
     """
 
     def __init__(
@@ -39,10 +41,12 @@ class ProviderRateLimiter:
         self.name = name
         self.limiter = AsyncLimiter(max_rate, time_period)
         self.max_concurrent = max_concurrent
+        self._semaphore = asyncio.Semaphore(max_concurrent)
         self._active = 0
 
     async def acquire(self) -> None:
-        """Acquire rate limit token. Blocks until available."""
+        """Acquire rate limit token + concurrency slot. Blocks until available."""
+        await self._semaphore.acquire()
         await self.limiter.acquire()
         self._active += 1
         if self._active > self.max_concurrent * 0.8:
@@ -56,6 +60,7 @@ class ProviderRateLimiter:
     def release(self) -> None:
         """Release concurrency slot."""
         self._active = max(0, self._active - 1)
+        self._semaphore.release()
 
     @property
     def active_requests(self) -> int:

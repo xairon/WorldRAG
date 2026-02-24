@@ -8,18 +8,22 @@ from app.repositories.base import Neo4jRepository
 
 
 class TestExecuteRead:
-
     async def test_calls_session_run(
-        self, mock_neo4j_driver_with_session, mock_neo4j_session,
+        self,
+        mock_neo4j_driver_with_session,
+        mock_neo4j_session,
     ):
         repo = Neo4jRepository(mock_neo4j_driver_with_session)
         await repo.execute_read("MATCH (n) RETURN n", {"id": 1})
         mock_neo4j_session.run.assert_called_once_with(
-            "MATCH (n) RETURN n", {"id": 1},
+            "MATCH (n) RETURN n",
+            {"id": 1},
         )
 
     async def test_returns_data(
-        self, mock_neo4j_driver_with_session, mock_neo4j_session,
+        self,
+        mock_neo4j_driver_with_session,
+        mock_neo4j_session,
     ):
         mock_neo4j_session.run.return_value.data = AsyncMock(
             return_value=[{"n": "test"}],
@@ -30,9 +34,10 @@ class TestExecuteRead:
 
 
 class TestExecuteWrite:
-
     async def test_calls_consume(
-        self, mock_neo4j_driver_with_session, mock_neo4j_session,
+        self,
+        mock_neo4j_driver_with_session,
+        mock_neo4j_session,
     ):
         repo = Neo4jRepository(mock_neo4j_driver_with_session)
         await repo.execute_write("CREATE (n:Test)")
@@ -40,9 +45,10 @@ class TestExecuteWrite:
 
 
 class TestExecuteBatch:
-
     async def test_uses_transaction(
-        self, mock_neo4j_driver_with_session, mock_neo4j_session,
+        self,
+        mock_neo4j_driver_with_session,
+        mock_neo4j_session,
     ):
         repo = Neo4jRepository(mock_neo4j_driver_with_session)
         queries = [("QUERY 1", {"a": 1}), ("QUERY 2", {"b": 2})]
@@ -51,9 +57,10 @@ class TestExecuteBatch:
 
 
 class TestCount:
-
     async def test_count_returns_int(
-        self, mock_neo4j_driver_with_session, mock_neo4j_session,
+        self,
+        mock_neo4j_driver_with_session,
+        mock_neo4j_session,
     ):
         mock_neo4j_session.run.return_value.data = AsyncMock(
             return_value=[{"count": 42}],
@@ -64,9 +71,10 @@ class TestCount:
 
 
 class TestExists:
-
     async def test_exists_returns_bool(
-        self, mock_neo4j_driver_with_session, mock_neo4j_session,
+        self,
+        mock_neo4j_driver_with_session,
+        mock_neo4j_session,
     ):
         mock_neo4j_session.run.return_value.data = AsyncMock(
             return_value=[{"exists": True}],

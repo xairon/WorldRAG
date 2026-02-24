@@ -183,6 +183,10 @@ def build_extraction_graph() -> StateGraph:
     return graph
 
 
+# Pre-build and cache the extraction graph at module level
+_extraction_graph = build_extraction_graph()
+
+
 # ── High-level extraction function ──────────────────────────────────────
 
 
@@ -210,8 +214,6 @@ async def extract_chapter(
     Returns:
         ChapterExtractionResult with all extracted entities.
     """
-    graph = build_extraction_graph()
-
     initial_state: dict[str, Any] = {
         "book_id": book_id,
         "chapter_number": chapter_number,
@@ -235,7 +237,7 @@ async def extract_chapter(
         text_length=len(chapter_text),
     )
 
-    final_state = await graph.ainvoke(initial_state)
+    final_state = await _extraction_graph.ainvoke(initial_state)
 
     # Build result from final state
     result = ChapterExtractionResult(

@@ -7,6 +7,7 @@ Neo4j, Redis, PostgreSQL, LangFuse, and LLM providers.
 from __future__ import annotations
 
 from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
 
 from app.core.logging import get_logger
 
@@ -30,8 +31,8 @@ async def health_check(request: Request) -> dict:
             await result.single()
         checks["neo4j"] = "ok"
     except Exception as e:
-        checks["neo4j"] = f"error: {e}"
-        logger.error("health_check_failed", service="neo4j", error=str(e))
+        checks["neo4j"] = "error"
+        logger.error("health_check_failed", service="neo4j", error=type(e).__name__)
 
     # Redis
     try:
@@ -39,8 +40,8 @@ async def health_check(request: Request) -> dict:
         await redis.ping()
         checks["redis"] = "ok"
     except Exception as e:
-        checks["redis"] = f"error: {e}"
-        logger.error("health_check_failed", service="redis", error=str(e))
+        checks["redis"] = "error"
+        logger.error("health_check_failed", service="redis", error=type(e).__name__)
 
     # PostgreSQL
     try:
@@ -52,8 +53,8 @@ async def health_check(request: Request) -> dict:
         else:
             checks["postgres"] = "not configured"
     except Exception as e:
-        checks["postgres"] = f"error: {e}"
-        logger.error("health_check_failed", service="postgres", error=str(e))
+        checks["postgres"] = "error"
+        logger.error("health_check_failed", service="postgres", error=type(e).__name__)
 
     # LangFuse
     try:
@@ -63,23 +64,40 @@ async def health_check(request: Request) -> dict:
         else:
             checks["langfuse"] = "not configured"
     except Exception as e:
-        checks["langfuse"] = f"error: {e}"
-        logger.error("health_check_failed", service="langfuse", error=str(e))
+        checks["langfuse"] = "error"
+        logger.error("health_check_failed", service="langfuse", error=type(e).__name__)
 
-    # Overall
+    # Overall — return 503 when degraded
     all_ok = all(v == "ok" for v in checks.values() if v != "not configured")
     status = "healthy" if all_ok else "degraded"
+    body = {"status": status, "services": checks}
 
-    return {"status": status, "services": checks}
+    if not all_ok:
+        return JSONResponse(content=body, status_code=503)
+    return body
 
 
 @router.get("/health/ready")
-async def readiness_check(request: Request) -> dict:
-    """Quick readiness probe (for k8s / docker healthcheck)."""
+async def readiness_check(request: Request) -> dict | JSONResponse:
+    """Quick readiness probe (for k8s / docker healthcheck).
+
+    Returns 503 when not ready so load balancers and orchestrators
+    can detect unhealthy instances via HTTP status code.
+    """
     try:
         driver = request.app.state.neo4j_driver
         async with driver.session() as session:
             await session.run("RETURN 1")
         return {"ready": True}
     except Exception:
-        return {"ready": False}
+        return JSONResponse(content={"ready": False}, status_code=503)
+
+
+@router.get("/health/live")
+async def liveness_check() -> dict:
+    """Lightweight liveness probe. Confirms process is alive.
+
+    No dependency checks — only verifies the FastAPI process
+    is responding. Use /health/ready for full readiness.
+    """
+    return {"alive": True}

@@ -168,10 +168,7 @@ async def llm_dedup(
     results: list[EntityMergeCandidate] = []
 
     # Batch candidates into a single LLM call for efficiency
-    candidates_text = "\n".join(
-        f"- '{a}' vs '{b}' (fuzzy score: {s}%)"
-        for a, b, s in candidates
-    )
+    candidates_text = "\n".join(f"- '{a}' vs '{b}' (fuzzy score: {s}%)" for a, b, s in candidates)
 
     try:
         merge_results = await client.chat.completions.create(
@@ -201,12 +198,12 @@ async def llm_dedup(
             merge.entity_type = entity_type
             results.append(merge)
 
-    except Exception as e:
+    except Exception:
         logger.warning(
             "dedup_llm_failed",
             entity_type=entity_type,
             candidates=len(candidates),
-            error=str(e),
+            exc_info=True,
         )
         # Fall back to fuzzy scores
         for name_a, name_b, score in candidates:
@@ -274,8 +271,10 @@ async def deduplicate_entities(
                 alias_map[merge.entity_b_name] = merge.canonical_name
                 # Remove the non-canonical entity
                 entities = [
-                    e for e in entities
-                    if normalize_name(e.get("name", "")) != normalize_name(
+                    e
+                    for e in entities
+                    if normalize_name(e.get("name", ""))
+                    != normalize_name(
                         merge.entity_a_name
                         if merge.canonical_name != merge.entity_a_name
                         else merge.entity_b_name

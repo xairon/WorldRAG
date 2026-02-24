@@ -12,6 +12,8 @@ Strategy:
 
 from __future__ import annotations
 
+import re
+
 from app.core.cost_tracker import count_tokens
 from app.core.logging import get_logger
 from app.schemas.book import ChapterData, ChunkData
@@ -130,7 +132,7 @@ def _split_paragraphs(text: str) -> list[tuple[str, int, int]]:
     paragraphs: list[tuple[str, int, int]] = []
     current_start = 0
 
-    for match in __import__("re").finditer(r"\n\s*\n", text):
+    for match in re.finditer(r"\n\s*\n", text):
         para_text = text[current_start : match.start()].strip()
         if para_text:
             paragraphs.append((para_text, current_start, match.start()))
@@ -173,8 +175,6 @@ def _split_long_paragraph(
     start_position: int,
 ) -> list[ChunkData]:
     """Split an oversized paragraph into sentence-level chunks."""
-    import re
-
     sentences = re.split(r"(?<=[.!?])\s+", text)
     chunks: list[ChunkData] = []
     current_text = ""

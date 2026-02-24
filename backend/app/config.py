@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     neo4j_password: str = "worldrag"
 
     # --- Redis ---
-    redis_url: str = "redis://localhost:6379"
+    redis_url: str = "redis://:worldrag@localhost:6379"
 
     # --- PostgreSQL ---
     postgres_uri: str = "postgresql://worldrag:worldrag@localhost:5432/worldrag"
@@ -62,12 +62,21 @@ class Settings(BaseSettings):
     langfuse_public_key: str = ""
     langfuse_secret_key: str = ""
 
+    # --- Authentication ---
+    api_key: str = ""  # WORLDRAG_API_KEY — empty = dev mode (no auth)
+    admin_api_key: str = ""  # WORLDRAG_ADMIN_API_KEY — empty = dev mode
+
     # --- App ---
     cors_origins: list[str] = Field(default=["http://localhost:3000"])
     log_level: str = "INFO"
     log_format: str = "json"
     cost_ceiling_per_chapter: float = 0.50
     cost_ceiling_per_book: float = 50.00
+
+    # --- Task Queue (arq) ---
+    arq_max_jobs: int = 5
+    arq_job_timeout: int = 3600  # 1 hour per job (full book extraction)
+    arq_keep_result: int = 86400  # keep job results for 24h
 
     # --- Derived ---
     debug: bool = False

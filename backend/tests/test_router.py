@@ -4,10 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.services.extraction.router import (
-    route_extraction_passes,
-    select_passes_to_run,
-)
+from app.services.extraction.router import route_extraction_passes
 
 
 def make_state(
@@ -33,12 +30,14 @@ LONG_FILLER = "Lorem ipsum dolor sit amet. " * 100  # ~2800 chars
 
 
 class TestShortChapterRouting:
-
     def test_short_chapter_runs_all_passes(self):
         state = make_state("Short text here.", genre="fantasy")
         result = route_extraction_passes(state)
         assert set(result["passes_to_run"]) == {
-            "characters", "systems", "events", "lore",
+            "characters",
+            "systems",
+            "events",
+            "lore",
         }
 
     def test_boundary_at_2000_chars(self):
@@ -57,7 +56,6 @@ class TestShortChapterRouting:
 
 
 class TestCharactersAlwaysIncluded:
-
     def test_characters_always_in_passes(self):
         state = make_state(LONG_FILLER, genre="fantasy")
         result = route_extraction_passes(state)
@@ -68,7 +66,6 @@ class TestCharactersAlwaysIncluded:
 
 
 class TestSystemPassRouting:
-
     def test_system_keywords_threshold(self):
         """3+ system keywords trigger systems pass (non-litrpg genre)."""
         text = LONG_FILLER + " skill level class title evolution "
@@ -87,7 +84,8 @@ class TestSystemPassRouting:
         """Non-empty regex JSON triggers systems pass."""
         text = LONG_FILLER  # no system keywords
         state = make_state(
-            text, genre="fantasy",
+            text,
+            genre="fantasy",
             regex_json='[{"type":"skill","name":"Fireball"}]',
         )
         result = route_extraction_passes(state)
@@ -114,7 +112,6 @@ class TestSystemPassRouting:
 
 
 class TestEventPassRouting:
-
     def test_event_keywords_threshold(self):
         """2+ event keywords trigger events pass."""
         text = LONG_FILLER + " battle fight "
@@ -134,7 +131,6 @@ class TestEventPassRouting:
 
 
 class TestLorePassRouting:
-
     def test_lore_keywords_threshold(self):
         """3+ lore keywords trigger lore pass."""
         text = LONG_FILLER + " dungeon realm kingdom "
@@ -148,18 +144,3 @@ class TestLorePassRouting:
         state = make_state(text, genre="fantasy")
         result = route_extraction_passes(state)
         assert "lore" not in result["passes_to_run"]
-
-
-# -- select_passes_to_run ------------------------------------------------
-
-
-class TestSelectPassesToRun:
-
-    def test_returns_state_value(self):
-        state = {"passes_to_run": ["characters", "systems"]}
-        assert select_passes_to_run(state) == ["characters", "systems"]
-
-    def test_default_characters(self):
-        """Missing key defaults to ['characters']."""
-        state = {}
-        assert select_passes_to_run(state) == ["characters"]
