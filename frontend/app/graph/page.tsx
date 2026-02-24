@@ -4,13 +4,11 @@ import { useEffect, useState, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   Search,
-  Filter,
   X,
   Users,
   Sparkles,
-  MapPin,
   Swords,
-  Network,
+  Shield,
   Loader2,
 } from "lucide-react";
 import {
@@ -44,7 +42,7 @@ function GraphExplorerContent() {
   const [charProfile, setCharProfile] = useState<CharacterProfile | null>(null);
 
   useEffect(() => {
-    listBooks().then(setBooks).catch(() => {});
+    listBooks().then(setBooks).catch((err) => console.error("Failed to load books:", err));
   }, []);
 
   const loadGraph = useCallback(async () => {
@@ -86,16 +84,9 @@ function GraphExplorerContent() {
     if (node.labels?.includes("Character") && node.name) {
       getCharacterProfile(node.name, bookId || undefined)
         .then(setCharProfile)
-        .catch(() => {});
+        .catch((err) => console.error("Failed to load profile:", err));
     }
   }
-
-  const LABEL_ICONS: Record<string, typeof Users> = {
-    Character: Users,
-    Skill: Sparkles,
-    Location: MapPin,
-    Event: Swords,
-  };
 
   return (
     <div className="space-y-4">
@@ -113,6 +104,7 @@ function GraphExplorerContent() {
       <div className="flex flex-wrap gap-3 items-center">
         {/* Book selector */}
         <select
+          aria-label="Select book"
           value={bookId}
           onChange={(e) => setBookId(e.target.value)}
           className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
@@ -127,6 +119,7 @@ function GraphExplorerContent() {
 
         {/* Label filter */}
         <select
+          aria-label="Filter by entity type"
           value={labelFilter}
           onChange={(e) => setLabelFilter(e.target.value)}
           className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
@@ -153,6 +146,7 @@ function GraphExplorerContent() {
           </div>
           <button
             type="submit"
+            aria-label="Search"
             className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-500 transition-colors"
           >
             <Search className="h-4 w-4" />
@@ -167,6 +161,7 @@ function GraphExplorerContent() {
         {Object.entries(LABEL_COLORS).map(([label, color]) => (
           <button
             key={label}
+            aria-pressed={labelFilter === label}
             onClick={() =>
               setLabelFilter(labelFilter === label ? "" : label)
             }
@@ -192,7 +187,6 @@ function GraphExplorerContent() {
           <ForceGraph
             data={graphData}
             onNodeClick={handleNodeClick}
-            width={selectedNode ? 700 : 1000}
             height={650}
           />
         </div>
@@ -207,7 +201,7 @@ function GraphExplorerContent() {
                   <h3 className="text-sm font-medium text-slate-400">
                     Search Results ({searchResults.length})
                   </h3>
-                  <button onClick={() => setSearchResults([])}>
+                  <button aria-label="Close search results" onClick={() => setSearchResults([])}>
                     <X className="h-3.5 w-3.5 text-slate-500" />
                   </button>
                 </div>
@@ -249,7 +243,7 @@ function GraphExplorerContent() {
                       {selectedNode.name}
                     </h3>
                   </div>
-                  <button onClick={() => { setSelectedNode(null); setCharProfile(null); }}>
+                  <button aria-label="Close detail panel" onClick={() => { setSelectedNode(null); setCharProfile(null); }}>
                     <X className="h-3.5 w-3.5 text-slate-500" />
                   </button>
                 </div>
@@ -277,7 +271,7 @@ function GraphExplorerContent() {
                     )}
 
                     {charProfile.classes.length > 0 && (
-                      <DetailSection title="Classes" icon={<Filter className="h-3 w-3" />}>
+                      <DetailSection title="Classes" icon={<Shield className="h-3 w-3" />}>
                         {charProfile.classes.map((c) => (
                           <div key={c.name} className="text-xs text-slate-400">
                             <span className="font-medium text-amber-400">{c.name}</span>

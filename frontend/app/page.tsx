@@ -16,6 +16,13 @@ import { getHealth, listBooks, getGraphStats } from "@/lib/api";
 import type { BookInfo, GraphStats, HealthStatus } from "@/lib/api";
 import { cn, statusColor, formatNumber } from "@/lib/utils";
 
+const NODE_ICONS: Record<string, typeof Users> = {
+  Character: Users,
+  Skill: Sparkles,
+  Event: Swords,
+  Location: MapPin,
+};
+
 export default function DashboardPage() {
   const [health, setHealth] = useState<HealthStatus | null>(null);
   const [books, setBooks] = useState<BookInfo[]>([]);
@@ -50,13 +57,6 @@ export default function DashboardPage() {
       </div>
     );
   }
-
-  const nodeIcons: Record<string, typeof Users> = {
-    Character: Users,
-    Skill: Sparkles,
-    Event: Swords,
-    Location: MapPin,
-  };
 
   return (
     <div className="space-y-8">
@@ -111,7 +111,7 @@ export default function DashboardPage() {
           {Object.entries(stats.nodes)
             .slice(0, 6)
             .map(([label, count]) => {
-              const Icon = nodeIcons[label] ?? Network;
+              const Icon = NODE_ICONS[label] ?? Network;
               return (
                 <StatCard
                   key={label}

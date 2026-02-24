@@ -99,7 +99,7 @@ export default function BooksPage() {
       {error && (
         <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-4 text-red-400 text-sm flex items-center justify-between">
           {error}
-          <button onClick={() => setError(null)}><X className="h-4 w-4" /></button>
+          <button aria-label="Dismiss error" onClick={() => setError(null)}><X className="h-4 w-4" /></button>
         </div>
       )}
 
@@ -113,8 +113,9 @@ export default function BooksPage() {
 
           <div className="grid gap-4 md:grid-cols-2">
             <div>
-              <label className="block text-sm text-slate-400 mb-1">File *</label>
+              <label htmlFor="book-file" className="block text-sm text-slate-400 mb-1">File *</label>
               <input
+                id="book-file"
                 type="file"
                 name="file"
                 accept=".epub,.pdf,.txt"
@@ -123,8 +124,9 @@ export default function BooksPage() {
               />
             </div>
             <div>
-              <label className="block text-sm text-slate-400 mb-1">Title</label>
+              <label htmlFor="book-title" className="block text-sm text-slate-400 mb-1">Title</label>
               <input
+                id="book-title"
                 type="text"
                 name="title"
                 placeholder="Auto-detected from filename"
@@ -132,16 +134,18 @@ export default function BooksPage() {
               />
             </div>
             <div>
-              <label className="block text-sm text-slate-400 mb-1">Author</label>
+              <label htmlFor="book-author" className="block text-sm text-slate-400 mb-1">Author</label>
               <input
+                id="book-author"
                 type="text"
                 name="author"
                 className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
               />
             </div>
             <div>
-              <label className="block text-sm text-slate-400 mb-1">Genre</label>
+              <label htmlFor="book-genre" className="block text-sm text-slate-400 mb-1">Genre</label>
               <select
+                id="book-genre"
                 name="genre"
                 defaultValue="litrpg"
                 className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
@@ -154,16 +158,18 @@ export default function BooksPage() {
               </select>
             </div>
             <div>
-              <label className="block text-sm text-slate-400 mb-1">Series</label>
+              <label htmlFor="book-series" className="block text-sm text-slate-400 mb-1">Series</label>
               <input
+                id="book-series"
                 type="text"
                 name="series_name"
                 className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
               />
             </div>
             <div>
-              <label className="block text-sm text-slate-400 mb-1">Order in Series</label>
+              <label htmlFor="book-order" className="block text-sm text-slate-400 mb-1">Order in Series</label>
               <input
+                id="book-order"
                 type="number"
                 name="order_in_series"
                 min={1}
@@ -251,6 +257,7 @@ export default function BooksPage() {
                           onClick={() => handleExtract(book.id)}
                           disabled={extracting === book.id}
                           title="Run LLM extraction"
+                          aria-label="Run LLM extraction"
                           className="rounded-md p-1.5 text-amber-400 hover:bg-amber-500/10 transition-colors disabled:opacity-50"
                         >
                           {extracting === book.id ? (
@@ -270,6 +277,7 @@ export default function BooksPage() {
                       <button
                         onClick={() => handleDelete(book.id, book.title)}
                         title="Delete"
+                        aria-label="Delete book"
                         className="rounded-md p-1.5 text-red-400 hover:bg-red-500/10 transition-colors"
                       >
                         <Trash2 className="h-4 w-4" />
