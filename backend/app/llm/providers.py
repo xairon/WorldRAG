@@ -30,6 +30,23 @@ def get_anthropic_client() -> AsyncAnthropic:
     return AsyncAnthropic(api_key=settings.anthropic_api_key)
 
 
+@lru_cache(maxsize=4)
+def get_gemini_client():
+    """Get cached Google GenAI client for Gemini models.
+
+    Returns:
+        google.genai.Client configured with the Gemini API key.
+
+    Raises:
+        ValueError: If no Gemini API key is configured.
+    """
+    if not settings.gemini_api_key:
+        raise ValueError("GOOGLE_API_KEY not configured — cannot create Gemini client")
+    from google import genai
+
+    return genai.Client(api_key=settings.gemini_api_key)
+
+
 def get_instructor_client(
     provider: str = "openai",
     model: str | None = None,
@@ -37,7 +54,7 @@ def get_instructor_client(
     """Get an Instructor client for structured extraction.
 
     Args:
-        provider: LLM provider ("openai", "anthropic").
+        provider: LLM provider ("openai", "anthropic", "gemini").
         model: Model name override.
 
     Returns:
@@ -49,6 +66,9 @@ def get_instructor_client(
     elif provider == "anthropic":
         client = get_anthropic_client()
         return instructor.from_anthropic(client)
+    elif provider == "gemini":
+        client = get_gemini_client()
+        return instructor.from_gemini(client)
     else:
         logger.warning("instructor_unknown_provider", provider=provider, fallback="openai")
         client = get_openai_client()
@@ -118,6 +138,26 @@ def get_langchain_llm(spec: str | None = None):
             api_key=settings.anthropic_api_key,
             temperature=0,
         )
+        if settings.openai_api_key:
+            from langchain_openai import ChatOpenAI
+
+            fallback = ChatOpenAI(
+                model="gpt-4o-mini",
+                api_key=settings.openai_api_key,
+                temperature=0,
+            )
+            return primary.with_fallbacks([fallback])
+        return primary
+
+    elif provider == "gemini":
+        from langchain_google_genai import ChatGoogleGenerativeAI
+
+        primary = ChatGoogleGenerativeAI(
+            model=model,
+            google_api_key=settings.gemini_api_key,
+            temperature=0,
+        )
+        # Fallback to OpenAI if available
         if settings.openai_api_key:
             from langchain_openai import ChatOpenAI
 

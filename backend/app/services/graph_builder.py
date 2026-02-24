@@ -1,10 +1,11 @@
 """Graph builder service — Extract, reconcile, and persist to Neo4j.
 
 Orchestrates the full pipeline for a single chapter:
-  1. Run LangGraph extraction (4 passes)
-  2. Reconcile entities (dedup + alias resolution)
-  3. Persist to Neo4j via EntityRepository
-  4. Update chapter status
+  1. Check cost ceiling
+  2. Run LangGraph extraction (4 passes)
+  3. Reconcile entities (dedup + alias resolution)
+  4. Persist to Neo4j via EntityRepository
+  5. Update chapter status
 
 This is the main entry point called by the book processing pipeline.
 """
@@ -13,6 +14,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from app.core.exceptions import CostCeilingError
 from app.core.logging import get_logger
 from app.repositories.entity_repo import EntityRepository
 from app.services.extraction import extract_chapter
@@ -21,6 +23,7 @@ from app.services.extraction.reconciler import reconcile_chapter_result
 if TYPE_CHECKING:
     from neo4j import AsyncDriver
 
+    from app.core.cost_tracker import CostTracker
     from app.core.dead_letter import DeadLetterQueue
     from app.repositories.book_repo import BookRepository
     from app.schemas.book import ChapterData
@@ -37,10 +40,11 @@ async def build_chapter_graph(
     genre: str = "litrpg",
     series_name: str = "",
     regex_matches_json: str = "[]",
+    cost_tracker: CostTracker | None = None,
 ) -> dict[str, Any]:
     """Process a single chapter through the full KG pipeline.
 
-    Pipeline: Extract -> Reconcile -> Persist to Neo4j.
+    Pipeline: Check cost ceiling -> Extract -> Reconcile -> Persist to Neo4j.
 
     Args:
         driver: Neo4j async driver.
@@ -50,11 +54,32 @@ async def build_chapter_graph(
         genre: Book genre.
         series_name: Series name.
         regex_matches_json: Pre-extracted regex matches.
+        cost_tracker: Optional cost tracker for ceiling enforcement.
 
     Returns:
         Dict with processing stats.
+
+    Raises:
+        CostCeilingError: If chapter or book cost ceiling is exceeded.
     """
     chapter_number = chapter.number
+
+    # 0. Check cost ceilings before spending LLM tokens
+    if cost_tracker is not None:
+        if not cost_tracker.check_book_ceiling(book_id):
+            raise CostCeilingError(
+                f"Book cost ceiling exceeded for {book_id!r} "
+                f"(${cost_tracker.cost_for_book(book_id):.2f} >= "
+                f"${cost_tracker.ceiling_per_book:.2f})",
+                context={"book_id": book_id, "chapter": chapter_number},
+            )
+        if not cost_tracker.check_chapter_ceiling(book_id, chapter_number):
+            raise CostCeilingError(
+                f"Chapter cost ceiling exceeded for {book_id!r} ch.{chapter_number} "
+                f"(${cost_tracker.cost_for_chapter(book_id, chapter_number):.2f} >= "
+                f"${cost_tracker.ceiling_per_chapter:.2f})",
+                context={"book_id": book_id, "chapter": chapter_number},
+            )
 
     logger.info(
         "graph_build_chapter_started",
@@ -116,10 +141,13 @@ async def build_book_graph(
     series_name: str = "",
     chapter_regex_matches: dict[int, str] | None = None,
     dlq: DeadLetterQueue | None = None,
+    cost_tracker: CostTracker | None = None,
 ) -> dict[str, Any]:
     """Process all chapters of a book through the KG pipeline.
 
     Iterates through chapters sequentially (to respect narrative order).
+    Checks cost ceilings before each chapter and aborts the book if
+    the book-level ceiling is exceeded.
 
     Args:
         driver: Neo4j async driver.
@@ -130,6 +158,7 @@ async def build_book_graph(
         series_name: Series name.
         chapter_regex_matches: Mapping of chapter_number -> regex JSON.
         dlq: Optional dead letter queue for failed chapters.
+        cost_tracker: Optional cost tracker for ceiling enforcement.
 
     Returns:
         Dict with aggregate processing stats.
@@ -149,6 +178,8 @@ async def build_book_graph(
     chapter_stats: list[dict[str, Any]] = []
     failed_chapters: list[int] = []
 
+    cost_ceiling_hit = False
+
     for chapter in chapters:
         try:
             regex_json = chapter_regex_matches.get(
@@ -164,10 +195,23 @@ async def build_book_graph(
                 genre=genre,
                 series_name=series_name,
                 regex_matches_json=regex_json,
+                cost_tracker=cost_tracker,
             )
 
             total_entities += stats["total_entities"]
             chapter_stats.append(stats)
+
+        except CostCeilingError:
+            # Book-level ceiling hit — stop processing remaining chapters
+            logger.warning(
+                "graph_build_book_ceiling_hit",
+                book_id=book_id,
+                chapter=chapter.number,
+                chapters_processed=len(chapter_stats),
+                chapters_remaining=len(chapters) - len(chapter_stats) - len(failed_chapters),
+            )
+            cost_ceiling_hit = True
+            break
 
         except Exception as exc:
             logger.exception(
@@ -185,7 +229,12 @@ async def build_book_graph(
                 )
 
     # Update final status
-    final_status = "extracted" if not failed_chapters else "partial"
+    if cost_ceiling_hit:
+        final_status = "cost_ceiling_hit"
+    elif failed_chapters:
+        final_status = "partial"
+    else:
+        final_status = "extracted"
     await book_repo.update_book_status(book_id, final_status)
 
     result = {
@@ -195,6 +244,7 @@ async def build_book_graph(
         "failed_chapters": failed_chapters,
         "total_entities": total_entities,
         "status": final_status,
+        "cost_ceiling_hit": cost_ceiling_hit,
     }
 
     logger.info("graph_build_book_completed", **result)
@@ -237,10 +287,29 @@ def _apply_alias_map(
             level.character,
         )
 
-    # Normalize event participants
+    # Normalize event participants and names
     for event in result.events.events:
+        event.name = alias_map.get(event.name, event.name)
         event.participants = [alias_map.get(p, p) for p in event.participants]
+        event.location = alias_map.get(event.location, event.location)
 
-    # Normalize item owners
+    # Normalize lore entity names
+    for location in result.lore.locations:
+        location.name = alias_map.get(location.name, location.name)
+        location.parent_location = alias_map.get(
+            location.parent_location,
+            location.parent_location,
+        )
+
     for item in result.lore.items:
+        item.name = alias_map.get(item.name, item.name)
         item.owner = alias_map.get(item.owner, item.owner)
+
+    for creature in result.lore.creatures:
+        creature.name = alias_map.get(creature.name, creature.name)
+
+    for faction in result.lore.factions:
+        faction.name = alias_map.get(faction.name, faction.name)
+
+    for concept in result.lore.concepts:
+        concept.name = alias_map.get(concept.name, concept.name)

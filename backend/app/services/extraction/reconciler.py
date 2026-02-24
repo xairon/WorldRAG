@@ -25,12 +25,47 @@ from app.services.deduplication import deduplicate_entities
 logger = get_logger(__name__)
 
 
+async def _dedup_group(
+    entities: list,
+    entity_type: str,
+    name_attr: str,
+    client,
+    model: str,
+) -> dict[str, str]:
+    """Deduplicate a group of entities by name and return the alias map.
+
+    Skips dedup if there are fewer than 2 entities (nothing to compare).
+
+    Args:
+        entities: List of Pydantic models with the name attribute.
+        entity_type: Entity type label for logging/context.
+        name_attr: Attribute name to extract (e.g. "name", "character").
+        client: Instructor async client (or None to skip LLM tier).
+        model: Model name for LLM tier.
+
+    Returns:
+        Alias map {alias -> canonical_name}.
+    """
+    if len(entities) < 2:
+        return {}
+
+    entity_dicts = [{"name": getattr(e, name_attr)} for e in entities]
+    _, aliases = await deduplicate_entities(
+        entity_dicts,
+        entity_type,
+        client,
+        model,
+    )
+    return aliases
+
+
 async def reconcile_chapter_result(
     result: ChapterExtractionResult,
 ) -> ReconciliationResult:
     """Reconcile a standalone ChapterExtractionResult.
 
-    Convenience function for use outside the LangGraph pipeline.
+    Runs 3-tier deduplication (exact → fuzzy → LLM) across all entity
+    types extracted from a single chapter.
 
     Args:
         result: Completed extraction result to reconcile.
@@ -46,27 +81,116 @@ async def reconcile_chapter_result(
     full_alias_map: dict[str, str] = {}
     conflicts: list[str] = []
 
-    # Dedup characters
-    if result.characters.characters:
-        char_dicts = [{"name": c.name} for c in result.characters.characters]
-        _, aliases = await deduplicate_entities(
-            char_dicts,
-            "Character",
-            client,
-            model,
-        )
-        full_alias_map.update(aliases)
+    # ── Pass 1 entities ────────────────────────────────────────────
+    # Characters
+    aliases = await _dedup_group(
+        result.characters.characters,
+        "Character",
+        "name",
+        client,
+        model,
+    )
+    full_alias_map.update(aliases)
 
-    # Dedup skills
-    if result.systems.skills:
-        skill_dicts = [{"name": s.name} for s in result.systems.skills]
-        _, aliases = await deduplicate_entities(
-            skill_dicts,
-            "Skill",
-            client,
-            model,
-        )
-        full_alias_map.update(aliases)
+    # ── Pass 2 entities ────────────────────────────────────────────
+    # Skills
+    aliases = await _dedup_group(
+        result.systems.skills,
+        "Skill",
+        "name",
+        client,
+        model,
+    )
+    full_alias_map.update(aliases)
+
+    # Classes
+    aliases = await _dedup_group(
+        result.systems.classes,
+        "Class",
+        "name",
+        client,
+        model,
+    )
+    full_alias_map.update(aliases)
+
+    # Titles
+    aliases = await _dedup_group(
+        result.systems.titles,
+        "Title",
+        "name",
+        client,
+        model,
+    )
+    full_alias_map.update(aliases)
+
+    # ── Pass 3 entities ────────────────────────────────────────────
+    # Events
+    aliases = await _dedup_group(
+        result.events.events,
+        "Event",
+        "name",
+        client,
+        model,
+    )
+    full_alias_map.update(aliases)
+
+    # ── Pass 4 entities ────────────────────────────────────────────
+    # Locations
+    aliases = await _dedup_group(
+        result.lore.locations,
+        "Location",
+        "name",
+        client,
+        model,
+    )
+    full_alias_map.update(aliases)
+
+    # Items
+    aliases = await _dedup_group(
+        result.lore.items,
+        "Item",
+        "name",
+        client,
+        model,
+    )
+    full_alias_map.update(aliases)
+
+    # Creatures
+    aliases = await _dedup_group(
+        result.lore.creatures,
+        "Creature",
+        "name",
+        client,
+        model,
+    )
+    full_alias_map.update(aliases)
+
+    # Factions
+    aliases = await _dedup_group(
+        result.lore.factions,
+        "Faction",
+        "name",
+        client,
+        model,
+    )
+    full_alias_map.update(aliases)
+
+    # Concepts
+    aliases = await _dedup_group(
+        result.lore.concepts,
+        "Concept",
+        "name",
+        client,
+        model,
+    )
+    full_alias_map.update(aliases)
+
+    logger.info(
+        "reconciliation_completed",
+        total_aliases=len(full_alias_map),
+        conflicts=len(conflicts),
+        entity_types_processed=10,
+    )
 
     return ReconciliationResult(
         merges=[],
