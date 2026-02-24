@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
+    from arq.connections import ArqRedis
     from fastapi import Request
     from neo4j import AsyncDriver
     from redis.asyncio import Redis
@@ -37,6 +38,11 @@ async def get_cost_tracker(request: Request) -> CostTracker:
 async def get_dlq(request: Request) -> DeadLetterQueue:
     """Get dead letter queue from app state."""
     return request.app.state.dlq
+
+
+async def get_arq_pool(request: Request) -> ArqRedis:
+    """Get arq Redis pool from app state for job enqueueing."""
+    return request.app.state.arq_pool
 
 
 async def get_neo4j_session(request: Request) -> AsyncGenerator:
