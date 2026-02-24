@@ -1,7 +1,10 @@
 """Embedding pipeline service.
 
-Generates Voyage AI embeddings for Chunk nodes and writes them
-back to Neo4j via batch UNWIND Cypher. Tracks cost via CostTracker.
+Generates embeddings for Chunk nodes and writes them back to Neo4j
+via batch UNWIND Cypher. Tracks cost via CostTracker.
+
+Supports local (BGE-M3, zero cost) or API (Voyage AI) embedders,
+controlled by EMBEDDING_PROVIDER setting.
 
 Handles partial failures: failed batches are logged and skipped,
 not propagated as fatal errors. This allows the pipeline to embed
@@ -13,9 +16,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from app.config import settings
 from app.core.cost_tracker import calculate_cost, count_tokens
 from app.core.logging import get_logger
-from app.llm.embeddings import VoyageEmbedder
+from app.llm.embeddings import get_embedder
 
 if TYPE_CHECKING:
     from neo4j import AsyncDriver
@@ -24,7 +28,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-# Voyage API batch limit — matches VoyageEmbedder.embed_documents() internal batch size
 EMBEDDING_BATCH_SIZE = 128
 
 
@@ -69,14 +72,15 @@ async def embed_book_chunks(
     if not chunks:
         return result
 
-    embedder = VoyageEmbedder()
+    embedder = get_embedder()
+    is_local = settings.embedding_provider == "local"
+    model_name = settings.embedding_model if is_local else settings.voyage_model
 
     for i in range(0, len(chunks), EMBEDDING_BATCH_SIZE):
         batch = chunks[i : i + EMBEDDING_BATCH_SIZE]
         texts = [c["text"] for c in batch]
 
         try:
-            # embed_texts() handles retry + circuit breaker + rate limiting
             embeddings = await embedder.embed_texts(texts, input_type="document")
         except Exception:
             logger.exception(
@@ -97,10 +101,10 @@ async def embed_book_chunks(
         await _write_embeddings(driver, batch, embeddings)
         result.embedded += len(batch)
 
-        # Record cost
-        if cost_tracker:
+        # Record cost (local = free, Voyage = API cost)
+        if cost_tracker and not is_local:
             await cost_tracker.record(
-                model="voyage-3.5",
+                model=model_name,
                 provider="voyage",
                 input_tokens=batch_tokens,
                 output_tokens=0,
@@ -108,8 +112,11 @@ async def embed_book_chunks(
                 book_id=book_id,
             )
 
-    # Compute total cost
-    result.cost_usd = calculate_cost("voyage-3.5", result.total_tokens, 0)
+    # Compute total cost (0 for local embeddings)
+    if is_local:
+        result.cost_usd = 0.0
+    else:
+        result.cost_usd = calculate_cost(model_name, result.total_tokens, 0)
 
     logger.info(
         "embedding_pipeline_completed",

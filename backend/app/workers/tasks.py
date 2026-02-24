@@ -98,8 +98,8 @@ async def process_book_embeddings(
 ) -> dict[str, Any]:
     """Run the embedding pipeline for all chunks of a book.
 
-    Fetches chunks without embeddings, calls VoyageEmbedder,
-    writes vectors back to Neo4j. Handles partial failures gracefully.
+    Fetches chunks without embeddings, generates vectors (local or API),
+    writes them back to Neo4j. Handles partial failures gracefully.
     """
     driver = ctx["neo4j_driver"]
     cost_tracker = ctx["cost_tracker"]
