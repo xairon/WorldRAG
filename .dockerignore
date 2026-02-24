@@ -1,0 +1,43 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+htmlcov/
+
+# Node
+node_modules/
+.next/
+out/
+
+# Git
+.git/
+.gitignore
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+.mcp.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Data volumes
+neo4j_data/
+redis_data/
+postgres_data/
+
+# Logs & temp
+*.log
+tmp/
+
+# Claude Code
+.claude/

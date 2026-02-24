@@ -17,7 +17,6 @@ from app.services.ingestion import (
 
 
 class TestParseChapterNumber:
-
     @pytest.mark.parametrize(
         "raw,expected",
         [
@@ -38,7 +37,6 @@ class TestParseChapterNumber:
 
 
 class TestSplitTextIntoChapters:
-
     def test_no_markers_single_chapter(self):
         """Plain text with no chapter headers -> single chapter."""
         text = "This is just a long narrative with no chapter markers. " * 20
@@ -83,10 +81,7 @@ class TestSplitTextIntoChapters:
 
         # Now test that a fragment < 100 chars IS skipped.
         # With only 2 chapters far apart, make the first one short:
-        text2 = (
-            f"Chapter 1: First\n\nTiny.\n\n{long_text}\n\n"
-            f"Chapter 2: Second\n\n{long_text}"
-        )
+        text2 = f"Chapter 1: First\n\nTiny.\n\n{long_text}\n\nChapter 2: Second\n\n{long_text}"
         chapters2 = _split_text_into_chapters(text2)
         # Chapter 1 text from its header to Chapter 2 header is > 500 chars
         # (because of the long_text padding), so both boundaries survive.
@@ -107,7 +102,6 @@ class TestSplitTextIntoChapters:
 
 
 class TestParseTxt:
-
     @pytest.mark.slow
     async def test_parse_txt_detects_chapters(self, tmp_path):
         """parse_txt with a real file detects chapters."""

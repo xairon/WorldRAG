@@ -21,6 +21,10 @@ class ProcessingStatus(StrEnum):
     RECONCILING = "reconciling"
     VALIDATING = "validating"
     COMPLETED = "completed"
+    EXTRACTED = "extracted"  # extraction done, embeddings pending
+    EMBEDDING = "embedding"  # embedding in progress
+    EMBEDDED = "embedded"  # fully complete (extraction + embeddings)
+    PARTIAL = "partial"  # some chapters failed
     FAILED = "failed"
 
 
@@ -136,3 +140,12 @@ class ExtractionResult(BaseModel):
     failed_chapters: list[int] = Field(default_factory=list)
     total_entities: int = 0
     status: str = "pending"
+
+
+class JobEnqueuedResult(BaseModel):
+    """Result of enqueueing a background job."""
+
+    book_id: str
+    job_id: str
+    status: str = "enqueued"
+    message: str = ""

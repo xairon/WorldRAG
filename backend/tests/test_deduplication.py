@@ -16,7 +16,6 @@ from app.services.deduplication import (
 
 
 class TestNormalizeName:
-
     @pytest.mark.parametrize(
         "input_name,expected",
         [
@@ -35,7 +34,6 @@ class TestNormalizeName:
 
 
 class TestExactDedup:
-
     def test_empty_list(self):
         deduped, aliases = exact_dedup([])
         assert deduped == []
@@ -88,7 +86,6 @@ class TestExactDedup:
 
 
 class TestFuzzyDedup:
-
     def test_empty(self):
         deduped, candidates = fuzzy_dedup([])
         assert deduped == []
@@ -146,7 +143,6 @@ class TestFuzzyDedup:
 
 
 class TestLlmDedup:
-
     async def test_empty_candidates_returns_empty(self, mock_instructor_client):
         result = await llm_dedup([], "Character", mock_instructor_client, "gpt-4o-mini")
         assert result == []
@@ -166,8 +162,10 @@ class TestLlmDedup:
         mock_instructor_client.chat.completions.create.return_value = [merge]
 
         result = await llm_dedup(
-            [("Jake", "Jacob", 88)], "Character",
-            mock_instructor_client, "gpt-4o-mini",
+            [("Jake", "Jacob", 88)],
+            "Character",
+            mock_instructor_client,
+            "gpt-4o-mini",
         )
         assert len(result) == 1
         assert result[0].entity_type == "Character"
@@ -177,8 +175,10 @@ class TestLlmDedup:
         mock_instructor_client.chat.completions.create.side_effect = ConnectionError("timeout")
 
         result = await llm_dedup(
-            [("Jake", "Jacob", 88)], "Character",
-            mock_instructor_client, "gpt-4o-mini",
+            [("Jake", "Jacob", 88)],
+            "Character",
+            mock_instructor_client,
+            "gpt-4o-mini",
         )
         assert len(result) == 1
         assert result[0].confidence == pytest.approx(0.88)
@@ -190,19 +190,27 @@ class TestLlmDedup:
 
         mock_instructor_client.chat.completions.create.return_value = [
             EntityMergeCandidate(
-                entity_a_name="A", entity_b_name="B",
-                entity_type="Char", confidence=0.9,
-                canonical_name="A", reason="same",
+                entity_a_name="A",
+                entity_b_name="B",
+                entity_type="Char",
+                confidence=0.9,
+                canonical_name="A",
+                reason="same",
             ),
             EntityMergeCandidate(
-                entity_a_name="C", entity_b_name="D",
-                entity_type="Char", confidence=0.8,
-                canonical_name="C", reason="same",
+                entity_a_name="C",
+                entity_b_name="D",
+                entity_type="Char",
+                confidence=0.8,
+                canonical_name="C",
+                reason="same",
             ),
         ]
         await llm_dedup(
-            [("A", "B", 87), ("C", "D", 86)], "Character",
-            mock_instructor_client, "gpt-4o-mini",
+            [("A", "B", 87), ("C", "D", 86)],
+            "Character",
+            mock_instructor_client,
+            "gpt-4o-mini",
         )
         # Only 1 call (batched), not 2
         assert mock_instructor_client.chat.completions.create.call_count == 1
@@ -212,7 +220,6 @@ class TestLlmDedup:
 
 
 class TestDeduplicateEntities:
-
     async def test_no_client_exact_only(self):
         """Without LLM client, only exact dedup runs."""
         entities = [

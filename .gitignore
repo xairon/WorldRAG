@@ -47,6 +47,9 @@ neo4j_data/
 *.log
 logs/
 
+# MCP config (contains credentials)
+.mcp.json
+
 # Claude Code (keep settings.json and rules, ignore local state)
 .claude/settings.local.json
 .claude/*.jsonl

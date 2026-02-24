@@ -18,7 +18,6 @@ from app.core.resilience import (
 
 
 class TestCircuitBreakerClosed:
-
     async def test_initial_state_is_closed(self):
         cb = CircuitBreaker("test")
         assert cb.state == CircuitState.CLOSED
@@ -54,7 +53,6 @@ class TestCircuitBreakerClosed:
 
 
 class TestCircuitBreakerOpen:
-
     async def test_raises_immediately_when_open(self):
         cb = CircuitBreaker("test", failure_threshold=2)
         failing = AsyncMock(side_effect=RuntimeError("down"))
@@ -96,7 +94,6 @@ class TestCircuitBreakerOpen:
 
 
 class TestCircuitBreakerHalfOpen:
-
     async def _make_half_open(self, cb: CircuitBreaker) -> None:
         """Helper to get a breaker into HALF_OPEN state."""
         failing = AsyncMock(side_effect=RuntimeError())
@@ -132,7 +129,6 @@ class TestCircuitBreakerHalfOpen:
 
 
 class TestRetryLlmCall:
-
     async def test_retries_on_timeout_error(self):
         call_count = 0
 

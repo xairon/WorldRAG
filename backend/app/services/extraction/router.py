@@ -153,32 +153,3 @@ def route_extraction_passes(state: ExtractionPipelineState) -> dict[str, Any]:
     )
 
     return {"passes_to_run": passes}
-
-
-def should_run_pass(pass_name: str) -> bool:
-    """Create a routing function for a specific pass.
-
-    Used by LangGraph conditional edges to fan-out to passes.
-
-    Args:
-        pass_name: Name of the pass to check.
-
-    Returns:
-        Callable that checks if pass should run.
-    """
-    # This is a factory — the actual check is in select_passes_to_run
-    raise NotImplementedError("Use select_passes_to_run instead")
-
-
-def select_passes_to_run(state: ExtractionPipelineState) -> list[str]:
-    """LangGraph conditional edge: Return list of pass nodes to execute.
-
-    Used with add_conditional_edges to fan out to selected passes.
-
-    Args:
-        state: Current pipeline state with passes_to_run set.
-
-    Returns:
-        List of node names to execute in parallel.
-    """
-    return state.get("passes_to_run", ["characters"])

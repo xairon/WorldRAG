@@ -60,11 +60,12 @@ class TestCountTokens:
         assert isinstance(result, int)
         assert result > 0
 
-    def test_unknown_model_char_fallback(self):
-        """Fallback: len(text) // 4."""
+    def test_unknown_model_uses_cached_encoder(self):
+        """Unknown model uses cached gpt-4o encoder (not char fallback)."""
         text = "a" * 100
         result = count_tokens(text, "totally-unknown-model-xyz")
-        assert result == 25
+        assert isinstance(result, int)
+        assert result > 0
 
     def test_empty_string(self):
         result = count_tokens("", "gpt-4o")
@@ -77,52 +78,67 @@ class TestCountTokens:
 class TestCostTracker:
     """Tests for the CostTracker dataclass."""
 
-    def test_record_creates_entry(self):
+    async def test_record_creates_entry(self):
         tracker = CostTracker()
-        entry = tracker.record(
-            "gpt-4o-mini", "openai", 1000, 500, "extraction",
-            book_id="b1", chapter=1,
+        entry = await tracker.record(
+            "gpt-4o-mini",
+            "openai",
+            1000,
+            500,
+            "extraction",
+            book_id="b1",
+            chapter=1,
         )
         assert len(tracker.entries) == 1
         assert entry.cost_usd > 0
         assert entry.model == "gpt-4o-mini"
         assert entry.book_id == "b1"
 
-    def test_total_cost_sums_entries(self):
+    async def test_total_cost_sums_entries(self):
         tracker = CostTracker()
-        tracker.record("gpt-4o-mini", "openai", 1_000_000, 0, "ext", book_id="b1")
-        tracker.record("gpt-4o-mini", "openai", 1_000_000, 0, "ext", book_id="b1")
+        await tracker.record("gpt-4o-mini", "openai", 1_000_000, 0, "ext", book_id="b1")
+        await tracker.record("gpt-4o-mini", "openai", 1_000_000, 0, "ext", book_id="b1")
         # Each is 0.15, total 0.30
         assert tracker.total_cost == pytest.approx(0.30)
 
-    def test_cost_for_book_filters(self):
+    async def test_cost_for_book_filters(self):
         tracker = CostTracker()
-        tracker.record("gpt-4o-mini", "openai", 1_000_000, 0, "ext", book_id="b1")
-        tracker.record("gpt-4o-mini", "openai", 1_000_000, 0, "ext", book_id="b2")
+        await tracker.record("gpt-4o-mini", "openai", 1_000_000, 0, "ext", book_id="b1")
+        await tracker.record("gpt-4o-mini", "openai", 1_000_000, 0, "ext", book_id="b2")
         assert tracker.cost_for_book("b1") == pytest.approx(0.15)
         assert tracker.cost_for_book("b2") == pytest.approx(0.15)
 
-    def test_check_chapter_ceiling(self):
+    async def test_check_chapter_ceiling(self):
         tracker = CostTracker(ceiling_per_chapter=0.10)
-        tracker.record(
-            "gpt-4o-mini", "openai", 100_000, 0, "ext",
-            book_id="b1", chapter=1,
+        await tracker.record(
+            "gpt-4o-mini",
+            "openai",
+            100_000,
+            0,
+            "ext",
+            book_id="b1",
+            chapter=1,
         )
         # Cost is tiny (0.015), under ceiling
         assert tracker.check_chapter_ceiling("b1", 1) is True
 
         # Push over ceiling
-        tracker.record(
-            "gpt-4o", "openai", 1_000_000, 0, "ext",
-            book_id="b1", chapter=1,
+        await tracker.record(
+            "gpt-4o",
+            "openai",
+            1_000_000,
+            0,
+            "ext",
+            book_id="b1",
+            chapter=1,
         )
         # Cost now >= 0.10
         assert tracker.check_chapter_ceiling("b1", 1) is False
 
-    def test_summary_structure(self):
+    async def test_summary_structure(self):
         tracker = CostTracker()
-        tracker.record("gpt-4o-mini", "openai", 1000, 0, "extraction")
-        tracker.record("claude-3-5-sonnet", "anthropic", 1000, 0, "chat")
+        await tracker.record("gpt-4o-mini", "openai", 1000, 0, "extraction")
+        await tracker.record("claude-3-5-sonnet", "anthropic", 1000, 0, "chat")
         s = tracker.summary()
         assert "total_cost_usd" in s
         assert "total_entries" in s

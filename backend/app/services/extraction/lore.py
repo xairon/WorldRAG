@@ -6,6 +6,8 @@ from chapter text with source grounding.
 
 from __future__ import annotations
 
+import asyncio
+from functools import partial
 from typing import TYPE_CHECKING, Any
 
 import langextract as lx
@@ -56,13 +58,16 @@ async def extract_lore(state: ExtractionPipelineState) -> dict[str, Any]:
     )
 
     try:
-        result = lx.extract(
-            text_or_documents=chapter_text,
-            prompt_description=PROMPT_DESCRIPTION,
-            examples=FEW_SHOT_EXAMPLES,
-            model_id=settings.langextract_model,
-            extraction_passes=settings.langextract_passes,
-            max_workers=min(settings.langextract_max_workers, 10),
+        result = await asyncio.to_thread(
+            partial(
+                lx.extract,
+                text_or_documents=chapter_text,
+                prompt_description=PROMPT_DESCRIPTION,
+                examples=FEW_SHOT_EXAMPLES,
+                model_id=settings.langextract_model,
+                extraction_passes=settings.langextract_passes,
+                max_workers=min(settings.langextract_max_workers, 10),
+            )
         )
 
         # Parse LangExtract output
@@ -175,7 +180,6 @@ async def extract_lore(state: ExtractionPipelineState) -> dict[str, Any]:
             pass_name=PASS_NAME,
             book_id=book_id,
             chapter=chapter_number,
-            error=str(e),
         )
         return {
             "lore": LoreExtractionResult(),

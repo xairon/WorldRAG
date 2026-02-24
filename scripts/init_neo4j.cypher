@@ -41,12 +41,22 @@ FOR (s:System) REQUIRE s.name IS UNIQUE;
 CREATE CONSTRAINT race_unique IF NOT EXISTS
 FOR (r:Race) REQUIRE r.name IS UNIQUE;
 
-// Composite uniqueness for skills and classes (name + system)
+// Skills and classes — MERGE by name (system_name optional property)
 CREATE CONSTRAINT skill_unique IF NOT EXISTS
-FOR (s:Skill) REQUIRE (s.name, s.system_name) IS UNIQUE;
+FOR (s:Skill) REQUIRE s.name IS UNIQUE;
 
 CREATE CONSTRAINT class_unique IF NOT EXISTS
-FOR (c:Class) REQUIRE (c.name, c.system_name) IS UNIQUE;
+FOR (c:Class) REQUIRE c.name IS UNIQUE;
+
+CREATE CONSTRAINT item_unique IF NOT EXISTS
+FOR (i:Item) REQUIRE i.name IS UNIQUE;
+
+CREATE CONSTRAINT creature_unique IF NOT EXISTS
+FOR (cr:Creature) REQUIRE cr.name IS UNIQUE;
+
+// Events — composite on name + chapter_start (same event name in different chapters)
+CREATE CONSTRAINT event_unique IF NOT EXISTS
+FOR (e:Event) REQUIRE (e.name, e.chapter_start) IS UNIQUE;
 
 // === NODE PROPERTY INDEXES ===
 
@@ -83,7 +93,7 @@ FOR (c:Class) ON (c.name);
 CREATE INDEX item_name IF NOT EXISTS
 FOR (i:Item) ON (i.name);
 
-// Batch ID index for rollback operations
+// Batch ID indexes for rollback operations
 CREATE INDEX character_batch IF NOT EXISTS
 FOR (c:Character) ON (c.batch_id);
 
@@ -92,6 +102,27 @@ FOR (e:Event) ON (e.batch_id);
 
 CREATE INDEX skill_batch IF NOT EXISTS
 FOR (s:Skill) ON (s.batch_id);
+
+CREATE INDEX class_batch IF NOT EXISTS
+FOR (c:Class) ON (c.batch_id);
+
+CREATE INDEX item_batch IF NOT EXISTS
+FOR (i:Item) ON (i.batch_id);
+
+CREATE INDEX creature_batch IF NOT EXISTS
+FOR (cr:Creature) ON (cr.batch_id);
+
+CREATE INDEX location_batch IF NOT EXISTS
+FOR (l:Location) ON (l.batch_id);
+
+CREATE INDEX faction_batch IF NOT EXISTS
+FOR (f:Faction) ON (f.batch_id);
+
+CREATE INDEX concept_batch IF NOT EXISTS
+FOR (c:Concept) ON (c.batch_id);
+
+CREATE INDEX title_batch IF NOT EXISTS
+FOR (t:Title) ON (t.batch_id);
 
 // === FULLTEXT INDEXES ===
 // For keyword search in hybrid retrieval pipeline
@@ -119,6 +150,15 @@ FOR (c:Concept) ON EACH [c.name, c.description];
 
 CREATE FULLTEXT INDEX chunk_fulltext IF NOT EXISTS
 FOR (c:Chunk) ON EACH [c.text];
+
+// Cross-label entity search (for Graph Explorer search endpoint)
+CREATE FULLTEXT INDEX entity_fulltext IF NOT EXISTS
+FOR (n:Character|Skill|Class|Title|Event|Location|Item|Creature|Faction|Concept)
+ON EACH [n.name, n.description];
+
+// Compound index for embedding pipeline write-back (match on chapter_id + position)
+CREATE INDEX chunk_chapter_position IF NOT EXISTS
+FOR (c:Chunk) ON (c.chapter_id, c.position);
 
 // === VECTOR INDEX ===
 // For semantic search with Voyage AI embeddings (1024 dimensions)

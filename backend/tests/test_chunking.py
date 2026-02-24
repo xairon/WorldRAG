@@ -20,7 +20,6 @@ def fast_token_count(monkeypatch):
 
 
 class TestSplitParagraphs:
-
     def test_single_paragraph(self):
         text = "Just one paragraph without any double newlines."
         result = _split_paragraphs(text)
@@ -39,7 +38,7 @@ class TestSplitParagraphs:
         result = _split_paragraphs(text)
         for para_text, start, end in result:
             # The stripped text should be findable within the offset range
-            assert para_text in text[start:end + len(para_text)]
+            assert para_text in text[start : end + len(para_text)]
 
     def test_empty_text(self):
         result = _split_paragraphs("")
@@ -50,7 +49,6 @@ class TestSplitParagraphs:
 
 
 class TestChunkChapter:
-
     def test_empty_chapter_no_chunks(self, fast_token_count):
         chapter = ChapterData(number=1, title="", text="")
         chunks = chunk_chapter(chapter, "book1")
@@ -126,7 +124,6 @@ class TestChunkChapter:
 
 
 class TestSplitLongParagraph:
-
     def test_splits_by_sentences(self, fast_token_count):
         """A single oversized paragraph splits at sentence boundaries."""
         # One huge paragraph (no double newlines)

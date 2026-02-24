@@ -123,5 +123,5 @@ class TestExtractOffsets:
         extractor = RegexExtractor.default()
         matches = extractor.extract(sample_chapter_text, 42)
         for m in matches:
-            sliced = sample_chapter_text[m.char_offset_start:m.char_offset_end]
+            sliced = sample_chapter_text[m.char_offset_start : m.char_offset_end]
             assert sliced == m.raw_text

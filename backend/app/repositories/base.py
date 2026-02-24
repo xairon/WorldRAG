@@ -19,6 +19,39 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+_VALID_LABELS = frozenset(
+    {
+        "Book",
+        "Chapter",
+        "Chunk",
+        "Series",
+        "Character",
+        "Skill",
+        "Class",
+        "Title",
+        "Event",
+        "Location",
+        "Item",
+        "Creature",
+        "Faction",
+        "Concept",
+    }
+)
+
+_VALID_PROPERTIES = frozenset(
+    {
+        "name",
+        "canonical_name",
+        "id",
+        "book_id",
+        "title",
+        "number",
+        "position",
+        "status",
+    }
+)
+
+
 class Neo4jRepository:
     """Base class for Neo4j repositories.
 
@@ -28,6 +61,20 @@ class Neo4jRepository:
 
     def __init__(self, driver: AsyncDriver) -> None:
         self.driver = driver
+
+    @staticmethod
+    def _validate_label(label: str) -> str:
+        """Validate a Neo4j label against the whitelist to prevent injection."""
+        if label not in _VALID_LABELS:
+            raise ValueError(f"Invalid Neo4j label: {label!r}")
+        return label
+
+    @staticmethod
+    def _validate_property(prop: str) -> str:
+        """Validate a property name against the whitelist to prevent injection."""
+        if prop not in _VALID_PROPERTIES:
+            raise ValueError(f"Invalid Neo4j property: {prop!r}")
+        return prop
 
     async def execute_read(
         self,
@@ -98,14 +145,26 @@ class Neo4jRepository:
             logger.info("neo4j_batch", query_count=len(queries))
 
     async def count(self, label: str) -> int:
-        """Count nodes with a given label."""
-        result = await self.execute_read(f"MATCH (n:{label}) RETURN count(n) AS count")
+        """Count nodes with a given label.
+
+        Label is validated against a whitelist to prevent Cypher injection.
+        """
+        safe_label = self._validate_label(label)
+        result = await self.execute_read(
+            f"MATCH (n:{safe_label}) RETURN count(n) AS count",
+        )
         return result[0]["count"] if result else 0
 
     async def exists(self, label: str, property_name: str, value: Any) -> bool:
-        """Check if a node exists with a given property value."""
+        """Check if a node exists with a given property value.
+
+        Label and property_name are validated against whitelists
+        to prevent Cypher injection.
+        """
+        safe_label = self._validate_label(label)
+        safe_prop = self._validate_property(property_name)
         result = await self.execute_read(
-            f"MATCH (n:{label} {{{property_name}: $value}}) RETURN count(n) > 0 AS exists",
+            f"MATCH (n:{safe_label} {{{safe_prop}: $value}}) RETURN count(n) > 0 AS exists",
             {"value": value},
         )
         return result[0]["exists"] if result else False

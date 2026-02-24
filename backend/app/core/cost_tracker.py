@@ -2,13 +2,13 @@
 
 Tracks token usage and costs per provider/model/book/chapter.
 Enforces cost ceilings to prevent runaway spending.
+Uses pre-aggregated counters for O(1) lookups and asyncio.Lock for safety.
 """
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
-
-import tiktoken
 
 from app.core.logging import get_logger
 
@@ -47,26 +47,33 @@ class CostEntry:
 class CostTracker:
     """Tracks accumulated costs with budget enforcement.
 
-    Thread-safe for async usage (uses simple accumulation).
+    Uses pre-aggregated counters for O(1) lookups and asyncio.Lock
+    for async safety. Recent entries are kept for summary/admin, but
+    aggregated totals are the source of truth for ceiling checks.
     """
 
     ceiling_per_chapter: float = 0.50
     ceiling_per_book: float = 50.00
     entries: list[CostEntry] = field(default_factory=list)
+    _total: float = field(default=0.0, repr=False)
+    _by_book: dict[str, float] = field(default_factory=dict, repr=False)
+    _by_chapter: dict[tuple[str, int], float] = field(default_factory=dict, repr=False)
+    _by_provider: dict[str, float] = field(default_factory=dict, repr=False)
+    _by_operation: dict[str, float] = field(default_factory=dict, repr=False)
+    _by_model: dict[str, float] = field(default_factory=dict, repr=False)
+    _lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
 
     @property
     def total_cost(self) -> float:
-        return sum(e.cost_usd for e in self.entries)
+        return self._total
 
     def cost_for_book(self, book_id: str) -> float:
-        return sum(e.cost_usd for e in self.entries if e.book_id == book_id)
+        return self._by_book.get(book_id, 0.0)
 
     def cost_for_chapter(self, book_id: str, chapter: int) -> float:
-        return sum(
-            e.cost_usd for e in self.entries if e.book_id == book_id and e.chapter == chapter
-        )
+        return self._by_chapter.get((book_id, chapter), 0.0)
 
-    def record(
+    async def record(
         self,
         model: str,
         provider: str,
@@ -76,7 +83,7 @@ class CostTracker:
         book_id: str | None = None,
         chapter: int | None = None,
     ) -> CostEntry:
-        """Record a cost entry and return it."""
+        """Record a cost entry and return it (async-safe)."""
         cost = calculate_cost(model, input_tokens, output_tokens)
         entry = CostEntry(
             model=model,
@@ -88,7 +95,18 @@ class CostTracker:
             book_id=book_id,
             chapter=chapter,
         )
-        self.entries.append(entry)
+
+        async with self._lock:
+            self.entries.append(entry)
+            self._total += cost
+            if book_id:
+                self._by_book[book_id] = self._by_book.get(book_id, 0.0) + cost
+            if book_id and chapter is not None:
+                key = (book_id, chapter)
+                self._by_chapter[key] = self._by_chapter.get(key, 0.0) + cost
+            self._by_provider[provider] = self._by_provider.get(provider, 0.0) + cost
+            self._by_operation[operation] = self._by_operation.get(operation, 0.0) + cost
+            self._by_model[model] = self._by_model.get(model, 0.0) + cost
 
         logger.info(
             "cost_recorded",
@@ -100,7 +118,7 @@ class CostTracker:
             operation=operation,
             book_id=book_id,
             chapter=chapter,
-            total_cost=round(self.total_cost, 4),
+            total_cost=round(self._total, 4),
         )
         return entry
 
@@ -135,21 +153,12 @@ class CostTracker:
 
     def summary(self) -> dict:
         """Return cost summary by provider and operation."""
-        by_provider: dict[str, float] = {}
-        by_operation: dict[str, float] = {}
-        by_model: dict[str, float] = {}
-
-        for entry in self.entries:
-            by_provider[entry.provider] = by_provider.get(entry.provider, 0) + entry.cost_usd
-            by_operation[entry.operation] = by_operation.get(entry.operation, 0) + entry.cost_usd
-            by_model[entry.model] = by_model.get(entry.model, 0) + entry.cost_usd
-
         return {
-            "total_cost_usd": round(self.total_cost, 4),
+            "total_cost_usd": round(self._total, 4),
             "total_entries": len(self.entries),
-            "by_provider": {k: round(v, 4) for k, v in by_provider.items()},
-            "by_operation": {k: round(v, 4) for k, v in by_operation.items()},
-            "by_model": {k: round(v, 4) for k, v in by_model.items()},
+            "by_provider": {k: round(v, 4) for k, v in self._by_provider.items()},
+            "by_operation": {k: round(v, 4) for k, v in self._by_operation.items()},
+            "by_model": {k: round(v, 4) for k, v in self._by_model.items()},
         }
 
 
@@ -172,14 +181,28 @@ def calculate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
     return input_cost + output_cost
 
 
+_tiktoken_encoder: object | None = None
+
+
+def _get_tiktoken_encoder() -> object:
+    """Lazy-load and cache the tiktoken encoder."""
+    global _tiktoken_encoder  # noqa: PLW0603
+    if _tiktoken_encoder is None:
+        import tiktoken
+
+        _tiktoken_encoder = tiktoken.encoding_for_model("gpt-4o")
+    return _tiktoken_encoder
+
+
 def count_tokens(text: str, model: str = "gpt-4o") -> int:
     """Count tokens for a text using tiktoken.
 
     Falls back to character-based estimation if model not supported.
+    Uses a cached encoder for performance.
     """
     try:
-        encoding = tiktoken.encoding_for_model(model)
-        return len(encoding.encode(text))
-    except (KeyError, Exception):
+        encoder = _get_tiktoken_encoder()
+        return len(encoder.encode(text))  # type: ignore[union-attr]
+    except Exception:
         # Rough estimation: ~4 chars per token for English
         return len(text) // 4
