@@ -33,15 +33,15 @@ class BookRepository(Neo4jRepository):
         author: str | None = None,
         genre: str = "litrpg",
     ) -> str:
-        """Create or merge a book node. Returns the book_id."""
-        book_id = str(uuid.uuid4())[:8]
+        """Create or merge a book node. Returns the actual book_id from the DB."""
+        new_id = str(uuid.uuid4())[:8]
         batch_id = str(uuid.uuid4())
 
-        await self.execute_write(
+        result = await self.execute_write(
             """
             MERGE (b:Book {title: $title})
             ON CREATE SET
-                b.id = $book_id,
+                b.id = $new_id,
                 b.order_in_series = $order_in_series,
                 b.author = $author,
                 b.genre = $genre,
@@ -57,13 +57,16 @@ class BookRepository(Neo4jRepository):
             """,
             {
                 "title": title,
-                "book_id": book_id,
+                "new_id": new_id,
                 "order_in_series": order_in_series,
                 "author": author,
                 "genre": genre,
                 "batch_id": batch_id,
             },
         )
+
+        # Use the actual ID from the DB (handles ON MATCH case)
+        book_id = result[0]["id"] if result else new_id
 
         # Link to series if provided
         if series_name:
@@ -123,7 +126,18 @@ class BookRepository(Neo4jRepository):
         )
 
     async def delete_book(self, book_id: str) -> int:
-        """Delete a book and all its chapters, chunks, and related data."""
+        """Delete a book and all its chapters, chunks, and extracted entities."""
+        # First: delete all extracted entities with this book_id
+        await self.execute_write(
+            """
+            MATCH (n {book_id: $id})
+            WHERE NOT n:Book AND NOT n:Chapter AND NOT n:Chunk
+            DETACH DELETE n
+            """,
+            {"id": book_id},
+        )
+
+        # Then: delete book, chapters, and chunks
         result = await self.execute_write(
             """
             MATCH (b:Book {id: $id})
@@ -266,6 +280,24 @@ class BookRepository(Neo4jRepository):
         logger.info("chunks_created", book_id=book_id, count=len(chunks))
         return len(chunks)
 
+    async def get_chunks_for_embedding(self, book_id: str) -> list[dict[str, Any]]:
+        """Fetch all chunks for a book that lack embeddings.
+
+        Returns list of {chapter_id, position, text} dicts used by
+        the embedding pipeline to compute and write back vectors.
+        """
+        return await self.execute_read(
+            """
+            MATCH (c:Chapter {book_id: $book_id})-[:HAS_CHUNK]->(ck:Chunk)
+            WHERE ck.embedding IS NULL
+            RETURN ck.chapter_id AS chapter_id,
+                   ck.position AS position,
+                   ck.text AS text
+            ORDER BY ck.chapter_id, ck.position
+            """,
+            {"book_id": book_id},
+        )
+
     # --- Regex match operations ---
 
     async def store_regex_matches(
@@ -362,11 +394,7 @@ class BookRepository(Neo4jRepository):
             """,
             {"book_id": book_id},
         )
-        return {
-            row["number"]: row["regex_json"]
-            for row in results
-            if row.get("regex_json")
-        }
+        return {row["number"]: row["regex_json"] for row in results if row.get("regex_json")}
 
     # --- Stats ---
 
