@@ -1,7 +1,8 @@
 import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
 
 export function cn(...inputs: ClassValue[]) {
-  return clsx(inputs);
+  return twMerge(clsx(inputs));
 }
 
 /** Map entity label to a color for graph nodes and badges. */
@@ -26,14 +27,18 @@ export function labelColor(label: string): string {
 export function statusColor(status: string): string {
   switch (status) {
     case "completed":
-    case "extracted":
       return "bg-emerald-500/20 text-emerald-400 border-emerald-500/30";
     case "ingesting":
     case "chunking":
     case "extracting":
+    case "reconciling":
+    case "validating":
       return "bg-amber-500/20 text-amber-400 border-amber-500/30";
     case "failed":
       return "bg-red-500/20 text-red-400 border-red-500/30";
+    case "pending":
+    case "queued":
+      return "bg-blue-500/20 text-blue-400 border-blue-500/30";
     default:
       return "bg-slate-500/20 text-slate-400 border-slate-500/30";
   }

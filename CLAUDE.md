@@ -9,23 +9,28 @@ WorldRAG is a SOTA Knowledge Graph construction system for fiction novel univers
 ## Architecture
 
 - **Backend**: Python 3.12+ / FastAPI (async everywhere)
-- **Frontend**: Next.js 15 / React 19 / TypeScript
+- **Frontend**: Next.js 16 / React 19 / TypeScript
 - **Graph DB**: Neo4j 5.x (direct Cypher, no ORM)
 - **Extraction**: LangExtract (grounded) + Instructor (reconciliation)
 - **Orchestration**: LangGraph (3 separate graphs: extraction, reader, chat)
 - **Monitoring**: LangFuse (self-hosted) + structlog
 - **Task Queue**: arq + Redis
-- **Checkpointing**: PostgreSQL (LangGraph AsyncPostgresSaver)
+- **Embeddings**: VoyageAI (voyage-3.5) via batch pipeline
+- **Reranker**: Cohere (rerank-v3.5) — built, not yet wired to query
+- **Checkpointing**: PostgreSQL (LangGraph AsyncPostgresSaver) — connected, not yet used
 
 ## Key Commands
 
 ```bash
 # Backend
-uv run uvicorn backend.app.main:app --reload --port 8000
-uv run pytest backend/tests/ -x -v
-uv run ruff check backend/ --fix
-uv run ruff format backend/
-uv run pyright backend/
+python -m uv run uvicorn backend.app.main:app --reload --port 8000
+python -m uv run pytest backend/tests/ -x -v
+python -m uv run ruff check backend/ --fix
+python -m uv run ruff format backend/
+python -m uv run pyright backend/
+
+# arq worker (requires Redis + Neo4j running)
+python -m uv run arq app.workers.settings.WorkerSettings
 
 # Frontend
 cd frontend && npm run dev
@@ -35,8 +40,7 @@ cd frontend && npm run build
 docker compose up -d          # Neo4j + Redis + PostgreSQL + LangFuse
 docker compose down
 
-# Neo4j
-# Browser: http://localhost:7474 (neo4j/worldrag)
+# Neo4j Browser: http://localhost:7474 (neo4j/worldrag)
 # LangFuse: http://localhost:3001
 ```
 
@@ -51,10 +55,11 @@ docker compose down
 - All LLM calls wrapped with LangFuse tracing
 - structlog for logging (never print())
 - Error handling: tenacity for retries, circuit breaker for providers
+- Never log `error=str(e)` in exception handlers — use `exc_info=True` or `type(e).__name__`
 
 ### TypeScript (frontend/)
 - TypeScript strict mode
-- Next.js 15 App Router (not Pages)
+- Next.js 16 App Router (not Pages)
 - Tailwind CSS + shadcn/ui components
 - Server Components by default, 'use client' only when needed
 
@@ -69,19 +74,19 @@ docker compose down
 ```
 WorldRAG/
 ├── backend/app/          # FastAPI backend
-│   ├── api/              # Routes + middleware + dependencies
-│   ├── core/             # Logging, resilience, rate limiting, cost tracking
-│   ├── llm/              # LLM providers, embeddings, reranker
+│   ├── api/              # Routes + middleware + auth + dependencies
+│   ├── core/             # Logging, resilience, rate limiting, cost tracking, DLQ
+│   ├── llm/              # LLM providers, embeddings (Voyage), reranker (Cohere)
 │   ├── schemas/          # Pydantic models
-│   ├── repositories/     # Neo4j data access
-│   ├── services/         # Business logic + extraction pipeline
-│   ├── agents/           # LangGraph graphs (extraction, reader, chat)
+│   ├── repositories/     # Neo4j data access (base, book_repo, entity_repo)
+│   ├── services/         # Business logic + extraction pipeline + embedding
+│   ├── agents/           # LangGraph graphs (extraction done; reader, chat TODO)
 │   ├── prompts/          # LLM prompt templates
-│   └── workers/          # arq task queue workers
-├── frontend/src/         # Next.js frontend
+│   └── workers/          # arq task queue (extraction + embedding tasks)
+├── frontend/             # Next.js frontend (app/, lib/, components/)
 ├── ontology/             # YAML ontology definitions (core, genre, series)
 ├── scripts/              # Neo4j init, migrations, seed data
-└── docker-compose.yml    # Infrastructure
+└── docker-compose.yml    # Infrastructure (Neo4j, Redis, PostgreSQL, LangFuse)
 ```
 
 ## Ontology Layers
@@ -99,3 +104,58 @@ Defined in `ontology/*.yaml`, enforced via Cypher constraints in `scripts/init_n
 - **Temporality**: Chapter-based (valid_from_chapter/valid_to_chapter), not datetime
 - **Source grounding**: Every entity links back to its source chunk with char offsets
 - **Cost optimization**: Gemini 2.5 Flash for extraction, GPT-4o-mini for reconciliation
+- **Async workers**: POST /books/{id}/extract enqueues arq job, auto-chains embedding on completion
+- **Fulltext search**: entity_fulltext Neo4j index with Lucene escaping + CONTAINS fallback
+
+## Pipeline Flow
+
+```
+Upload (epub/pdf/txt)
+  → Parse chapters (ingestion.py)
+  → Chunk chapters (chunking.py)
+  → Regex extract — Passe 0 (regex_extractor.py)
+  → Store in Neo4j (book_repo.py)
+  → [Status: completed]
+
+Extract (arq worker — async)
+  → LangGraph: route → [characters|systems|events|lore] (parallel fan-out)
+  → Reconcile (deduplicate Characters + Skills)
+  → Persist entities to Neo4j (entity_repo.py — 11 types)
+  → DLQ for failed chapters
+  → [Status: extracted]
+  → Auto-enqueue embedding job
+
+Embed (arq worker — async)
+  → Fetch chunks without embeddings
+  → VoyageAI batch embed (128/batch)
+  → UNWIND write-back to Neo4j
+  → Cost tracking
+  → [Status: embedded]
+```
+
+## Implementation Status
+
+### ✅ Complete
+- Extraction pipeline (LangGraph, 4 parallel passes)
+- Regex extractor (Passe 0 — blue boxes, level-ups, skills, titles)
+- Entity persistence (11 types: Character, Skill, Class, Title, Event, Location, Item, Creature, Faction, Concept + relationships)
+- 3-tier deduplication (exact → fuzzy → LLM-as-Judge)
+- Embedding pipeline (VoyageAI batch → Neo4j vector write-back)
+- arq background workers (extraction + embedding tasks, auto-chaining)
+- Book ingestion API (upload, CRUD, async extract, job polling)
+- Graph explorer API (search, subgraph, neighbors, timeline, character profile)
+- Admin API (cost tracking, DLQ inspection)
+- Frontend: books management, D3 force graph explorer, chat placeholder
+- Docker Compose (Neo4j, Redis, PostgreSQL, LangFuse)
+- 211 tests passing (golden dataset, unit, integration)
+
+### 🔴 Not Yet Implemented
+- Chat/RAG query API (hybrid retrieval: vector → rerank → LLM generate)
+- Chat + Reader LangGraph agents
+- Functional chat frontend (currently placeholder)
+- Full reconciler (only Characters + Skills — missing 6 entity types)
+- LangGraph PostgreSQL checkpointing
+- Gemini provider in providers.py (config exists, client missing)
+- Dockerfile for app containerization
+- Ontology runtime loader (YAMLs exist but not consumed by code)
+- DLQ retry mechanism (inspect/clear exists, re-queue does not)

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Send, Bot, User, Loader2, BookOpen, Info } from "lucide-react";
+import { Send, Bot, User, Loader2, Info } from "lucide-react";
 import { listBooks } from "@/lib/api";
 import type { BookInfo } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -28,10 +28,14 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
-    listBooks().then(setBooks).catch(() => {});
+    listBooks().then(setBooks).catch((err) => console.error("Failed to load books:", err));
   }, []);
+
+  // Cleanup timeout on unmount
+  useEffect(() => () => clearTimeout(timerRef.current), []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -53,7 +57,7 @@ export default function ChatPage() {
 
     // Placeholder: in the future this will call the RAG query API
     // For now, show a helpful message about the feature
-    setTimeout(() => {
+    timerRef.current = setTimeout(() => {
       const assistantMsg: Message = {
         id: crypto.randomUUID(),
         role: "assistant",
@@ -76,6 +80,7 @@ export default function ChatPage() {
           </p>
         </div>
         <select
+          aria-label="Select book"
           value={bookId}
           onChange={(e) => setBookId(e.target.value)}
           className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
@@ -90,7 +95,7 @@ export default function ChatPage() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto py-6 space-y-4">
+      <div className="flex-1 overflow-y-auto py-6 space-y-4" role="log" aria-live="polite">
         {messages.map((msg) => (
           <div
             key={msg.id}
@@ -165,6 +170,7 @@ export default function ChatPage() {
         />
         <button
           type="submit"
+          aria-label="Send message"
           disabled={!bookId || !input.trim() || loading}
           className="rounded-lg bg-indigo-600 px-4 py-3 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50 transition-colors"
         >

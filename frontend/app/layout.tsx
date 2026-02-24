@@ -1,12 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import Link from "next/link";
-import {
-  BookOpen,
-  Network,
-  MessageSquare,
-  LayoutDashboard,
-} from "lucide-react";
+import { Network } from "lucide-react";
+import { BookOpen, MessageSquare, LayoutDashboard } from "lucide-react";
+import NavLink from "@/components/NavLink";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -41,8 +37,8 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-slate-950 text-slate-100 min-h-screen`}
       >
-        {/* Sidebar */}
-        <aside className="fixed left-0 top-0 z-40 h-screen w-60 border-r border-slate-800 bg-slate-950/80 backdrop-blur-xl">
+        {/* Sidebar — hidden on mobile */}
+        <aside className="fixed left-0 top-0 z-40 h-screen w-60 border-r border-slate-800 bg-slate-950/80 backdrop-blur-xl hidden md:block">
           <div className="flex h-16 items-center gap-2 px-5 border-b border-slate-800">
             <Network className="h-6 w-6 text-indigo-400" />
             <span className="text-lg font-bold tracking-tight">
@@ -50,16 +46,12 @@ export default function RootLayout({
             </span>
           </div>
 
-          <nav className="mt-4 flex flex-col gap-1 px-3">
+          <nav aria-label="Main navigation" className="mt-4 flex flex-col gap-1 px-3">
             {NAV_ITEMS.map(({ href, label, icon: Icon }) => (
-              <Link
-                key={href}
-                href={href}
-                className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-400 transition-colors hover:bg-slate-800/60 hover:text-slate-100"
-              >
+              <NavLink key={href} href={href}>
                 <Icon className="h-4 w-4" />
                 {label}
-              </Link>
+              </NavLink>
             ))}
           </nav>
 
@@ -72,7 +64,7 @@ export default function RootLayout({
         </aside>
 
         {/* Main content */}
-        <main className="ml-60 min-h-screen">
+        <main className="md:ml-60 min-h-screen">
           <div className="p-6 lg:p-8">{children}</div>
         </main>
       </body>
