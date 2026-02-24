@@ -357,16 +357,47 @@ Create `ontology/your_series.yaml` extending the appropriate Layer 2.
 
 ## Ontology vs. Neo4j Schema
 
-The ontology YAMLs are the **source of truth** for the data model, but they are **not yet consumed programmatically at runtime** (this is a planned feature). Currently:
+The ontology YAMLs are the **source of truth** for the data model and are now **consumed at runtime** by the `OntologyLoader`.
 
-| Aspect | Ontology YAML | Neo4j Schema |
-|--------|--------------|-------------|
-| **Format** | YAML files in `ontology/` | Cypher constraints in `scripts/init_neo4j.cypher` |
-| **Role** | Design-time specification | Runtime enforcement |
-| **Maintains** | Full property definitions, academic references, regex patterns | Constraints, indexes, vector index |
-| **Status** | Manual sync | Applied on database initialization |
+| Aspect | Ontology YAML | OntologyLoader | Neo4j Schema |
+|--------|--------------|----------------|-------------|
+| **Format** | YAML files in `ontology/` | Python dataclasses | Cypher constraints in `scripts/init_neo4j.cypher` |
+| **Role** | Design-time specification | Runtime validation | Runtime enforcement |
+| **Maintains** | Full property definitions, academic references, regex patterns | Merged node types, enum constraints, validation methods | Constraints, indexes, vector index |
+| **Status** | Source of truth | Loaded at startup | Applied on database initialization |
 
-**Planned**: A runtime ontology loader that reads YAML files and dynamically configures extraction prompts, entity resolution rules, and Neo4j constraints.
+### Runtime Ontology Loader
+
+**File**: `app/core/ontology_loader.py`
+
+The `OntologyLoader` loads the 3-layer YAML ontology at application startup and provides validation utilities:
+
+```python
+# Loaded during FastAPI lifespan startup
+ontology = OntologyLoader.from_layers(
+    genre="litrpg",          # → ontology/litrpg.yaml
+    series="primal_hunter",  # → ontology/primal_hunter.yaml
+    ontology_dir=Path("ontology/"),
+)
+app.state.ontology = ontology
+```
+
+**Layer loading order**: `core.yaml` → genre YAML → series YAML. Properties merge (later layers override earlier ones).
+
+**Features**:
+- `from_layers(genre, series)` — Classmethod that loads and merges all 3 layers
+- `validate_value(node_type, property, value)` — Validate an enum property against the ontology
+- `validate_entity(node_type, properties)` — Validate all properties of an entity
+- `get_allowed_values(node_type, property)` — Get allowed enum values for a property
+
+**FastAPI integration**: Available as a dependency via `Depends(get_ontology)` for any endpoint that needs ontology validation.
+
+**Enum constraint example**:
+```python
+# The ontology defines: event_type: { type: enum, values: [action, state_change, ...] }
+ontology.validate_value("Event", "event_type", "action")      # ✅
+ontology.validate_value("Event", "event_type", "invalid_type") # ❌ raises
+```
 
 ---
 

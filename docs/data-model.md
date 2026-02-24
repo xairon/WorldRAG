@@ -48,6 +48,9 @@ graph TB
     end
 
     subgraph Grounding["🔗 Grounding Layer"]
+        Character -.-> |GROUNDED_IN| Chunk
+        Skill -.-> |GROUNDED_IN| Chunk
+        Event -.-> |GROUNDED_IN| Chunk
         Character -.-> |MENTIONED_IN| Chapter
         Event -.-> |FIRST_MENTIONED_IN| Chapter
     end
@@ -151,7 +154,22 @@ graph TB
 
 | Type | From → To | Properties |
 |------|-----------|-----------|
-| `GROUNDED_IN` | Any Entity → Chunk | `char_offset_start`, `char_offset_end` |
+| `GROUNDED_IN` | Any Entity → Chunk | `char_offset_start`, `char_offset_end`, `batch_id` |
+
+**Implementation**: `GROUNDED_IN` relationships are created via a label-aware UNWIND strategy in `entity_repo.store_grounding()`. Each of the 10 entity types is handled separately because Neo4j doesn't support variable labels in `MERGE`. The `_GROUNDING_LABEL_MAP` maps extraction class → (Neo4j Label, match property):
+
+| Entity Type | Neo4j Label | Match Property |
+|-------------|-------------|----------------|
+| character | Character | `canonical_name` |
+| skill | Skill | `name` |
+| class | Class | `name` |
+| title | Title | `name` |
+| event | Event | `name` |
+| location | Location | `name` |
+| item | Item | `name` |
+| creature | Creature | `name` |
+| faction | Faction | `name` |
+| concept | Concept | `name` |
 
 ---
 

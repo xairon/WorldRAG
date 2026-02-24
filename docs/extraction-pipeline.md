@@ -161,12 +161,15 @@ class ExtractionPipelineState(TypedDict, total=False):
     passes_completed: Annotated[list[str], operator.add]
     errors: Annotated[list[dict[str, Any]], operator.add]
 
+    # Reconciliation
+    alias_map: dict[str, str]
+
     # Metrics
     total_cost_usd: float
     total_entities: int
 ```
 
-**Three fields use `operator.add` reducers**: `grounded_entities`, `passes_completed`, and `errors`. This means each parallel pass appends to these lists rather than overwriting.
+**Three fields use `operator.add` reducers**: `grounded_entities`, `passes_completed`, and `errors`. This means each parallel pass appends to these lists rather than overwriting. The `alias_map` field is populated by the `reconcile` node after merge, carrying entity name deduplication results downstream.
 
 ### Graph Topology
 
@@ -360,15 +363,26 @@ Typical novel chapter routing:
 
 **File**: `app/services/extraction/reconciler.py`
 **LLM**: Instructor + GPT-4o-mini ($0.15/M tokens)
-**Current scope**: Characters + Skills (6 entity types pending)
+**Scope**: All 10 entity types (Characters, Skills, Classes, Titles, Events, Locations, Items, Creatures, Factions, Concepts)
+**Integration**: Runs as a LangGraph node (`reconcile_in_graph`) after `merge`, before `END`
 
 After the 4 parallel passes complete, entities may be duplicated or referenced inconsistently. The reconciler:
 
 1. Collects all entity names from all pass results
-2. Groups by entity type
-3. Runs 3-tier deduplication (see next section)
+2. Groups by entity type (10 groups)
+3. Runs 3-tier deduplication per group (see next section)
 4. Builds a unified alias map (`{"Jake" → "Jake Thayne", "Thayne" → "Jake Thayne"}`)
-5. Applies the alias map to normalize all entity references
+5. The alias_map is carried in `ExtractionPipelineState` and applied by the graph builder
+
+### Alias Map Normalization
+
+After extraction, `graph_builder._apply_alias_map()` normalizes all entity references:
+- Character `canonical_name`, `name`, and `aliases`
+- Relationship `source` and `target`
+- Skill/Class/Title `name` and `owner`
+- StatChange `character`
+- Event `participants` and `location`
+- All lore entity names (Location, Item, Creature, Faction, Concept)
 
 ### Why a Separate LLM?
 
@@ -450,12 +464,27 @@ GroundedEntity(
 
 1. **LangExtract** provides character offsets during extraction (native feature)
 2. Each pass appends to `grounded_entities` via the `operator.add` reducer
-3. After reconciliation, grounding data is stored on Chapter nodes as JSON
-4. Future reader UI can highlight source text based on these offsets
+3. After entity upsert, `store_grounding()` creates `GROUNDED_IN` relationships
+4. A JSON summary is also stored on Chapter nodes for quick access
+5. Future reader UI can highlight source text based on these offsets
 
 ### Storage
 
-Currently stored as serialized JSON on Chapter nodes:
+**GROUNDED_IN relationships** (label-aware UNWIND):
+```cypher
+-- Per entity label group (e.g., Character, Skill, Event...)
+UNWIND $items AS item
+MATCH (ch:Chapter {book_id: $book_id, number: $chapter_number})
+MATCH (ck:Chunk {chapter_id: ch.id, position: item.chunk_position})
+MATCH (e:Character {canonical_name: item.entity_name})
+MERGE (e)-[r:GROUNDED_IN]->(ck)
+SET r.char_offset_start = item.char_offset_start,
+    r.char_offset_end = item.char_offset_end
+```
+
+Each entity type uses its own label and match property (e.g., `Character` matches on `canonical_name`, `Skill` matches on `name`). The `_GROUNDING_LABEL_MAP` in `entity_repo.py` maps all 10 entity types.
+
+**JSON summary** on Chapter nodes (for quick access):
 ```cypher
 SET c.grounding_data = $grounding_json,
     c.grounding_count = $count
@@ -471,11 +500,14 @@ SET c.grounding_data = $grounding_json,
 
 ```
 For each chapter in book:
-    1. Prepare ExtractionPipelineState
-    2. Invoke LangGraph extraction
-    3. Reconcile cross-pass entities
-    4. Upsert to Neo4j
-    5. On failure → DLQ (Redis)
+    1. Check cost ceiling (CostTracker)
+    2. Prepare ExtractionPipelineState
+    3. Invoke LangGraph extraction (includes reconciliation node)
+    4. Apply alias_map normalization
+    5. Upsert entities to Neo4j
+    6. Store GROUNDED_IN relationships
+    7. On failure → DLQ (Redis)
+    8. On cost ceiling → status: cost_ceiling_hit, break
 ```
 
 ### Dead Letter Queue (DLQ)
@@ -489,8 +521,8 @@ Admin API provides:
 - `GET /admin/dlq` — list all entries
 - `GET /admin/dlq/size` — count
 - `POST /admin/dlq/clear` — purge all
-
-**Not yet implemented**: DLQ retry mechanism (re-enqueue failed chapters).
+- `POST /admin/dlq/retry/{book_id}/{chapter}` — retry a single chapter (removes DLQ entry, re-enqueues extraction job via arq)
+- `POST /admin/dlq/retry-all` — retry all failed chapters (groups by book_id, enqueues one job per book, clears DLQ)
 
 ---
 
