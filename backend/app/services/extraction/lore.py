@@ -65,8 +65,10 @@ async def extract_lore(state: ExtractionPipelineState) -> dict[str, Any]:
                 prompt_description=PROMPT_DESCRIPTION,
                 examples=FEW_SHOT_EXAMPLES,
                 model_id=settings.langextract_model,
+                api_key=settings.gemini_api_key or None,
                 extraction_passes=settings.langextract_passes,
                 max_workers=min(settings.langextract_max_workers, 10),
+                show_progress=False,
             )
         )
 

@@ -39,6 +39,7 @@ async def process_book_extraction(
     """
     driver = ctx["neo4j_driver"]
     dlq = ctx["dlq"]
+    cost_tracker = ctx.get("cost_tracker")
 
     logger.info("task_book_extraction_started", book_id=book_id, genre=genre)
 
@@ -67,6 +68,7 @@ async def process_book_extraction(
         series_name=series_name,
         chapter_regex_matches=chapter_regex,
         dlq=dlq,
+        cost_tracker=cost_tracker,
     )
 
     logger.info(
