@@ -41,3 +41,11 @@ tmp/
 
 # Claude Code
 .claude/
+
+# Docker
+Dockerfile
+docker-compose.yml
+
+# Docs
+docs/
+*.md
