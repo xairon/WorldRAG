@@ -90,6 +90,51 @@ services:
       timeout: 3s
       retries: 5
 
+  backend:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000"
+    env_file: .env
+    environment:
+      NEO4J_URI: bolt://neo4j:7687
+      REDIS_URL: redis://:${REDIS_PASSWORD:-worldrag}@redis:6379
+      POSTGRES_URI: postgresql://${POSTGRES_USER:-worldrag}:${POSTGRES_PASSWORD:-worldrag}@postgres:5432/${POSTGRES_DB:-worldrag}
+      LANGFUSE_HOST: http://langfuse:3000
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    mem_limit: 2g
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  worker:
+    build: .
+    restart: unless-stopped
+    command: ["python", "-m", "arq", "app.workers.settings.WorkerSettings"]
+    env_file: .env
+    environment:
+      NEO4J_URI: bolt://neo4j:7687
+      REDIS_URL: redis://:${REDIS_PASSWORD:-worldrag}@redis:6379
+      POSTGRES_URI: postgresql://${POSTGRES_USER:-worldrag}:${POSTGRES_PASSWORD:-worldrag}@postgres:5432/${POSTGRES_DB:-worldrag}
+      LANGFUSE_HOST: http://langfuse:3000
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    mem_limit: 4g
+
 volumes:
   neo4j_data:
   redis_data:
