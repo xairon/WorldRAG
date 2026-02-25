@@ -3,6 +3,7 @@
 Provides the LangExtract prompt description and few-shot examples
 for extracting locations, items, creatures, factions, races,
 and world concepts from narrative text.
+Optimized for French-language LitRPG novels.
 """
 
 from __future__ import annotations
@@ -10,145 +11,131 @@ from __future__ import annotations
 import langextract as lx
 
 PROMPT_DESCRIPTION = """\
-Extract ALL worldbuilding and lore elements from this chapter text.
+Extrais TOUS les éléments de worldbuilding et de lore de ce chapitre.
 
-Extract the following entity types:
+Ce roman est en FRANÇAIS. Tu DOIS extraire tous les noms, descriptions
+et attributs en français, exactement comme dans le texte source.
+Ne traduis JAMAIS en anglais.
 
-LOCATIONS:
-- name: place name as written
-- type: city, dungeon, realm, continent, pocket_dimension, planet, forest,
-  mountain, building, region
-- description: what we learn about this place
-- parent_location: larger area containing this location (if mentioned)
+LIEUX :
+- name : nom du lieu tel qu'écrit dans le texte
+- type : ville, donjon, royaume, continent, dimension, planète, forêt,
+  montagne, bâtiment, région, tutoriel
+- description : ce qu'on apprend sur ce lieu
+- parent_location : zone plus grande contenant ce lieu (si mentionnée)
 
-ITEMS & ARTIFACTS:
-- name: item name exactly as written
-- type: weapon, armor, consumable, artifact, key_item, tool, material
-- rarity if mentioned (common, uncommon, rare, epic, legendary, unique)
-- effects or properties if described
-- owner: who possesses it
+OBJETS & ARTEFACTS :
+- name : nom de l'objet exactement tel qu'écrit
+- type : arme, armure, consommable, artefact, objet clé, outil, matériau
+- rareté si mentionnée (commun, peu commun, rare, épique, légendaire, unique)
+- effets ou propriétés si décrits
+- owner : qui le possède
 
-CREATURES & MONSTERS:
-- name: creature name or species
-- species: broader species category if mentioned
-- threat_level: grade or danger level if mentioned
-- habitat: where it lives
+CRÉATURES & MONSTRES :
+- name : nom de la créature ou espèce tel qu'écrit dans le texte
+- species : catégorie d'espèce plus large si mentionnée
+- threat_level : grade ou niveau de danger si mentionné
+- habitat : où elle vit
 
-FACTIONS & ORGANIZATIONS:
-- name: faction or group name
-- type: guild, church, kingdom, clan, alliance, government, etc.
-- alignment or disposition if clear
+FACTIONS & ORGANISATIONS :
+- name : nom de la faction ou du groupe
+- type : guilde, ordre, royaume, clan, alliance, gouvernement, etc.
+- alignment ou disposition si claire
 
-WORLD CONCEPTS:
-- name: concept name (magic systems, rules of the world, etc.)
-- domain: magic, politics, cosmology, economics, etc.
-- description: how this concept works or what it means
+CONCEPTS DU MONDE :
+- name : nom du concept (systèmes magiques, règles du monde, etc.)
+- domain : magie, politique, cosmologie, économie, etc.
+- description : comment ce concept fonctionne ou ce qu'il signifie
 
-IMPORTANT RULES:
-- Extract locations even when only briefly mentioned.
-- For items, capture both named/unique items AND generic types if relevant.
-- Creatures include both named individuals and species references.
-- World concepts capture the RULES and SYSTEMS of the universe.
-- Do NOT extract game system elements (skills, classes, levels) — those belong
-  to Pass 2.
-- Extract entities in order of appearance.
+RÈGLES IMPORTANTES :
+- NE CRÉE PAS d'entité pour des lieux génériques (« la forêt », « un arbre »,
+  « le bâtiment ») — seuls les lieux NOMMÉS sont des entités.
+- NE CRÉE PAS d'entité pour des objets génériques (« une épée », « des flèches »,
+  « l'armure ») — seuls les objets NOMMÉS ou UNIQUES sont des entités.
+- NE CRÉE PAS d'entité pour des créatures génériques (« les bêtes », « des animaux »)
+  — seules les ESPÈCES NOMMÉES sont des entités.
+- N'extrais PAS les éléments de système de jeu (compétences, classes, niveaux)
+  — ils appartiennent à la Passe 2.
+- Extrais dans l'ordre d'apparition.
 """
 
 FEW_SHOT_EXAMPLES = [
     lx.data.ExampleData(
         text=(
-            "The entrance to Nevermore loomed before them, a pocket dimension "
-            "created by the Architect eons ago. Inside, each floor tested different "
-            "aspects of a cultivator's abilities. The first floor was a vast forest "
-            "filled with D-grade Steelback Drakes and lesser beasts. "
-            "Jake gripped his Nanoblade, the weapon humming with arcane energy."
+            "L'entrée de la Grande Forêt s'ouvrait devant eux, un espace immense "
+            "créé par le Système pour le tutoriel. À l'intérieur, chaque zone testait "
+            "différents aspects des capacités d'un initié. La première zone était peuplée "
+            "de Sangliers Dentdefer et de blaireaux mutants. "
+            "Jake serra son Nanoblade, l'arme vibrant d'énergie arcanique."
         ),
         extractions=[
             lx.data.Extraction(
                 extraction_class="location",
-                extraction_text="Nevermore",
+                extraction_text="la Grande Forêt",
                 attributes={
-                    "location_type": "dungeon",
+                    "name": "La Grande Forêt",
+                    "location_type": "forêt",
                     "description": (
-                        "pocket dimension created by the Architect, multi-floor test of abilities"
+                        "espace immense créé par le Système pour le tutoriel, "
+                        "divisé en zones testant les capacités des initiés"
                     ),
                 },
             ),
             lx.data.Extraction(
-                extraction_class="location",
-                extraction_text="first floor was a vast forest",
-                attributes={
-                    "name": "Nevermore Floor 1",
-                    "location_type": "dungeon",
-                    "parent_location": "Nevermore",
-                    "description": "vast forest filled with D-grade beasts",
-                },
-            ),
-            lx.data.Extraction(
                 extraction_class="creature",
-                extraction_text="Steelback Drakes",
+                extraction_text="Sangliers Dentdefer",
                 attributes={
-                    "species": "Drake",
-                    "threat_level": "D-grade",
-                    "habitat": "Nevermore Floor 1",
-                },
-            ),
-            lx.data.Extraction(
-                extraction_class="character",
-                extraction_text="Architect",
-                attributes={
-                    "note": "creator of Nevermore, mentioned historically",
-                    "role": "minor",
+                    "name": "Sanglier Dentdefer",
+                    "species": "sanglier",
+                    "habitat": "La Grande Forêt",
                 },
             ),
             lx.data.Extraction(
                 extraction_class="item",
                 extraction_text="Nanoblade",
                 attributes={
-                    "item_type": "weapon",
-                    "owner": "Jake Thayne",
-                    "effects": "humming with arcane energy",
+                    "name": "Nanoblade",
+                    "item_type": "arme",
+                    "owner": "Jake",
+                    "effects": "vibre d'énergie arcanique",
                 },
             ),
         ],
     ),
     lx.data.ExampleData(
         text=(
-            "The Order of the Boundless Vault controlled trade across the multiverse. "
-            "Their reach extended to every C-grade world and beyond. "
-            "Mana, the fundamental energy of the multiverse, flowed through "
-            "invisible ley lines that connected realms. Understanding these flows "
-            "was key to spatial magic."
+            "Les Terriens étaient la dernière race à avoir été intégrée au Multivers. "
+            "Les Races de la Myriade, disséminées à travers des milliers de mondes, "
+            "observaient les nouveaux venus avec curiosité. "
+            "Le Mana, énergie fondamentale du Multivers, coulait à travers "
+            "des lignes invisibles reliant les dimensions."
         ),
         extractions=[
             lx.data.Extraction(
                 extraction_class="faction",
-                extraction_text="Order of the Boundless Vault",
+                extraction_text="Les Terriens",
                 attributes={
-                    "faction_type": "trade organization",
-                    "description": "controls trade across the multiverse",
+                    "name": "Terriens",
+                    "faction_type": "race",
+                    "description": "dernière race intégrée au Multivers",
                 },
             ),
             lx.data.Extraction(
                 extraction_class="concept",
-                extraction_text="Mana, the fundamental energy of the multiverse",
+                extraction_text="Les Races de la Myriade",
+                attributes={
+                    "name": "Races de la Myriade",
+                    "domain": "cosmologie",
+                    "description": "races disséminées à travers des milliers de mondes dans le Multivers",
+                },
+            ),
+            lx.data.Extraction(
+                extraction_class="concept",
+                extraction_text="Le Mana, énergie fondamentale du Multivers",
                 attributes={
                     "name": "Mana",
-                    "domain": "magic",
-                    "description": "fundamental energy of the multiverse, flows through ley lines",
-                },
-            ),
-            lx.data.Extraction(
-                extraction_class="concept",
-                extraction_text="ley lines that connected realms",
-                attributes={
-                    "name": "Ley Lines",
-                    "domain": "magic",
-                    "description": (
-                        "invisible connections between realms "
-                        "through which mana flows, "
-                        "key to spatial magic"
-                    ),
+                    "domain": "magie",
+                    "description": "énergie fondamentale du Multivers, coule à travers des lignes invisibles reliant les dimensions",
                 },
             ),
         ],

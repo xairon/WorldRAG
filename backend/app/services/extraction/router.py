@@ -24,48 +24,75 @@ logger = get_logger(__name__)
 # ── Keyword indicators for each pass ────────────────────────────────────
 
 # Pass 1 (Characters) — always runs, characters appear in every chapter
-# Pass 2 (Systems) — LitRPG progression signals
+# Pass 2 (Systems) — LitRPG progression signals (EN + FR)
 SYSTEM_KEYWORDS = re.compile(
     r"\b(?:"
+    # ── English ──
     r"skill|level|class|title|stat|ability|evolution|upgrade|breakthrough|"
     r"acquired|learned|gained|earned|obtained|evolves?|rank(?:ed)?|tier|"
     r"profession|bloodline|blessing|notification|system\s+message|"
-    r"\+\d+\s+\w+|"  # +5 Perception
-    r"Level:\s*\d+|"  # Level: 87
-    r"\[(?:Skill|Ability|Class|Title)"  # [Skill Acquired: ...]
+    # ── French ──
+    r"compétence|classe|titre|niveau|amélioration|évolution|"
+    r"acquis|appris|obtenu|déverrouillé|débloqué|"
+    r"grade|rang|bénédiction|aptitude|maîtrise|"
+    r"profession|lignée|notification|message\s+système|"
+    r"montée\s+de\s+niveau|gain\s+de\s+niveau|"
+    # ── Patterns (language-agnostic) ──
+    r"\+\d+\s+\w+|"  # +5 Perception / +5 Force
+    r"Level:\s*\d+|Niveau\s*:\s*\d+|"  # Level: 87 / Niveau : 87
+    r"\[(?:Skill|Ability|Class|Title|Compétence|Classe|Titre)"  # [Skill Acquired: ...]
     r")\b",
     re.IGNORECASE,
 )
 
-# Pass 3 (Events) — narrative event signals
+# Pass 3 (Events) — narrative event signals (EN + FR)
 EVENT_KEYWORDS = re.compile(
     r"\b(?:"
+    # ── English ──
     r"battle|fight|killed|defeated|died|death|attacked|ambush|"
     r"discovered|revealed|betrayed|alliance|war|peace|"
     r"quest|mission|escaped|captured|saved|rescued|"
     r"ceremony|ritual|awakened|transformed|"
     r"arrived|departed|journeyed|traveled|fled|"
-    r"swore|promised|decided|agreed|refused"
+    r"swore|promised|decided|agreed|refused|"
+    # ── French ──
+    r"combat|batail|tué|vaincu|mort|attaqué|embuscade|"
+    r"découvert|révélé|trahi|alliance|guerre|paix|"
+    r"quête|mission|échappé|capturé|sauvé|secouru|"
+    r"cérémonie|rituel|éveillé|transformé|"
+    r"arrivé|parti|voyagé|fui|enfui|"
+    r"juré|promis|décidé|accepté|refusé|"
+    r"affronté|blessé|survécu|détruit|rencontré"
     r")\b",
     re.IGNORECASE,
 )
 
-# Pass 4 (Lore) — worldbuilding signals
+# Pass 4 (Lore) — worldbuilding signals (EN + FR)
 LORE_KEYWORDS = re.compile(
     r"\b(?:"
+    # ── English ──
     r"dungeon|realm|dimension|continent|kingdom|city|temple|forest|tower|"
     r"artifact|weapon|potion|elixir|enchant|rune|"
     r"creature|monster|beast|dragon|demon|spirit|"
     r"guild|order|faction|clan|church|empire|council|"
     r"mana|energy|dao|cultivation|magic|law|rule|"
     r"race|species|elf|dwarf|goblin|orc|undead|"
-    r"ancient|prophecy|legend|myth|lore"
+    r"ancient|prophecy|legend|myth|lore|"
+    # ── French ──
+    r"donjon|royaume|dimension|continent|ville|temple|forêt|tour|"
+    r"artefact|arme|potion|élixir|enchant|rune|"
+    r"créature|monstre|bête|dragon|démon|esprit|"
+    r"guilde|ordre|faction|clan|église|empire|conseil|"
+    r"mana|énergie|magie|loi|règle|"
+    r"race|espèce|elfe|nain|gobelin|orc|mort-vivant|"
+    r"ancien|prophétie|légende|mythe|savoir|"
+    r"tutoriel|univers|système|initiation"
     r")\b",
     re.IGNORECASE,
 )
 
 # Thresholds for pass activation
-SYSTEM_THRESHOLD = 3  # Need 3+ system keywords to trigger Pass 2
+SYSTEM_THRESHOLD = 2  # Need 2+ system keywords to trigger Pass 2
 EVENT_THRESHOLD = 2  # Need 2+ event keywords to trigger Pass 3
 LORE_THRESHOLD = 3  # Need 3+ lore keywords to trigger Pass 4
 

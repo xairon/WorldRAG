@@ -29,11 +29,20 @@ logger = get_logger(__name__)
 def normalize_name(name: str) -> str:
     """Normalize a name for exact comparison.
 
-    Lowercases, strips whitespace, removes common articles/prefixes.
+    Lowercases, strips whitespace, removes common articles/prefixes
+    in both English and French.
     """
     name = name.strip().lower()
-    # Remove common prefixes
-    for prefix in ("the ", "a ", "an "):
+    # Remove common prefixes (English + French)
+    for prefix in (
+        # English
+        "the ", "a ", "an ",
+        # French — order matters: longer prefixes first
+        "les ", "des ",
+        "le ", "la ", "l'", "l'",
+        "un ", "une ",
+        "du ", "de ", "d'", "d'",
+    ):
         if name.startswith(prefix):
             name = name[len(prefix) :]
     return name

@@ -25,6 +25,7 @@ MODEL_COSTS: dict[str, tuple[float, float]] = {
     "claude-3-5-sonnet": (3.00, 15.00),
     "claude-3-5-haiku": (0.80, 4.00),
     "voyage-3.5": (0.06, 0.0),  # embeddings: input only
+    "BAAI/bge-m3": (0.0, 0.0),  # local embeddings: free
     "rerank-v3.5": (0.0, 0.0),  # Cohere rerank: per-search pricing
 }
 

@@ -15,7 +15,7 @@ logger = get_logger(__name__)
 router = APIRouter(tags=["health"])
 
 
-@router.get("/health")
+@router.get("/health", response_model=None)
 async def health_check(request: Request) -> dict:
     """Comprehensive health check for all services.
 
@@ -77,7 +77,7 @@ async def health_check(request: Request) -> dict:
     return body
 
 
-@router.get("/health/ready")
+@router.get("/health/ready", response_model=None)
 async def readiness_check(request: Request) -> dict | JSONResponse:
     """Quick readiness probe (for k8s / docker healthcheck).
 
