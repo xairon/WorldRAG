@@ -1,19 +1,8 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import { Network } from "lucide-react";
 import { BookOpen, MessageSquare, LayoutDashboard } from "lucide-react";
 import NavLink from "@/components/NavLink";
 import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "WorldRAG",
@@ -35,7 +24,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-slate-950 text-slate-100 min-h-screen`}
+        className="font-sans antialiased bg-slate-950 text-slate-100 min-h-screen"
       >
         {/* Sidebar — hidden on mobile */}
         <aside className="fixed left-0 top-0 z-40 h-screen w-60 border-r border-slate-800 bg-slate-950/80 backdrop-blur-xl hidden md:block">
