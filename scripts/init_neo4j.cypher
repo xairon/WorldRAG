@@ -93,6 +93,19 @@ FOR (c:Class) ON (c.name);
 CREATE INDEX item_name IF NOT EXISTS
 FOR (i:Item) ON (i.name);
 
+// Additional property indexes for common query patterns
+CREATE INDEX character_role IF NOT EXISTS
+FOR (c:Character) ON (c.role);
+
+CREATE INDEX skill_type IF NOT EXISTS
+FOR (s:Skill) ON (s.skill_type);
+
+CREATE INDEX item_rarity IF NOT EXISTS
+FOR (i:Item) ON (i.rarity);
+
+CREATE INDEX creature_threat IF NOT EXISTS
+FOR (cr:Creature) ON (cr.threat_level);
+
 // Batch ID indexes for rollback operations
 CREATE INDEX character_batch IF NOT EXISTS
 FOR (c:Character) ON (c.batch_id);
@@ -147,6 +160,15 @@ FOR (i:Item) ON EACH [i.name, i.description];
 
 CREATE FULLTEXT INDEX concept_fulltext IF NOT EXISTS
 FOR (c:Concept) ON EACH [c.name, c.description];
+
+CREATE FULLTEXT INDEX creature_fulltext IF NOT EXISTS
+FOR (cr:Creature) ON EACH [cr.name, cr.description, cr.species];
+
+CREATE FULLTEXT INDEX faction_fulltext IF NOT EXISTS
+FOR (f:Faction) ON EACH [f.name, f.description];
+
+CREATE FULLTEXT INDEX title_fulltext IF NOT EXISTS
+FOR (t:Title) ON EACH [t.name, t.description];
 
 CREATE FULLTEXT INDEX chunk_fulltext IF NOT EXISTS
 FOR (c:Chunk) ON EACH [c.text];

@@ -43,18 +43,21 @@ class Settings(BaseSettings):
     langextract_batch_chapters: int = 10
 
     # --- Instructor (reconciliation, classification) ---
-    llm_reconciliation: str = "openai:gpt-4o-mini"
-    llm_classification: str = "openai:gpt-4o-mini"
-    llm_dedup: str = "openai:gpt-4o-mini"
-    llm_cypher: str = "openai:gpt-4o-mini"
+    llm_reconciliation: str = "gemini:gemini-2.5-flash"
+    llm_classification: str = "gemini:gemini-2.5-flash"
+    llm_dedup: str = "gemini:gemini-2.5-flash"
+    llm_cypher: str = "gemini:gemini-2.5-flash"
     use_batch_api: bool = True
 
     # --- User-facing ---
-    llm_chat: str = "openai:gpt-4o"
+    llm_chat: str = "gemini:gemini-2.5-flash"
 
-    # --- Embeddings & Reranking ---
-    voyage_api_key: str = ""
-    voyage_model: str = "voyage-3.5"
+    # --- Embeddings (local sentence-transformers) ---
+    embedding_model: str = "BAAI/bge-m3"
+    embedding_device: str = "cuda"
+    embedding_batch_size: int = 64
+
+    # --- Reranking (optional) ---
     cohere_api_key: str = ""
 
     # --- LangFuse ---

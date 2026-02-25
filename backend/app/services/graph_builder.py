@@ -12,11 +12,13 @@ This is the main entry point called by the book processing pipeline.
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Any
 
 from app.core.exceptions import CostCeilingError
 from app.core.logging import get_logger
 from app.repositories.entity_repo import EntityRepository
+from app.services.entity_filter import filter_extraction_result
 from app.services.extraction import extract_chapter
 
 if TYPE_CHECKING:
@@ -98,14 +100,26 @@ async def build_chapter_graph(
         regex_matches_json=regex_matches_json,
     )
 
-    # 2. Apply alias map to normalize names (alias_map from graph reconcile step)
+    # 2. Log extraction warnings
+    if extraction_result.total_entities == 0 and extraction_result.passes_completed:
+        logger.warning(
+            "graph_build_chapter_zero_entities",
+            book_id=book_id,
+            chapter=chapter_number,
+            passes_completed=extraction_result.passes_completed,
+        )
+
+    # 3. Apply alias map to normalize names (alias_map from graph reconcile step)
     _apply_alias_map(extraction_result, extraction_result.alias_map)
 
-    # 3. Persist to Neo4j
+    # 4. Apply entity quality filters (reject pronouns, generics, noise)
+    filter_extraction_result(extraction_result)
+
+    # 5. Persist to Neo4j
     entity_repo = EntityRepository(driver)
     counts = await entity_repo.upsert_extraction_result(extraction_result)
 
-    # 4. Update chapter status
+    # 5. Update chapter status
     await book_repo.update_chapter_status(
         book_id,
         chapter_number,
@@ -163,10 +177,25 @@ async def build_book_graph(
     if chapter_regex_matches is None:
         chapter_regex_matches = {}
 
+    # ── Filter out non-content chapters (Sommaire, TOC, copyright) ───
+    content_chapters = [
+        ch for ch in chapters
+        if not _is_non_content_chapter(ch)
+    ]
+    skipped = len(chapters) - len(content_chapters)
+    if skipped:
+        logger.info(
+            "graph_build_chapters_skipped",
+            book_id=book_id,
+            skipped=skipped,
+            reason="non-content (Sommaire/TOC/copyright)",
+        )
+
     logger.info(
         "graph_build_book_started",
         book_id=book_id,
-        total_chapters=len(chapters),
+        total_chapters=len(content_chapters),
+        skipped_chapters=skipped,
     )
 
     await book_repo.update_book_status(book_id, "extracting")
@@ -174,53 +203,59 @@ async def build_book_graph(
     total_entities = 0
     chapter_stats: list[dict[str, Any]] = []
     failed_chapters: list[int] = []
-
     cost_ceiling_hit = False
 
-    for chapter in chapters:
-        try:
-            regex_json = chapter_regex_matches.get(
-                chapter.number,
-                "[]",
-            )
+    # ── Parallel chapter processing with semaphore ─────────────────
+    # Process up to 3 chapters concurrently to balance throughput
+    # with LLM rate limits. Results are collected per-chapter.
+    sem = asyncio.Semaphore(3)
 
-            stats = await build_chapter_graph(
-                driver=driver,
-                book_repo=book_repo,
-                book_id=book_id,
-                chapter=chapter,
-                genre=genre,
-                series_name=series_name,
-                regex_matches_json=regex_json,
-                cost_tracker=cost_tracker,
-            )
+    async def _process_one(chapter: ChapterData) -> tuple[int, dict[str, Any] | None, Exception | None]:
+        """Process a single chapter under semaphore control."""
+        async with sem:
+            regex_json = chapter_regex_matches.get(chapter.number, "[]")
+            try:
+                stats = await build_chapter_graph(
+                    driver=driver,
+                    book_repo=book_repo,
+                    book_id=book_id,
+                    chapter=chapter,
+                    genre=genre,
+                    series_name=series_name,
+                    regex_matches_json=regex_json,
+                    cost_tracker=cost_tracker,
+                )
+                return (chapter.number, stats, None)
+            except Exception as exc:
+                return (chapter.number, None, exc)
 
+    tasks = [_process_one(ch) for ch in content_chapters]
+    results_raw = await asyncio.gather(*tasks)
+
+    # Collect results in chapter order
+    for chapter_number, stats, exc in sorted(results_raw, key=lambda r: r[0]):
+        if stats is not None:
             total_entities += stats["total_entities"]
             chapter_stats.append(stats)
-
-        except CostCeilingError:
-            # Book-level ceiling hit — stop processing remaining chapters
+        elif isinstance(exc, CostCeilingError):
             logger.warning(
                 "graph_build_book_ceiling_hit",
                 book_id=book_id,
-                chapter=chapter.number,
+                chapter=chapter_number,
                 chapters_processed=len(chapter_stats),
-                chapters_remaining=len(chapters) - len(chapter_stats) - len(failed_chapters),
             )
             cost_ceiling_hit = True
-            break
-
-        except Exception as exc:
+        elif exc is not None:
             logger.exception(
                 "graph_build_chapter_failed",
                 book_id=book_id,
-                chapter=chapter.number,
+                chapter=chapter_number,
             )
-            failed_chapters.append(chapter.number)
+            failed_chapters.append(chapter_number)
             if dlq is not None:
                 await dlq.push_failure(
                     book_id=book_id,
-                    chapter=chapter.number,
+                    chapter=chapter_number,
                     error=exc,
                     metadata={"genre": genre, "series_name": series_name},
                 )
@@ -247,6 +282,41 @@ async def build_book_graph(
     logger.info("graph_build_book_completed", **result)
 
     return result
+
+
+_NON_CONTENT_TITLES = {
+    "sommaire", "table des matières", "table of contents",
+    "couverture", "cover", "copyright", "mentions légales",
+    "colophon", "dédicace", "dedication", "remerciements",
+    "acknowledgements", "préface", "preface", "avant-propos",
+}
+
+
+def _is_non_content_chapter(chapter: ChapterData) -> bool:
+    """Detect non-content chapters (TOC, copyright, etc.) to skip extraction.
+
+    Heuristics:
+    1. Title matches known non-content titles (Sommaire, Copyright, etc.)
+    2. Text is mostly a list of chapter titles (TOC pattern)
+    """
+    title_lower = (chapter.title or "").strip().lower()
+
+    # Check title against known non-content titles
+    if title_lower in _NON_CONTENT_TITLES:
+        return True
+
+    # Check if text is mostly chapter listing (TOC heuristic):
+    # If > 40% of lines start with "Chapitre" or "Chapter", it's a TOC
+    lines = [ln.strip() for ln in chapter.text.split("\n") if ln.strip()]
+    if len(lines) > 5:
+        chapter_lines = sum(
+            1 for ln in lines
+            if ln.lower().startswith(("chapitre", "chapter"))
+        )
+        if chapter_lines / len(lines) > 0.4:
+            return True
+
+    return False
 
 
 def _apply_alias_map(

@@ -157,6 +157,24 @@ def retry_llm_call(max_attempts: int = 3):
     )
 
 
+def retry_neo4j_write(max_attempts: int = 4):
+    """Retry decorator for Neo4j write operations on transient errors.
+
+    Catches DeadlockDetected and other TransientErrors from concurrent
+    MERGE operations during parallel chapter processing.
+    Uses jittered backoff to prevent thundering herd.
+    """
+    from neo4j.exceptions import TransientError
+
+    return retry(
+        stop=stop_after_attempt(max_attempts),
+        wait=wait_exponential_jitter(initial=0.2, max=10, jitter=2),
+        retry=retry_if_exception_type(TransientError),
+        before_sleep=_log_retry,
+        reraise=True,
+    )
+
+
 # --- Provider Circuit Breakers (singletons) ---
 
 openai_breaker = CircuitBreaker(name="openai", failure_threshold=5, recovery_timeout=60)

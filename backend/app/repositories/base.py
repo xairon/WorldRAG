@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from app.core.logging import get_logger
+from app.core.resilience import retry_neo4j_write
 
 if TYPE_CHECKING:
     from neo4j import AsyncDriver
@@ -101,6 +102,7 @@ class Neo4jRepository:
             )
             return records
 
+    @retry_neo4j_write(max_attempts=4)
     async def execute_write(
         self,
         query: str,
@@ -128,6 +130,7 @@ class Neo4jRepository:
             )
             return records
 
+    @retry_neo4j_write(max_attempts=4)
     async def execute_batch(
         self,
         queries: list[tuple[str, dict[str, Any]]],

@@ -3,18 +3,18 @@
 Implements the hybrid retrieval pipeline for answering user questions
 about novels grounded in the Knowledge Graph:
 
-    Vector search (Voyage AI) → Rerank (Cohere) → Graph context → LLM generate
+    Vector search (local embeddings) → Rerank (Cohere, optional) → Graph context → LLM generate
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from app.config import settings
 from app.core.logging import get_logger
 from app.core.resilience import retry_llm_call
-from app.llm.embeddings import VoyageEmbedder
-from app.llm.providers import get_openai_client
-from app.llm.reranker import CohereReranker
+from app.llm.embeddings import LocalEmbedder
+from app.llm.providers import get_langchain_llm
 from app.repositories.base import Neo4jRepository
 from app.schemas.chat import (
     ChatResponse,
@@ -47,8 +47,17 @@ class ChatService:
 
     def __init__(self, driver: AsyncDriver) -> None:
         self.repo = Neo4jRepository(driver)
-        self.embedder = VoyageEmbedder()
-        self.reranker = CohereReranker()
+        self.embedder = LocalEmbedder()
+        self._reranker = None
+
+    @property
+    def reranker(self):
+        """Lazy-load reranker only if Cohere API key is configured."""
+        if self._reranker is None and settings.cohere_api_key:
+            from app.llm.reranker import CohereReranker
+
+            self._reranker = CohereReranker()
+        return self._reranker
 
     async def query(
         self,
@@ -62,9 +71,9 @@ class ChatService:
     ) -> ChatResponse:
         """Run the full RAG pipeline.
 
-        1. Embed query with Voyage AI
+        1. Embed query with local model
         2. Vector search on Chunk embeddings (Neo4j vector index)
-        3. Rerank with Cohere
+        3. Rerank with Cohere (if available) or use vector scores
         4. Fetch related KG entities from matching chunks
         5. Generate answer with LLM
 
@@ -93,26 +102,30 @@ class ChatService:
                 chunks_after_rerank=0,
             )
 
-        # Step 3: Rerank with Cohere
-        chunk_texts = [c["text"] for c in chunks]
-        reranked = await self.reranker.rerank(
-            query=query,
-            documents=chunk_texts,
-            top_n=rerank_top_n,
-            min_relevance=min_relevance,
-        )
-
-        if not reranked:
-            return ChatResponse(
-                answer="I found some content but it doesn't seem relevant enough to your question. "
-                "Try rephrasing or asking something more specific about the story.",
-                chunks_retrieved=len(chunks),
-                chunks_after_rerank=0,
+        # Step 3: Rerank or just take top-N by vector score
+        if self.reranker:
+            chunk_texts = [c["text"] for c in chunks]
+            reranked = await self.reranker.rerank(
+                query=query,
+                documents=chunk_texts,
+                top_n=rerank_top_n,
+                min_relevance=min_relevance,
             )
 
-        # Map reranked results back to full chunk data
-        top_chunks = [chunks[r.index] for r in reranked]
-        relevance_scores = [r.relevance_score for r in reranked]
+            if not reranked:
+                return ChatResponse(
+                    answer="I found some content but it doesn't seem relevant enough to your question. "
+                    "Try rephrasing or asking something more specific about the story.",
+                    chunks_retrieved=len(chunks),
+                    chunks_after_rerank=0,
+                )
+
+            top_chunks = [chunks[r.index] for r in reranked]
+            relevance_scores = [r.relevance_score for r in reranked]
+        else:
+            # No reranker — use top-N from vector search (already sorted by score)
+            top_chunks = chunks[:rerank_top_n]
+            relevance_scores = [c.get("score", 0.0) for c in top_chunks]
 
         # Step 4: Fetch related KG entities
         chapter_numbers = list({c["chapter_number"] for c in top_chunks})
@@ -141,7 +154,7 @@ class ChatService:
             book_id=book_id,
             query_len=len(query),
             chunks_retrieved=len(chunks),
-            chunks_after_rerank=len(reranked),
+            chunks_after_rerank=len(top_chunks),
             entities_found=len(related_entities),
         )
 
@@ -150,7 +163,7 @@ class ChatService:
             sources=sources,
             related_entities=related_entities,
             chunks_retrieved=len(chunks),
-            chunks_after_rerank=len(reranked),
+            chunks_after_rerank=len(top_chunks),
         )
 
     async def _vector_search(
@@ -164,10 +177,10 @@ class ChatService:
             """
             CALL db.index.vector.queryNodes('chunk_embedding', $top_k, $embedding)
             YIELD node AS chunk, score
-            WHERE chunk.book_id = $book_id
-            MATCH (chap:Chapter {book_id: $book_id, number: chunk.chapter_number})
+            MATCH (chap:Chapter)-[:HAS_CHUNK]->(chunk)
+            WHERE chap.book_id = $book_id
             RETURN chunk.text AS text,
-                   chunk.chapter_number AS chapter_number,
+                   chap.number AS chapter_number,
                    chap.title AS chapter_title,
                    chunk.position AS position,
                    score
@@ -246,19 +259,13 @@ class ChatService:
 
     @retry_llm_call(max_attempts=2)
     async def _generate_answer(self, query: str, context: str) -> str:
-        """Generate an answer using the chat LLM."""
-        from app.config import settings
+        """Generate an answer using the configured chat LLM via LangChain."""
+        from langchain_core.messages import HumanMessage, SystemMessage
 
-        provider, model = settings.parse_llm_spec(settings.llm_chat)
-
-        client = get_openai_client()
-        response = await client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user", "content": f"{context}\n\n---\n\nQuestion: {query}"},
-            ],
-            temperature=0.3,
-            max_tokens=1500,
-        )
-        return response.choices[0].message.content or "I wasn't able to generate an answer."
+        llm = get_langchain_llm(settings.llm_chat)
+        messages = [
+            SystemMessage(content=_SYSTEM_PROMPT),
+            HumanMessage(content=f"{context}\n\n---\n\nQuestion: {query}"),
+        ]
+        response = await llm.ainvoke(messages)
+        return response.content or "I wasn't able to generate an answer."

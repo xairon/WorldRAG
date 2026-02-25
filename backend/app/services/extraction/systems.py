@@ -7,11 +7,7 @@ narrative context.
 
 from __future__ import annotations
 
-import asyncio
-from functools import partial
 from typing import TYPE_CHECKING, Any
-
-import langextract as lx
 
 from app.config import settings
 from app.core.logging import get_logger
@@ -25,6 +21,7 @@ from app.schemas.extraction import (
     GroundedEntity,
     SystemExtractionResult,
 )
+from app.services.extraction.retry import extract_with_retry
 
 if TYPE_CHECKING:
     from app.agents.state import ExtractionPipelineState
@@ -82,18 +79,17 @@ async def extract_systems(state: ExtractionPipelineState) -> dict[str, Any]:
     try:
         prompt = _build_enriched_prompt(state)
 
-        result = await asyncio.to_thread(
-            partial(
-                lx.extract,
-                text_or_documents=chapter_text,
-                prompt_description=prompt,
-                examples=FEW_SHOT_EXAMPLES,
-                model_id=settings.langextract_model,
-                api_key=settings.gemini_api_key or None,
-                extraction_passes=settings.langextract_passes,
-                max_workers=min(settings.langextract_max_workers, 10),
-                show_progress=False,
-            )
+        result = await extract_with_retry(
+            text_or_documents=chapter_text,
+            prompt_description=prompt,
+            examples=FEW_SHOT_EXAMPLES,
+            model_id=settings.langextract_model,
+            api_key=settings.gemini_api_key or None,
+            extraction_passes=settings.langextract_passes,
+            max_workers=min(settings.langextract_max_workers, 10),
+            pass_name=PASS_NAME,
+            book_id=book_id,
+            chapter=chapter_number,
         )
 
         # Parse LangExtract output
