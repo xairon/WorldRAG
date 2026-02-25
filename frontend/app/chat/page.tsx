@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Send, Bot, User, Loader2, Info } from "lucide-react";
-import { listBooks } from "@/lib/api";
-import type { BookInfo } from "@/lib/api";
+import { Send, Bot, User, Loader2, Info, BookOpen } from "lucide-react";
+import { listBooks, chatQuery } from "@/lib/api";
+import type { BookInfo, SourceChunk, RelatedEntity } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 interface Message {
@@ -11,6 +11,8 @@ interface Message {
   role: "user" | "assistant" | "system";
   content: string;
   timestamp: Date;
+  sources?: SourceChunk[];
+  relatedEntities?: RelatedEntity[];
 }
 
 export default function ChatPage() {
@@ -27,23 +29,32 @@ export default function ChatPage() {
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [expandedSources, setExpandedSources] = useState<Set<string>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
     listBooks().then(setBooks).catch((err) => console.error("Failed to load books:", err));
   }, []);
 
-  // Cleanup timeout on unmount
-  useEffect(() => () => clearTimeout(timerRef.current), []);
-
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  function toggleSources(msgId: string) {
+    setExpandedSources((prev) => {
+      const next = new Set(prev);
+      if (next.has(msgId)) {
+        next.delete(msgId);
+      } else {
+        next.add(msgId);
+      }
+      return next;
+    });
+  }
+
   async function handleSend(e: React.FormEvent) {
     e.preventDefault();
-    if (!input.trim() || loading) return;
+    if (!input.trim() || loading || !bookId) return;
 
     const userMsg: Message = {
       id: crypto.randomUUID(),
@@ -55,18 +66,28 @@ export default function ChatPage() {
     setInput("");
     setLoading(true);
 
-    // Placeholder: in the future this will call the RAG query API
-    // For now, show a helpful message about the feature
-    timerRef.current = setTimeout(() => {
+    try {
+      const response = await chatQuery(userMsg.content, bookId);
       const assistantMsg: Message = {
         id: crypto.randomUUID(),
         role: "assistant",
-        content: getPlaceholderResponse(userMsg.content, bookId),
+        content: response.answer,
         timestamp: new Date(),
+        sources: response.sources,
+        relatedEntities: response.related_entities,
       };
       setMessages((prev) => [...prev, assistantMsg]);
+    } catch (err) {
+      const errorMsg: Message = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: `Sorry, I encountered an error: ${err instanceof Error ? err.message : "Unknown error"}. Please try again.`,
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, errorMsg]);
+    } finally {
       setLoading(false);
-    }, 800);
+    }
   }
 
   return (
@@ -97,43 +118,92 @@ export default function ChatPage() {
       {/* Messages */}
       <div className="flex-1 overflow-y-auto py-6 space-y-4" role="log" aria-live="polite">
         {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={cn(
-              "flex gap-3 max-w-3xl",
-              msg.role === "user" ? "ml-auto flex-row-reverse" : ""
+          <div key={msg.id}>
+            <div
+              className={cn(
+                "flex gap-3 max-w-3xl",
+                msg.role === "user" ? "ml-auto flex-row-reverse" : ""
+              )}
+            >
+              <div
+                className={cn(
+                  "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
+                  msg.role === "user"
+                    ? "bg-indigo-600"
+                    : msg.role === "assistant"
+                      ? "bg-slate-800 border border-slate-700"
+                      : "bg-slate-800/50 border border-slate-700"
+                )}
+              >
+                {msg.role === "user" ? (
+                  <User className="h-4 w-4" />
+                ) : msg.role === "assistant" ? (
+                  <Bot className="h-4 w-4 text-indigo-400" />
+                ) : (
+                  <Info className="h-4 w-4 text-slate-500" />
+                )}
+              </div>
+              <div
+                className={cn(
+                  "rounded-xl px-4 py-3 text-sm leading-relaxed",
+                  msg.role === "user"
+                    ? "bg-indigo-600/20 border border-indigo-500/20 text-slate-200"
+                    : msg.role === "assistant"
+                      ? "bg-slate-800/50 border border-slate-700 text-slate-300"
+                      : "bg-slate-900/50 border border-slate-800 text-slate-500 italic"
+                )}
+              >
+                <div className="whitespace-pre-wrap">{msg.content}</div>
+
+                {/* Sources toggle */}
+                {msg.sources && msg.sources.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => toggleSources(msg.id)}
+                    className="mt-2 flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
+                  >
+                    <BookOpen className="h-3 w-3" />
+                    {expandedSources.has(msg.id) ? "Hide" : "Show"} {msg.sources.length} source{msg.sources.length > 1 ? "s" : ""}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Expanded sources */}
+            {msg.sources && expandedSources.has(msg.id) && (
+              <div className="ml-11 mt-2 space-y-2 max-w-3xl">
+                {msg.sources.map((src, i) => (
+                  <div
+                    key={i}
+                    className="rounded-lg bg-slate-900/50 border border-slate-800 px-3 py-2 text-xs"
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-indigo-400 font-medium">
+                        Chapter {src.chapter_number}
+                        {src.chapter_title ? ` — ${src.chapter_title}` : ""}
+                      </span>
+                      <span className="text-slate-600">
+                        relevance: {(src.relevance_score * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                    <p className="text-slate-500 line-clamp-3">{src.text}</p>
+                  </div>
+                ))}
+
+                {/* Related entities */}
+                {msg.relatedEntities && msg.relatedEntities.length > 0 && (
+                  <div className="rounded-lg bg-slate-900/50 border border-slate-800 px-3 py-2 text-xs">
+                    <span className="text-slate-500 font-medium">Related entities: </span>
+                    {msg.relatedEntities.map((e, i) => (
+                      <span key={i} className="inline-block mr-2">
+                        <span className="text-indigo-400">{e.name}</span>
+                        <span className="text-slate-600"> ({e.label})</span>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
-          >
-            <div
-              className={cn(
-                "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
-                msg.role === "user"
-                  ? "bg-indigo-600"
-                  : msg.role === "assistant"
-                    ? "bg-slate-800 border border-slate-700"
-                    : "bg-slate-800/50 border border-slate-700"
-              )}
-            >
-              {msg.role === "user" ? (
-                <User className="h-4 w-4" />
-              ) : msg.role === "assistant" ? (
-                <Bot className="h-4 w-4 text-indigo-400" />
-              ) : (
-                <Info className="h-4 w-4 text-slate-500" />
-              )}
-            </div>
-            <div
-              className={cn(
-                "rounded-xl px-4 py-3 text-sm leading-relaxed",
-                msg.role === "user"
-                  ? "bg-indigo-600/20 border border-indigo-500/20 text-slate-200"
-                  : msg.role === "assistant"
-                    ? "bg-slate-800/50 border border-slate-700 text-slate-300"
-                    : "bg-slate-900/50 border border-slate-800 text-slate-500 italic"
-              )}
-            >
-              {msg.content}
-            </div>
           </div>
         ))}
 
@@ -143,7 +213,7 @@ export default function ChatPage() {
               <Loader2 className="h-4 w-4 animate-spin text-indigo-400" />
             </div>
             <div className="rounded-xl bg-slate-800/50 border border-slate-700 px-4 py-3 text-sm text-slate-500">
-              Thinking...
+              Searching Knowledge Graph...
             </div>
           </div>
         )}
@@ -178,49 +248,5 @@ export default function ChatPage() {
         </button>
       </form>
     </div>
-  );
-}
-
-/** Placeholder response until the RAG query pipeline is built (Phase 3). */
-function getPlaceholderResponse(query: string, bookId: string): string {
-  if (!bookId) {
-    return "Please select a book first to get answers grounded in the Knowledge Graph.";
-  }
-
-  const lower = query.toLowerCase();
-
-  if (lower.includes("character") || lower.includes("who")) {
-    return (
-      "The RAG query pipeline (Phase 3) is not yet connected. " +
-      "Once implemented, this will query the Neo4j Knowledge Graph to find characters " +
-      "matching your query, along with their skills, classes, and relationships. " +
-      "For now, use the Graph Explorer to browse characters visually!"
-    );
-  }
-
-  if (lower.includes("skill") || lower.includes("class") || lower.includes("level")) {
-    return (
-      "Great question about the progression system! " +
-      "The Chat interface will use hybrid retrieval (vector + graph) to find " +
-      "skills, classes, and level-ups from the KG. " +
-      "Try the Graph Explorer to see the current data."
-    );
-  }
-
-  if (lower.includes("event") || lower.includes("what happened") || lower.includes("battle")) {
-    return (
-      "Event queries will be powered by the timeline data in the Knowledge Graph. " +
-      "The RAG pipeline will combine event nodes, participant links, and source text " +
-      "to give you a grounded answer with chapter references."
-    );
-  }
-
-  return (
-    "The RAG query pipeline (Phase 3) is coming soon! It will use:\n" +
-    "1. Vector search (Voyage AI embeddings) for semantic matching\n" +
-    "2. Graph traversal (Neo4j) for structured relationships\n" +
-    "3. Reranking (Cohere) for relevance scoring\n" +
-    "4. LLM generation (GPT-4o) for natural language answers\n\n" +
-    "In the meantime, explore the Knowledge Graph visually using the Graph Explorer!"
   );
 }

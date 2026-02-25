@@ -188,3 +188,34 @@ export function getTimeline(bookId: string, significance?: string): Promise<Time
   const q = significance ? `?significance=${significance}` : "";
   return apiFetch(`/graph/timeline/${bookId}${q}`);
 }
+
+// ── Chat ────────────────────────────────────────────────────────────────────
+
+export interface SourceChunk {
+  text: string;
+  chapter_number: number;
+  chapter_title: string;
+  position: number;
+  relevance_score: number;
+}
+
+export interface RelatedEntity {
+  name: string;
+  label: string;
+  description: string;
+}
+
+export interface ChatResponse {
+  answer: string;
+  sources: SourceChunk[];
+  related_entities: RelatedEntity[];
+  chunks_retrieved: number;
+  chunks_after_rerank: number;
+}
+
+export function chatQuery(query: string, bookId: string): Promise<ChatResponse> {
+  return apiFetch("/chat/query", {
+    method: "POST",
+    body: JSON.stringify({ query, book_id: bookId }),
+  });
+}

@@ -1,0 +1,264 @@
+"""Chat/RAG query service.
+
+Implements the hybrid retrieval pipeline for answering user questions
+about novels grounded in the Knowledge Graph:
+
+    Vector search (Voyage AI) → Rerank (Cohere) → Graph context → LLM generate
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
+from app.core.logging import get_logger
+from app.core.resilience import retry_llm_call
+from app.llm.embeddings import VoyageEmbedder
+from app.llm.providers import get_openai_client
+from app.llm.reranker import CohereReranker
+from app.repositories.base import Neo4jRepository
+from app.schemas.chat import (
+    ChatResponse,
+    RelatedEntity,
+    SourceChunk,
+)
+
+if TYPE_CHECKING:
+    from neo4j import AsyncDriver
+
+logger = get_logger(__name__)
+
+# System prompt grounding the LLM on the retrieved context
+_SYSTEM_PROMPT = """\
+You are WorldRAG, an expert assistant for fiction novel universes.
+Answer the user's question using ONLY the provided context from the KG and source chunks.
+If the context doesn't contain enough information, say so honestly.
+
+Rules:
+- Ground every claim in the provided sources.
+- Reference chapters when possible (e.g., "In Chapter 5, ...").
+- Keep answers concise but thorough.
+- If asked about character progression (levels, skills, classes), be precise with numbers.
+- Never invent information not present in the context.
+"""
+
+
+class ChatService:
+    """Hybrid retrieval + generation service for novel Q&A."""
+
+    def __init__(self, driver: AsyncDriver) -> None:
+        self.repo = Neo4jRepository(driver)
+        self.embedder = VoyageEmbedder()
+        self.reranker = CohereReranker()
+
+    async def query(
+        self,
+        query: str,
+        book_id: str,
+        *,
+        top_k: int = 20,
+        rerank_top_n: int = 5,
+        min_relevance: float = 0.1,
+        include_sources: bool = True,
+    ) -> ChatResponse:
+        """Run the full RAG pipeline.
+
+        1. Embed query with Voyage AI
+        2. Vector search on Chunk embeddings (Neo4j vector index)
+        3. Rerank with Cohere
+        4. Fetch related KG entities from matching chunks
+        5. Generate answer with LLM
+
+        Args:
+            query: User question.
+            book_id: Book to scope the search to.
+            top_k: Number of chunks to retrieve from vector search.
+            rerank_top_n: Number of chunks to keep after reranking.
+            min_relevance: Minimum reranker relevance score.
+            include_sources: Whether to include source chunks in response.
+
+        Returns:
+            ChatResponse with answer, sources, and related entities.
+        """
+        # Step 1: Embed the query
+        query_embedding = await self.embedder.embed_query(query)
+
+        # Step 2: Vector search on chunks
+        chunks = await self._vector_search(query_embedding, book_id, top_k)
+
+        if not chunks:
+            return ChatResponse(
+                answer="I couldn't find any relevant content in this book for your question. "
+                "Make sure the book has been fully processed (extracted and embedded).",
+                chunks_retrieved=0,
+                chunks_after_rerank=0,
+            )
+
+        # Step 3: Rerank with Cohere
+        chunk_texts = [c["text"] for c in chunks]
+        reranked = await self.reranker.rerank(
+            query=query,
+            documents=chunk_texts,
+            top_n=rerank_top_n,
+            min_relevance=min_relevance,
+        )
+
+        if not reranked:
+            return ChatResponse(
+                answer="I found some content but it doesn't seem relevant enough to your question. "
+                "Try rephrasing or asking something more specific about the story.",
+                chunks_retrieved=len(chunks),
+                chunks_after_rerank=0,
+            )
+
+        # Map reranked results back to full chunk data
+        top_chunks = [chunks[r.index] for r in reranked]
+        relevance_scores = [r.relevance_score for r in reranked]
+
+        # Step 4: Fetch related KG entities
+        chapter_numbers = list({c["chapter_number"] for c in top_chunks})
+        related_entities = await self._fetch_related_entities(book_id, chapter_numbers)
+
+        # Step 5: Generate answer
+        context = self._build_context(top_chunks, relevance_scores, related_entities)
+        answer = await self._generate_answer(query, context)
+
+        # Build response
+        sources: list[SourceChunk] = []
+        if include_sources:
+            sources = [
+                SourceChunk(
+                    text=chunk["text"][:500],
+                    chapter_number=chunk["chapter_number"],
+                    chapter_title=chunk.get("chapter_title", ""),
+                    position=chunk.get("position", 0),
+                    relevance_score=score,
+                )
+                for chunk, score in zip(top_chunks, relevance_scores, strict=True)
+            ]
+
+        logger.info(
+            "chat_query_completed",
+            book_id=book_id,
+            query_len=len(query),
+            chunks_retrieved=len(chunks),
+            chunks_after_rerank=len(reranked),
+            entities_found=len(related_entities),
+        )
+
+        return ChatResponse(
+            answer=answer,
+            sources=sources,
+            related_entities=related_entities,
+            chunks_retrieved=len(chunks),
+            chunks_after_rerank=len(reranked),
+        )
+
+    async def _vector_search(
+        self,
+        query_embedding: list[float],
+        book_id: str,
+        top_k: int,
+    ) -> list[dict[str, Any]]:
+        """Search chunks by vector similarity using the Neo4j vector index."""
+        results = await self.repo.execute_read(
+            """
+            CALL db.index.vector.queryNodes('chunk_embedding', $top_k, $embedding)
+            YIELD node AS chunk, score
+            WHERE chunk.book_id = $book_id
+            MATCH (chap:Chapter {book_id: $book_id, number: chunk.chapter_number})
+            RETURN chunk.text AS text,
+                   chunk.chapter_number AS chapter_number,
+                   chap.title AS chapter_title,
+                   chunk.position AS position,
+                   score
+            ORDER BY score DESC
+            """,
+            {
+                "embedding": query_embedding,
+                "book_id": book_id,
+                "top_k": top_k,
+            },
+        )
+        return results
+
+    async def _fetch_related_entities(
+        self,
+        book_id: str,
+        chapter_numbers: list[int],
+    ) -> list[RelatedEntity]:
+        """Fetch KG entities grounded in the relevant chapters."""
+        if not chapter_numbers:
+            return []
+
+        results = await self.repo.execute_read(
+            """
+            MATCH (entity)-[:GROUNDED_IN]->(chap:Chapter)
+            WHERE chap.book_id = $book_id AND chap.number IN $chapters
+              AND NOT entity:Chunk AND NOT entity:Book AND NOT entity:Chapter
+            RETURN DISTINCT entity.name AS name,
+                   labels(entity)[0] AS label,
+                   entity.description AS description
+            ORDER BY label, name
+            LIMIT 30
+            """,
+            {"book_id": book_id, "chapters": chapter_numbers},
+        )
+
+        return [
+            RelatedEntity(
+                name=r["name"],
+                label=r["label"],
+                description=r.get("description") or "",
+            )
+            for r in results
+            if r.get("name")
+        ]
+
+    def _build_context(
+        self,
+        chunks: list[dict[str, Any]],
+        scores: list[float],
+        entities: list[RelatedEntity],
+    ) -> str:
+        """Build the context string for LLM generation."""
+        parts: list[str] = []
+
+        # Source chunks
+        parts.append("## Source Passages\n")
+        for i, (chunk, score) in enumerate(zip(chunks, scores, strict=True), 1):
+            chapter = chunk.get("chapter_number", "?")
+            title = chunk.get("chapter_title", "")
+            header = f"Chapter {chapter}"
+            if title:
+                header += f" — {title}"
+            parts.append(f"### [{i}] {header} (relevance: {score:.2f})")
+            parts.append(chunk["text"])
+            parts.append("")
+
+        # Related KG entities
+        if entities:
+            parts.append("\n## Related Knowledge Graph Entities\n")
+            for e in entities:
+                desc = f": {e.description}" if e.description else ""
+                parts.append(f"- **{e.name}** ({e.label}){desc}")
+
+        return "\n".join(parts)
+
+    @retry_llm_call(max_attempts=2)
+    async def _generate_answer(self, query: str, context: str) -> str:
+        """Generate an answer using the chat LLM."""
+        from app.config import settings
+
+        provider, model = settings.parse_llm_spec(settings.llm_chat)
+
+        client = get_openai_client()
+        response = await client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": _SYSTEM_PROMPT},
+                {"role": "user", "content": f"{context}\n\n---\n\nQuestion: {query}"},
+            ],
+            temperature=0.3,
+            max_tokens=1500,
+        )
+        return response.choices[0].message.content or "I wasn't able to generate an answer."
