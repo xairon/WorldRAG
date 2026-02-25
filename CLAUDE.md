@@ -159,6 +159,7 @@ Embed (arq worker — async)
 - alias_map normalization (stat_changes.character, skill/class/title names, all lore entities)
 - Frontend: books management, D3 force graph explorer, chat placeholder
 - Docker Compose (Neo4j, Redis, PostgreSQL, LangFuse)
+- Dockerfile for app containerization (multi-stage build, backend + worker services)
 - 211 tests passing (golden dataset, unit, integration)
 
 ### 🔴 Not Yet Implemented
@@ -166,4 +167,3 @@ Embed (arq worker — async)
 - Chat + Reader LangGraph agents
 - Functional chat frontend (currently placeholder)
 - LangGraph PostgreSQL checkpointing
-- Dockerfile for app containerization
