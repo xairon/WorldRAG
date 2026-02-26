@@ -13,6 +13,7 @@ This is the main entry point called by the book processing pipeline.
 from __future__ import annotations
 
 import asyncio
+import uuid
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
@@ -127,7 +128,54 @@ async def build_chapter_graph(
     entity_repo = EntityRepository(driver)
     counts = await entity_repo.upsert_extraction_result(extraction_result)
 
-    # 5. Update chapter status
+    # 5b. V3: BlueBox grouping
+    try:
+        from app.services.extraction.bluebox import group_blue_boxes
+
+        paragraphs = await book_repo.get_paragraphs(book_id, chapter_number)
+        if paragraphs:
+            blue_boxes = group_blue_boxes(paragraphs)
+            if blue_boxes:
+                bb_count = await entity_repo.upsert_blue_boxes(
+                    book_id, chapter_number, blue_boxes, str(uuid.uuid4())
+                )
+                counts["blue_boxes"] = bb_count
+    except Exception:
+        logger.warning(
+            "bluebox_grouping_failed",
+            book_id=book_id,
+            chapter=chapter_number,
+            exc_info=True,
+        )
+
+    # 5c. V3: Provenance extraction (only if skills were found)
+    if extraction_result.systems.skills:
+        try:
+            from app.services.extraction.provenance import extract_provenance
+
+            skills_acquired = [s.name for s in extraction_result.systems.skills]
+            chapter_entities = {
+                "items": [i.name for i in extraction_result.lore.items],
+                "classes": [c.name for c in extraction_result.systems.classes],
+                "bloodlines": [],
+            }
+            prov_result = await extract_provenance(
+                chapter.text, skills_acquired, chapter_entities
+            )
+            if prov_result.provenances:
+                grants_count = await entity_repo.upsert_grants_relations(
+                    prov_result.provenances, str(uuid.uuid4())
+                )
+                counts["grants"] = grants_count
+        except Exception:
+            logger.warning(
+                "provenance_extraction_failed",
+                book_id=book_id,
+                chapter=chapter_number,
+                exc_info=True,
+            )
+
+    # 6. Update chapter status
     await book_repo.update_chapter_status(
         book_id,
         chapter_number,
