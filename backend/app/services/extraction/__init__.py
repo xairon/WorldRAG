@@ -1,13 +1,14 @@
 """Extraction pipeline orchestrator — LangGraph StateGraph.
 
 Builds and compiles the extraction graph that processes each chapter
-through 4 parallel extraction passes + reconciliation:
+through 4 parallel extraction passes + mention detection + reconciliation:
 
-  Route → [Pass 1-4 parallel] → Merge → Reconcile → END
+  Route → [Pass 1-4 parallel] → Merge → MentionDetect → Reconcile → END
 
 The router decides which passes to run based on keyword analysis.
 Passes run in parallel via LangGraph's Send mechanism.
-The merge node combines results and the reconcile node deduplicates.
+The merge node combines results, the mention_detect node finds additional
+entity mentions by name/alias matching, and the reconcile node deduplicates.
 
 Usage:
     graph = build_extraction_graph()
@@ -111,6 +112,135 @@ async def merge_results(state: ExtractionPipelineState) -> dict[str, Any]:
     }
 
 
+# ── Mention detection node ─────────────────────────────────────────────
+
+
+def _collect_entities_from_state(state: ExtractionPipelineState) -> list[dict]:
+    """Collect all extracted entities from the pipeline state into a flat list for mention detection."""
+    entities: list[dict] = []
+
+    characters = state.get("characters")
+    if characters:
+        for c in characters.characters:
+            entities.append({
+                "canonical_name": c.canonical_name or c.name,
+                "name": c.name,
+                "entity_type": "character",
+                "aliases": c.aliases,
+            })
+
+    systems = state.get("systems")
+    if systems:
+        for s in systems.skills:
+            entities.append({
+                "canonical_name": s.name,
+                "name": s.name,
+                "entity_type": "skill",
+                "aliases": [],
+            })
+        for c in systems.classes:
+            entities.append({
+                "canonical_name": c.name,
+                "name": c.name,
+                "entity_type": "class",
+                "aliases": [],
+            })
+        for t in systems.titles:
+            entities.append({
+                "canonical_name": t.name,
+                "name": t.name,
+                "entity_type": "title",
+                "aliases": [],
+            })
+
+    lore = state.get("lore")
+    if lore:
+        for loc in lore.locations:
+            entities.append({
+                "canonical_name": loc.name,
+                "name": loc.name,
+                "entity_type": "location",
+                "aliases": [],
+            })
+        for item in lore.items:
+            entities.append({
+                "canonical_name": item.name,
+                "name": item.name,
+                "entity_type": "item",
+                "aliases": [],
+            })
+        for cr in lore.creatures:
+            entities.append({
+                "canonical_name": cr.name,
+                "name": cr.name,
+                "entity_type": "creature",
+                "aliases": [],
+            })
+        for f in lore.factions:
+            entities.append({
+                "canonical_name": f.name,
+                "name": f.name,
+                "entity_type": "faction",
+                "aliases": [],
+            })
+        for co in lore.concepts:
+            entities.append({
+                "canonical_name": co.name,
+                "name": co.name,
+                "entity_type": "concept",
+                "aliases": [],
+            })
+
+    return entities
+
+
+async def mention_detect_node(state: ExtractionPipelineState) -> dict[str, Any]:
+    """LangGraph node: Run programmatic mention detection + optional coreference.
+
+    After LangExtract passes, find additional entity mentions by name/alias
+    matching in chapter text. Optionally resolve pronouns via LLM.
+    """
+    from app.services.extraction.mention_detector import detect_mentions
+
+    chapter_text = state.get("chapter_text", "")
+    book_id = state.get("book_id", "")
+    chapter_number = state.get("chapter_number", 0)
+
+    # Collect all extracted entity names from all passes
+    entity_list = _collect_entities_from_state(state)
+
+    if not entity_list:
+        return {"passes_completed": ["mention_detect"], "errors": []}
+
+    try:
+        # Pass 5a: Programmatic mention detection (free)
+        mentions = detect_mentions(chapter_text, entity_list)
+
+        logger.info(
+            "mention_detect_completed",
+            book_id=book_id,
+            chapter=chapter_number,
+            programmatic_mentions=len(mentions),
+        )
+
+        return {
+            "grounded_entities": mentions,
+            "passes_completed": ["mention_detect"],
+            "errors": [],
+        }
+    except Exception as e:
+        logger.exception(
+            "mention_detect_failed",
+            book_id=book_id,
+            chapter=chapter_number,
+        )
+        return {
+            "grounded_entities": [],
+            "passes_completed": [],
+            "errors": [{"pass": "mention_detect", "error": str(e)}],
+        }
+
+
 # ── Reconcile node ─────────────────────────────────────────────────────
 
 
@@ -196,11 +326,12 @@ def build_extraction_graph() -> StateGraph:
     """Build and compile the extraction pipeline LangGraph.
 
     Graph structure:
-        START → route → [characters | systems | events | lore] → merge → reconcile → END
+        START → route → [characters | systems | events | lore] → merge → mention_detect → reconcile → END
 
     The route node decides which passes to run.
     Selected passes execute in parallel via Send.
     The merge node combines all results.
+    The mention_detect node finds additional entity mentions by name/alias matching.
     The reconcile node deduplicates entities (3-tier dedup).
 
     Returns:
@@ -215,6 +346,7 @@ def build_extraction_graph() -> StateGraph:
     builder.add_node("events", extract_events)
     builder.add_node("lore", extract_lore)
     builder.add_node("merge", merge_results)
+    builder.add_node("mention_detect", mention_detect_node)
     builder.add_node("reconcile", reconcile_in_graph)
 
     # ── Edges ──
@@ -230,8 +362,9 @@ def build_extraction_graph() -> StateGraph:
     builder.add_edge("events", "merge")
     builder.add_edge("lore", "merge")
 
-    # merge → reconcile → END
-    builder.add_edge("merge", "reconcile")
+    # merge → mention_detect → reconcile → END
+    builder.add_edge("merge", "mention_detect")
+    builder.add_edge("mention_detect", "reconcile")
     builder.add_edge("reconcile", END)
 
     graph = builder.compile()
