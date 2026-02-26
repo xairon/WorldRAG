@@ -130,6 +130,16 @@ class BookInfo(BaseModel):
     total_cost_usd: float = 0.0
 
 
+class SeriesInfo(BaseModel):
+    """Series information for API responses."""
+
+    name: str
+    author: str | None = None
+    genre: str = "litrpg"
+    book_count: int = 0
+    books: list[BookInfo] = Field(default_factory=list)
+
+
 class ChapterInfo(BaseModel):
     """Chapter information for API responses."""
 

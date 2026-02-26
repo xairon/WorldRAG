@@ -486,6 +486,37 @@ class BookRepository(Neo4jRepository):
         )
         return {row["number"]: row["regex_json"] for row in results if row.get("regex_json")}
 
+    # --- Series operations ---
+
+    async def get_series(self, series_name: str) -> dict[str, Any] | None:
+        """Get series info by name."""
+        result = await self.execute_read(
+            """
+            MATCH (s:Series {name: $name})
+            OPTIONAL MATCH (s)-[r:CONTAINS_WORK]->(b:Book)
+            WITH s, b ORDER BY r.position
+            RETURN s.name AS name, s.author AS author, s.genre AS genre,
+                   collect({
+                       id: b.id, title: b.title, status: b.status,
+                       order_in_series: r.position, total_chapters: b.total_chapters
+                   }) AS books
+            """,
+            {"name": series_name},
+        )
+        return result[0] if result else None
+
+    async def list_series(self) -> list[dict[str, Any]]:
+        """List all series."""
+        return await self.execute_read(
+            """
+            MATCH (s:Series)
+            OPTIONAL MATCH (s)-[:CONTAINS_WORK]->(b:Book)
+            RETURN s.name AS name, s.author AS author, s.genre AS genre,
+                   count(b) AS book_count
+            ORDER BY s.name
+            """
+        )
+
     # --- Stats ---
 
     async def get_book_stats(self, book_id: str) -> dict[str, Any]:
