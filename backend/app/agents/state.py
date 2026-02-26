@@ -36,6 +36,9 @@ class ExtractionPipelineState(TypedDict, total=False):
         regex_matches_json: Pre-extracted regex matches (Passe 0) as JSON.
         genre: Book genre for ontology selection.
         series_name: Series name for series-specific ontology.
+        series_entities: Known entities from other books in the same series
+            (for cross-book dedup). Each dict has name, canonical_name,
+            entity_types, aliases, description.
 
         characters: Result from Pass 1.
         systems: Result from Pass 2.
@@ -59,6 +62,9 @@ class ExtractionPipelineState(TypedDict, total=False):
     regex_matches_json: str
     genre: str
     series_name: str
+
+    # -- Cross-book context (loaded from previous books in series) --
+    series_entities: list[dict[str, Any]]
 
     # -- Pass results (set by each extraction node) --
     characters: CharacterExtractionResult

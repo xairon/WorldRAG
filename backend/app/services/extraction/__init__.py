@@ -260,6 +260,15 @@ async def reconcile_in_graph(state: ExtractionPipelineState) -> dict[str, Any]:
 
     book_id = state.get("book_id", "")
     chapter_number = state.get("chapter_number", 0)
+    series_entities = state.get("series_entities", [])
+
+    if series_entities:
+        logger.info(
+            "cross_book_context_available",
+            book_id=book_id,
+            chapter=chapter_number,
+            series_entity_count=len(series_entities),
+        )
 
     # Build temporary result from state for reconciliation
     temp_result = ChapterExtractionResult(
@@ -387,6 +396,7 @@ async def extract_chapter(
     genre: str = "litrpg",
     series_name: str = "",
     regex_matches_json: str = "[]",
+    series_entities: list[dict] | None = None,
 ) -> ChapterExtractionResult:
     """Extract all entities from a single chapter.
 
@@ -400,6 +410,9 @@ async def extract_chapter(
         genre: Book genre for ontology selection.
         series_name: Series name for series-specific patterns.
         regex_matches_json: Pre-extracted regex matches JSON (Passe 0).
+        series_entities: Known entities from other books in the same series
+            (for cross-book entity resolution). Each dict should have name,
+            canonical_name, entity_types, aliases, description.
 
     Returns:
         ChapterExtractionResult with all extracted entities.
@@ -412,6 +425,7 @@ async def extract_chapter(
         "regex_matches_json": regex_matches_json,
         "genre": genre,
         "series_name": series_name,
+        "series_entities": series_entities or [],
         "grounded_entities": [],
         "passes_to_run": [],
         "passes_completed": [],

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from app.core.logging import get_logger
 from app.repositories.base import Neo4jRepository
@@ -894,6 +894,55 @@ class EntityRepository(Neo4jRepository):
             labels=list(by_label.keys()),
         )
         return linked
+
+    # ── Cross-book entity queries ────────────────────────────────────────
+
+    async def get_series_entities(
+        self,
+        series_name: str,
+        exclude_book_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Get all entities from books in a series (for cross-book dedup).
+
+        Returns entity names, types, and aliases for reconciliation context.
+        Used when processing Book N to load known entities from Books 1..N-1.
+
+        Args:
+            series_name: Name of the series to query.
+            exclude_book_id: Optional book ID to exclude (current book).
+
+        Returns:
+            List of dicts with name, canonical_name, entity_types, aliases,
+            and description for each entity in the series.
+        """
+        query = """
+        MATCH (s:Series {name: $series_name})-[:CONTAINS_WORK]->(b:Book)
+        WHERE ($exclude_book_id IS NULL OR b.id <> $exclude_book_id)
+        WITH b
+        MATCH (entity)-[:MENTIONED_IN|GROUNDED_IN]->(c:Chapter {book_id: b.id})
+        WITH DISTINCT entity, labels(entity) AS labels
+        RETURN entity.name AS name,
+               entity.canonical_name AS canonical_name,
+               [l IN labels WHERE l IN [
+                   'Character','Skill','Class','Title','Event',
+                   'Location','Item','Creature','Faction','Concept'
+               ]] AS entity_types,
+               entity.aliases AS aliases,
+               entity.description AS description
+        ORDER BY entity.name
+        """
+        results = await self.execute_read(
+            query,
+            {"series_name": series_name, "exclude_book_id": exclude_book_id},
+        )
+
+        logger.info(
+            "series_entities_loaded",
+            series_name=series_name,
+            exclude_book_id=exclude_book_id,
+            entity_count=len(results),
+        )
+        return results
 
     # ── Bulk upsert from extraction result ─────────────────────────────
 
