@@ -58,6 +58,10 @@ FOR (cr:Creature) REQUIRE cr.name IS UNIQUE;
 CREATE CONSTRAINT event_unique IF NOT EXISTS
 FOR (e:Event) REQUIRE (e.name, e.chapter_start) IS UNIQUE;
 
+// Paragraphs — composite on book_id + chapter_number + index
+CREATE CONSTRAINT paragraph_unique IF NOT EXISTS
+FOR (p:Paragraph) REQUIRE (p.book_id, p.chapter_number, p.index) IS UNIQUE;
+
 // === NODE PROPERTY INDEXES ===
 
 CREATE INDEX character_name IF NOT EXISTS
@@ -92,6 +96,12 @@ FOR (c:Class) ON (c.name);
 
 CREATE INDEX item_name IF NOT EXISTS
 FOR (i:Item) ON (i.name);
+
+CREATE INDEX paragraph_type IF NOT EXISTS
+FOR (p:Paragraph) ON (p.type);
+
+CREATE INDEX paragraph_chapter IF NOT EXISTS
+FOR (p:Paragraph) ON (p.chapter_number);
 
 // Additional property indexes for common query patterns
 CREATE INDEX character_role IF NOT EXISTS
@@ -222,6 +232,12 @@ FOR ()-[r:MEMBER_OF]-() ON (r.valid_from_chapter);
 
 CREATE INDEX rel_grounded_in IF NOT EXISTS
 FOR ()-[r:GROUNDED_IN]-() ON (r.char_offset_start);
+
+CREATE INDEX rel_mentioned_in IF NOT EXISTS
+FOR ()-[r:MENTIONED_IN]-() ON (r.char_start);
+
+CREATE INDEX rel_mentioned_in_type IF NOT EXISTS
+FOR ()-[r:MENTIONED_IN]-() ON (r.mention_type);
 
 // === VERIFICATION ===
 // Run this to verify all constraints and indexes are created:

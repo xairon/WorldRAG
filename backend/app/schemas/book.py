@@ -44,12 +44,41 @@ class BookUpload(BaseModel):
 # --- Internal schemas ---
 
 
+class ParagraphType(StrEnum):
+    """Type of paragraph within a chapter."""
+
+    NARRATION = "narration"
+    DIALOGUE = "dialogue"
+    BLUE_BOX = "blue_box"
+    SCENE_BREAK = "scene_break"
+    HEADER = "header"
+
+
+class ParagraphData(BaseModel):
+    """A paragraph within a chapter, classified by type."""
+
+    index: int
+    type: ParagraphType
+    text: str
+    html: str = ""
+    char_start: int
+    char_end: int
+    speaker: str | None = None
+    sentence_count: int = 0
+    word_count: int = 0
+
+    def model_post_init(self, _context: object) -> None:
+        if not self.word_count and self.text:
+            self.word_count = len(self.text.split())
+
+
 class ChapterData(BaseModel):
     """Parsed chapter data from ingestion."""
 
     number: int = Field(..., ge=1)
     title: str = ""
     text: str
+    paragraphs: list[ParagraphData] = Field(default_factory=list)
     word_count: int = 0
     start_offset: int = 0  # character offset in original file
 
