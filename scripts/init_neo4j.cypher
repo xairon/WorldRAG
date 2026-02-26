@@ -230,8 +230,10 @@ FOR ()-[r:RELATES_TO]-() ON (r.valid_from_chapter);
 CREATE INDEX rel_member_of_temporal IF NOT EXISTS
 FOR ()-[r:MEMBER_OF]-() ON (r.valid_from_chapter);
 
-CREATE INDEX rel_grounded_in IF NOT EXISTS
-FOR ()-[r:GROUNDED_IN]-() ON (r.char_offset_start);
+// DEPRECATED in V2: GROUNDED_IN relationships replaced by MENTIONED_IN.
+// The GROUNDED_IN index is no longer needed for the current pipeline.
+// CREATE INDEX rel_grounded_in IF NOT EXISTS
+// FOR ()-[r:GROUNDED_IN]-() ON (r.char_offset_start);
 
 CREATE INDEX rel_mentioned_in IF NOT EXISTS
 FOR ()-[r:MENTIONED_IN]-() ON (r.char_start);

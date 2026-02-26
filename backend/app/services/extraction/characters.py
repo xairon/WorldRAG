@@ -17,6 +17,7 @@ from app.schemas.extraction import (
     ExtractedRelationship,
     GroundedEntity,
 )
+from app.services.extraction.alignment import alignment_label, check_alignment
 from app.services.extraction.retry import extract_with_retry
 
 if TYPE_CHECKING:
@@ -113,21 +114,9 @@ async def extract_characters(state: ExtractionPipelineState) -> dict[str, Any]:
 
             # Build grounding for every entity
             if entity.char_interval:
-                # Check alignment quality from LangExtract
-                alignment = getattr(entity, "alignment_status", None)
-                alignment_str = str(alignment).lower() if alignment else "exact"
-
-                # Skip UNALIGNED entities — spans are unreliable
-                if "unaligned" in alignment_str:
-                    logger.debug(
-                        "skipping_unaligned_entity",
-                        entity=entity.extraction_text,
-                        pass_name=PASS_NAME,
-                    )
+                should_skip, confidence = check_alignment(entity, logger)
+                if should_skip:
                     continue
-
-                # Set confidence based on alignment quality
-                confidence = 0.7 if "fuzzy" in alignment_str else 1.0
 
                 grounded.append(
                     GroundedEntity(
@@ -138,7 +127,7 @@ async def extract_characters(state: ExtractionPipelineState) -> dict[str, Any]:
                         char_offset_end=entity.char_interval.end_pos,
                         attributes=attrs,
                         pass_name=PASS_NAME,
-                        alignment_status="fuzzy" if "fuzzy" in alignment_str else "exact",
+                        alignment_status=alignment_label(entity),
                         confidence=confidence,
                     )
                 )

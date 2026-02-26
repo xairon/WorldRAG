@@ -1,14 +1,16 @@
 """Extraction pipeline orchestrator — LangGraph StateGraph.
 
 Builds and compiles the extraction graph that processes each chapter
-through 4 parallel extraction passes + mention detection + reconciliation:
+through 4 parallel extraction passes + mention detection + reconciliation
++ narrative analysis:
 
-  Route → [Pass 1-4 parallel] → Merge → MentionDetect → Reconcile → END
+  Route → [Pass 1-4 parallel] → Merge → MentionDetect → [Reconcile, Narrative] → END
 
 The router decides which passes to run based on keyword analysis.
 Passes run in parallel via LangGraph's Send mechanism.
 The merge node combines results, the mention_detect node finds additional
-entity mentions by name/alias matching, and the reconcile node deduplicates.
+entity mentions by name/alias matching, the reconcile node deduplicates,
+and the narrative node detects higher-order narrative structures.
 
 Usage:
     graph = build_extraction_graph()
@@ -223,8 +225,31 @@ async def mention_detect_node(state: ExtractionPipelineState) -> dict[str, Any]:
             programmatic_mentions=len(mentions),
         )
 
+        # Pass 5b: LLM-based coreference resolution (optional, non-critical)
+        coref_grounded: list = []
+        try:
+            from app.services.extraction.coreference import resolve_coreferences
+
+            coref_grounded = await resolve_coreferences(chapter_text, entity_list)
+            logger.info(
+                "coreference_resolved",
+                book_id=book_id,
+                chapter=chapter_number,
+                pronouns_resolved=len(coref_grounded),
+            )
+        except Exception:
+            logger.warning(
+                "coreference_skipped",
+                book_id=book_id,
+                chapter=chapter_number,
+                reason="coreference resolution failed (non-critical)",
+                exc_info=True,
+            )
+
+        all_grounded = mentions + coref_grounded
+
         return {
-            "grounded_entities": mentions,
+            "grounded_entities": all_grounded,
             "passes_completed": ["mention_detect"],
             "errors": [],
         }
@@ -304,6 +329,59 @@ async def reconcile_in_graph(state: ExtractionPipelineState) -> dict[str, Any]:
     }
 
 
+# ── Narrative analysis node ────────────────────────────────────────────
+
+
+async def narrative_node(state: ExtractionPipelineState) -> dict[str, Any]:
+    """LangGraph node: Run narrative analysis (character arcs, themes, foreshadowing).
+
+    Non-critical pass — failures are logged as warnings and return empty dict.
+    Runs in parallel with reconcile after mention_detect.
+
+    Args:
+        state: ExtractionPipelineState after mention_detect.
+
+    Returns:
+        State update with narrative_analysis dict.
+    """
+    from app.services.extraction.narrative import analyze_narrative
+
+    book_id = state.get("book_id", "")
+    chapter_number = state.get("chapter_number", 0)
+    chapter_text = state.get("chapter_text", "")
+
+    try:
+        entities = _collect_entities_from_state(state)
+        result = await analyze_narrative(chapter_text, entities)
+
+        logger.info(
+            "narrative_analysis_completed",
+            book_id=book_id,
+            chapter=chapter_number,
+            character_developments=len(result.character_developments),
+            power_changes=len(result.power_changes),
+            foreshadowing=len(result.foreshadowing_hints),
+            themes=len(result.themes),
+        )
+
+        return {
+            "narrative_analysis": result.model_dump(),
+            "passes_completed": ["narrative"],
+        }
+    except Exception:
+        logger.warning(
+            "narrative_analysis_skipped",
+            book_id=book_id,
+            chapter=chapter_number,
+            reason="narrative analysis failed (non-critical)",
+            exc_info=True,
+        )
+        return {
+            "narrative_analysis": {},
+            "passes_completed": [],
+        }
+
+
 # ── Fan-out routing ─────────────────────────────────────────────────────
 
 
@@ -335,13 +413,15 @@ def build_extraction_graph() -> StateGraph:
     """Build and compile the extraction pipeline LangGraph.
 
     Graph structure:
-        START → route → [characters | systems | events | lore] → merge → mention_detect → reconcile → END
+        START → route → [characters | systems | events | lore] → merge
+          → mention_detect → [reconcile, narrative] → END
 
     The route node decides which passes to run.
     Selected passes execute in parallel via Send.
     The merge node combines all results.
     The mention_detect node finds additional entity mentions by name/alias matching.
     The reconcile node deduplicates entities (3-tier dedup).
+    The narrative node detects higher-order narrative structures (parallel with reconcile).
 
     Returns:
         Compiled LangGraph StateGraph.
@@ -357,6 +437,7 @@ def build_extraction_graph() -> StateGraph:
     builder.add_node("merge", merge_results)
     builder.add_node("mention_detect", mention_detect_node)
     builder.add_node("reconcile", reconcile_in_graph)
+    builder.add_node("narrative", narrative_node)
 
     # ── Edges ──
     # START → route
@@ -371,10 +452,12 @@ def build_extraction_graph() -> StateGraph:
     builder.add_edge("events", "merge")
     builder.add_edge("lore", "merge")
 
-    # merge → mention_detect → reconcile → END
+    # merge → mention_detect → [reconcile, narrative] → END
     builder.add_edge("merge", "mention_detect")
     builder.add_edge("mention_detect", "reconcile")
+    builder.add_edge("mention_detect", "narrative")
     builder.add_edge("reconcile", END)
+    builder.add_edge("narrative", END)
 
     graph = builder.compile()
 
@@ -433,6 +516,7 @@ async def extract_chapter(
         "total_cost_usd": 0.0,
         "total_entities": 0,
         "alias_map": {},
+        "narrative_analysis": {},
     }
 
     logger.info(

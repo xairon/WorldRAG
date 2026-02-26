@@ -26,7 +26,7 @@ from app.schemas.extraction import (
 class ExtractionPipelineState(TypedDict, total=False):
     """Shared state for the extraction pipeline LangGraph.
 
-    Flows through: route -> [passes 1-4 parallel] -> merge -> reconcile.
+    Flows through: route -> [passes 1-4 parallel] -> merge -> mention_detect -> [reconcile, narrative] -> END.
 
     Attributes:
         book_id: Book identifier.
@@ -82,6 +82,9 @@ class ExtractionPipelineState(TypedDict, total=False):
 
     # -- Reconciliation --
     alias_map: dict[str, str]
+
+    # -- Narrative analysis (Pass 6, optional) --
+    narrative_analysis: dict[str, Any]
 
     # -- Metrics --
     total_cost_usd: float

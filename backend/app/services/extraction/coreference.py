@@ -95,28 +95,25 @@ async def resolve_coreferences(
                 if resolution.confidence < 0.8:
                     continue
 
-                # Locate the pronoun in the segment text
+                # Locate ALL occurrences of the pronoun in the segment text
                 pattern = re.compile(
                     r"\b" + re.escape(resolution.pronoun) + r"\b",
                     re.IGNORECASE,
                 )
-                match = pattern.search(segment_text)
-                if match is None:
-                    continue
-
-                all_grounded.append(
-                    GroundedEntity(
-                        entity_type="character",
-                        entity_name=resolution.referent,
-                        extraction_text=match.group(),
-                        char_offset_start=segment_offset + match.start(),
-                        char_offset_end=segment_offset + match.end(),
-                        pass_name="coreference",
-                        alignment_status="fuzzy",
-                        confidence=resolution.confidence * 0.8,
-                        attributes={"mention_type": "pronoun"},
+                for match in pattern.finditer(segment_text):
+                    all_grounded.append(
+                        GroundedEntity(
+                            entity_type="character",
+                            entity_name=resolution.referent,
+                            extraction_text=match.group(),
+                            char_offset_start=segment_offset + match.start(),
+                            char_offset_end=segment_offset + match.end(),
+                            pass_name="coreference",
+                            alignment_status="fuzzy",
+                            confidence=resolution.confidence * 0.8,
+                            attributes={"mention_type": "pronoun"},
+                        )
                     )
-                )
 
         except Exception:
             logger.exception(
