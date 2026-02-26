@@ -132,6 +132,22 @@ async def extract_lore(state: ExtractionPipelineState) -> dict[str, Any]:
 
             # Build grounding
             if entity.char_interval:
+                # Check alignment quality from LangExtract
+                alignment = getattr(entity, "alignment_status", None)
+                alignment_str = str(alignment).lower() if alignment else "exact"
+
+                # Skip UNALIGNED entities — spans are unreliable
+                if "unaligned" in alignment_str:
+                    logger.debug(
+                        "skipping_unaligned_entity",
+                        entity=entity.extraction_text,
+                        pass_name=PASS_NAME,
+                    )
+                    continue
+
+                # Set confidence based on alignment quality
+                confidence = 0.7 if "fuzzy" in alignment_str else 1.0
+
                 grounded.append(
                     GroundedEntity(
                         entity_type=entity.extraction_class,
@@ -141,6 +157,8 @@ async def extract_lore(state: ExtractionPipelineState) -> dict[str, Any]:
                         char_offset_end=entity.char_interval.end_pos,
                         attributes=attrs,
                         pass_name=PASS_NAME,
+                        alignment_status="fuzzy" if "fuzzy" in alignment_str else "exact",
+                        confidence=confidence,
                     )
                 )
 

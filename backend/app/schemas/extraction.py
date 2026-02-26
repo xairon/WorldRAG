@@ -236,6 +236,8 @@ class GroundedEntity(BaseModel):
     char_offset_end: int = Field(..., description="End offset in source text")
     attributes: dict[str, str] = Field(default_factory=dict)
     pass_name: str = Field("", description="Which extraction pass produced this")
+    alignment_status: str = Field("exact", description="Alignment quality: exact, fuzzy, or unaligned")
+    confidence: float = Field(1.0, description="Grounding confidence: 1.0 for exact, 0.7 for fuzzy")
 
 
 # ── Unified extraction result ───────────────────────────────────────────
