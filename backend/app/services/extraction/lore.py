@@ -190,5 +190,5 @@ async def extract_lore(state: ExtractionPipelineState) -> dict[str, Any]:
             "lore": LoreExtractionResult(),
             "grounded_entities": [],
             "passes_completed": [],
-            "errors": [{"pass": PASS_NAME, "error": str(e)}],
+            "errors": [{"pass": PASS_NAME, "error": type(e).__name__}],
         }

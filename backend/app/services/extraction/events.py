@@ -145,5 +145,5 @@ async def extract_events(state: ExtractionPipelineState) -> dict[str, Any]:
             "events": EventExtractionResult(),
             "grounded_entities": [],
             "passes_completed": [],
-            "errors": [{"pass": PASS_NAME, "error": str(e)}],
+            "errors": [{"pass": PASS_NAME, "error": type(e).__name__}],
         }

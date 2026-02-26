@@ -188,10 +188,17 @@ def _build_paragraphs_from_html(html: str) -> list[ParagraphData]:
     running_offset = 0
     idx = 0
 
+    # Semantic containers whose children we process directly — skip nested
+    # blocks inside these. Generic wrappers like <div> are NOT in this set
+    # because EPUBs commonly wrap multiple <p> elements in <div>s.
+    _semantic_containers = {"blockquote", "li"}
+
     for element in soup.find_all(_BLOCK_TAGS):
-        # Skip elements that are nested inside another block element we already process
-        # (e.g. a <p> inside a <blockquote> — we'd get the <p> directly)
-        if element.parent and element.parent.name in _BLOCK_TAGS:
+        # Skip elements nested inside semantic containers
+        if element.parent and element.parent.name in _semantic_containers:
+            continue
+        # Skip wrapper divs that contain other block-level children
+        if element.name == "div" and element.find(_BLOCK_TAGS - {"div"}):
             continue
 
         text = element.get_text(strip=True)

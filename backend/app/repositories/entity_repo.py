@@ -823,7 +823,7 @@ class EntityRepository(Neo4jRepository):
                     "char_start": g.char_offset_start,
                     "char_end": g.char_offset_end,
                     "mention_text": g.extraction_text[:200],
-                    "mention_type": "langextract",
+                    "mention_type": g.attributes.get("mention_type", "langextract") if g.attributes else "langextract",
                     "confidence": g.confidence,
                     "alignment_status": g.alignment_status,
                     "pass_name": g.pass_name,
@@ -866,7 +866,7 @@ class EntityRepository(Neo4jRepository):
                 "entity_name": g.entity_name,
                 "char_start": g.char_offset_start,
                 "char_end": g.char_offset_end,
-                "mention_type": "langextract",
+                "mention_type": g.attributes.get("mention_type", "langextract") if g.attributes else "langextract",
                 "pass_name": g.pass_name,
             }
             for g in grounded

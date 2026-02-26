@@ -262,7 +262,7 @@ async def mention_detect_node(state: ExtractionPipelineState) -> dict[str, Any]:
         return {
             "grounded_entities": [],
             "passes_completed": [],
-            "errors": [{"pass": "mention_detect", "error": str(e)}],
+            "errors": [{"pass": "mention_detect", "error": type(e).__name__}],
         }
 
 
@@ -308,6 +308,31 @@ async def reconcile_in_graph(state: ExtractionPipelineState) -> dict[str, Any]:
     try:
         reconciliation = await reconcile_chapter_result(temp_result)
         alias_map = reconciliation.alias_map
+
+        # Cross-book entity resolution: match chapter entities to known series entities
+        if series_entities:
+            series_name_map: dict[str, str] = {}
+            for se in series_entities:
+                canonical = se.get("canonical_name") or se.get("name", "")
+                name = se.get("name", "")
+                if canonical:
+                    series_name_map[name.lower()] = canonical
+                    series_name_map[canonical.lower()] = canonical
+
+            cross_book_aliases = 0
+            for char in temp_result.characters.characters:
+                lower_name = char.name.lower()
+                if lower_name in series_name_map and series_name_map[lower_name] != char.name:
+                    alias_map[char.name] = series_name_map[lower_name]
+                    cross_book_aliases += 1
+
+            if cross_book_aliases:
+                logger.info(
+                    "cross_book_aliases_resolved",
+                    book_id=book_id,
+                    chapter=chapter_number,
+                    count=cross_book_aliases,
+                )
 
         logger.info(
             "extraction_reconcile_completed",
