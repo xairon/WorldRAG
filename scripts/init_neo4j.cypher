@@ -62,6 +62,45 @@ FOR (e:Event) REQUIRE (e.name, e.chapter_start) IS UNIQUE;
 CREATE CONSTRAINT paragraph_unique IF NOT EXISTS
 FOR (p:Paragraph) REQUIRE (p.book_id, p.chapter_number, p.index) IS UNIQUE;
 
+// ── V3: Character State Tracking ──────────────────────────────────────
+
+// StateChange ledger
+CREATE CONSTRAINT state_change_unique IF NOT EXISTS
+  FOR (sc:StateChange)
+  REQUIRE (sc.character_name, sc.book_id, sc.chapter, sc.category, sc.name, sc.action) IS UNIQUE;
+
+CREATE INDEX state_change_character IF NOT EXISTS
+  FOR (sc:StateChange) ON (sc.character_name, sc.book_id);
+
+CREATE INDEX state_change_chapter IF NOT EXISTS
+  FOR (sc:StateChange) ON (sc.book_id, sc.chapter);
+
+CREATE INDEX state_change_category IF NOT EXISTS
+  FOR (sc:StateChange) ON (sc.category);
+
+// BlueBox grouping
+CREATE CONSTRAINT bluebox_unique IF NOT EXISTS
+  FOR (bb:BlueBox) REQUIRE (bb.book_id, bb.chapter, bb.index) IS UNIQUE;
+
+// Layer 3: Bloodline
+CREATE CONSTRAINT bloodline_unique IF NOT EXISTS
+  FOR (b:Bloodline) REQUIRE b.name IS UNIQUE;
+
+// Layer 3: Profession
+CREATE CONSTRAINT profession_unique IF NOT EXISTS
+  FOR (p:Profession) REQUIRE (p.name, p.book_id) IS UNIQUE;
+
+// Layer 3: PrimordialChurch
+CREATE CONSTRAINT church_unique IF NOT EXISTS
+  FOR (pc:PrimordialChurch) REQUIRE pc.deity_name IS UNIQUE;
+
+// Batch ID indexes for new types
+CREATE INDEX state_change_batch IF NOT EXISTS
+  FOR (sc:StateChange) ON (sc.batch_id);
+
+CREATE INDEX bluebox_batch IF NOT EXISTS
+  FOR (bb:BlueBox) ON (bb.batch_id);
+
 // === NODE PROPERTY INDEXES ===
 
 CREATE INDEX character_name IF NOT EXISTS

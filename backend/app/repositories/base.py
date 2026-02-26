@@ -36,6 +36,11 @@ _VALID_LABELS = frozenset(
         "Creature",
         "Faction",
         "Concept",
+        "StateChange",
+        "BlueBox",
+        "Bloodline",
+        "Profession",
+        "PrimordialChurch",
     }
 )
 
