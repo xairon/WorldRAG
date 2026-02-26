@@ -1030,6 +1030,280 @@ class EntityRepository(Neo4jRepository):
         )
         return results
 
+    # ── Blue Boxes ───────────────────────────────────────────────────────
+
+    async def upsert_blue_boxes(
+        self,
+        book_id: str,
+        chapter_number: int,
+        boxes: list,  # list[BlueBoxGroup] from bluebox.py
+        batch_id: str = "",
+    ) -> int:
+        """Persist BlueBox grouping nodes to Neo4j."""
+        if not boxes:
+            return 0
+
+        data = [
+            {
+                "index": idx,
+                "raw_text": box.raw_text,
+                "box_type": box.box_type,
+                "paragraph_start": box.paragraph_start,
+                "paragraph_end": box.paragraph_end,
+            }
+            for idx, box in enumerate(boxes)
+        ]
+
+        await self.execute_write(
+            """
+            UNWIND $boxes AS bb
+            MERGE (b:BlueBox {book_id: $book_id, chapter: $chapter, index: bb.index})
+            ON CREATE SET
+                b.raw_text = bb.raw_text,
+                b.box_type = bb.box_type,
+                b.paragraph_start = bb.paragraph_start,
+                b.paragraph_end = bb.paragraph_end,
+                b.batch_id = $batch_id,
+                b.created_at = timestamp()
+            ON MATCH SET
+                b.raw_text = bb.raw_text,
+                b.box_type = bb.box_type,
+                b.batch_id = $batch_id
+            """,
+            {
+                "boxes": data,
+                "book_id": book_id,
+                "chapter": chapter_number,
+                "batch_id": batch_id,
+            },
+        )
+
+        logger.info(
+            "blue_boxes_upserted",
+            book_id=book_id,
+            chapter=chapter_number,
+            count=len(boxes),
+        )
+        return len(boxes)
+
+    # ── GRANTS relations ─────────────────────────────────────────────────
+
+    async def upsert_grants_relations(
+        self,
+        provenances: list,  # list[SkillProvenance]
+        batch_id: str = "",
+    ) -> int:
+        """Create GRANTS_SKILL relationships from provenance data.
+
+        Only creates relations for high-confidence (>= 0.7) provenances
+        with known source types (item, class, bloodline).
+        """
+        valid = [
+            p for p in provenances
+            if p.confidence >= 0.7
+            and p.source_type in ("item", "class", "bloodline")
+            and p.source_name
+        ]
+        if not valid:
+            return 0
+
+        label_map = {"item": "Item", "class": "Class", "bloodline": "Bloodline"}
+
+        created = 0
+        for source_type, label in label_map.items():
+            type_provenances = [p for p in valid if p.source_type == source_type]
+            if not type_provenances:
+                continue
+
+            data = [
+                {"source_name": p.source_name, "skill_name": p.skill_name}
+                for p in type_provenances
+            ]
+
+            await self.execute_write(
+                f"""
+                UNWIND $data AS d
+                MATCH (src:{label} {{name: d.source_name}})
+                MATCH (sk:Skill {{name: d.skill_name}})
+                MERGE (src)-[r:GRANTS_SKILL]->(sk)
+                ON CREATE SET r.batch_id = $batch_id, r.created_at = timestamp()
+                """,
+                {"data": data, "batch_id": batch_id},
+            )
+            created += len(type_provenances)
+
+        logger.info("grants_relations_upserted", count=created)
+        return created
+
+    # ── Layer 3: Bloodlines ──────────────────────────────────────────────
+
+    async def upsert_bloodlines(
+        self,
+        book_id: str,
+        chapter_number: int,
+        bloodlines: list,  # list[ExtractedBloodline]
+        batch_id: str = "",
+    ) -> int:
+        """Upsert Bloodline nodes and link to owner characters."""
+        if not bloodlines:
+            return 0
+
+        data = [
+            {
+                "name": b.name,
+                "description": b.description,
+                "effects": b.effects,
+                "origin": b.origin,
+                "owner": b.owner,
+                "awakened_chapter": b.awakened_chapter or chapter_number,
+            }
+            for b in bloodlines
+        ]
+
+        await self.execute_write(
+            """
+            UNWIND $bloodlines AS b
+            MERGE (bl:Bloodline {name: b.name})
+            ON CREATE SET
+                bl.description = b.description,
+                bl.effects = b.effects,
+                bl.origin = b.origin,
+                bl.book_id = $book_id,
+                bl.batch_id = $batch_id,
+                bl.created_at = timestamp()
+            ON MATCH SET
+                bl.description = CASE
+                    WHEN size(b.description) > size(coalesce(bl.description, ''))
+                    THEN b.description ELSE bl.description END,
+                bl.batch_id = $batch_id
+            WITH bl, b
+            WHERE b.owner <> ''
+            MATCH (ch:Character {canonical_name: b.owner})
+            MERGE (ch)-[r:HAS_BLOODLINE]->(bl)
+            ON CREATE SET r.awakened_chapter = b.awakened_chapter
+            """,
+            {"bloodlines": data, "book_id": book_id, "batch_id": batch_id},
+        )
+
+        # V3: StateChange for bloodline awakening
+        state_change_data = [
+            {
+                "character_name": b["owner"],
+                "category": "bloodline",
+                "name": b["name"],
+                "action": "awaken",
+            }
+            for b in data
+            if b["owner"]
+        ]
+        if state_change_data:
+            await self._create_state_changes(book_id, chapter_number, state_change_data, batch_id)
+
+        logger.info("bloodlines_upserted", book_id=book_id, chapter=chapter_number, count=len(bloodlines))
+        return len(bloodlines)
+
+    # ── Layer 3: Professions ─────────────────────────────────────────────
+
+    async def upsert_professions(
+        self,
+        book_id: str,
+        chapter_number: int,
+        professions: list,  # list[ExtractedProfession]
+        batch_id: str = "",
+    ) -> int:
+        """Upsert Profession nodes and link to owner characters."""
+        if not professions:
+            return 0
+
+        data = [
+            {
+                "name": p.name,
+                "tier": p.tier,
+                "profession_type": p.profession_type,
+                "owner": p.owner,
+                "chapter": p.acquired_chapter or chapter_number,
+            }
+            for p in professions
+        ]
+
+        await self.execute_write(
+            """
+            UNWIND $professions AS p
+            MERGE (pr:Profession {name: p.name, book_id: $book_id})
+            ON CREATE SET
+                pr.tier = p.tier,
+                pr.profession_type = p.profession_type,
+                pr.batch_id = $batch_id,
+                pr.created_at = timestamp()
+            WITH pr, p
+            WHERE p.owner <> ''
+            MATCH (ch:Character {canonical_name: p.owner})
+            MERGE (ch)-[r:HAS_PROFESSION]->(pr)
+            ON CREATE SET r.valid_from_chapter = p.chapter
+            """,
+            {"professions": data, "book_id": book_id, "batch_id": batch_id},
+        )
+
+        state_change_data = [
+            {
+                "character_name": p["owner"],
+                "category": "profession",
+                "name": p["name"],
+                "action": "acquire",
+            }
+            for p in data
+            if p["owner"]
+        ]
+        if state_change_data:
+            await self._create_state_changes(book_id, chapter_number, state_change_data, batch_id)
+
+        logger.info("professions_upserted", book_id=book_id, chapter=chapter_number, count=len(professions))
+        return len(professions)
+
+    # ── Layer 3: Primordial Churches ─────────────────────────────────────
+
+    async def upsert_churches(
+        self,
+        book_id: str,
+        chapter_number: int,
+        churches: list,  # list[ExtractedChurch]
+        batch_id: str = "",
+    ) -> int:
+        """Upsert PrimordialChurch nodes and link worshippers."""
+        if not churches:
+            return 0
+
+        data = [
+            {
+                "deity_name": c.deity_name,
+                "domain": c.domain,
+                "blessing": c.blessing,
+                "worshipper": c.worshipper,
+                "chapter": c.valid_from_chapter or chapter_number,
+            }
+            for c in churches
+        ]
+
+        await self.execute_write(
+            """
+            UNWIND $churches AS c
+            MERGE (pc:PrimordialChurch {deity_name: c.deity_name})
+            ON CREATE SET
+                pc.domain = c.domain,
+                pc.batch_id = $batch_id,
+                pc.created_at = timestamp()
+            WITH pc, c
+            WHERE c.worshipper <> ''
+            MATCH (ch:Character {canonical_name: c.worshipper})
+            MERGE (ch)-[r:WORSHIPS]->(pc)
+            ON CREATE SET r.blessing = c.blessing, r.valid_from_chapter = c.chapter
+            """,
+            {"churches": data, "book_id": book_id, "batch_id": batch_id},
+        )
+
+        logger.info("churches_upserted", book_id=book_id, chapter=chapter_number, count=len(churches))
+        return len(churches)
+
     # ── StateChange ledger (V3 dual-write) ──────────────────────────────
 
     async def _create_state_changes(
