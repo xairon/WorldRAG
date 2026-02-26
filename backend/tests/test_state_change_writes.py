@@ -86,14 +86,24 @@ class TestUpsertStatChangesCreatesStateChange:
 class TestUpsertLevelChangesCreatesStateChange:
     async def test_creates_state_change_nodes(self, repo, mock_neo4j_session):
         levels = [
-            ExtractedLevelChange(character="Jake Thayne", old_level=87, new_level=88, realm="D-grade"),
+            ExtractedLevelChange(
+                character="Jake Thayne",
+                old_level=87,
+                new_level=88,
+                realm="D-grade",
+            ),
         ]
         await repo.upsert_level_changes(BOOK_ID, CHAPTER, levels, BATCH_ID)
         assert mock_neo4j_session.run.call_count >= 2
 
     async def test_state_change_has_correct_fields(self, repo, mock_neo4j_session):
         levels = [
-            ExtractedLevelChange(character="Jake Thayne", old_level=87, new_level=88, realm="D-grade"),
+            ExtractedLevelChange(
+                character="Jake Thayne",
+                old_level=87,
+                new_level=88,
+                realm="D-grade",
+            ),
         ]
         await repo.upsert_level_changes(BOOK_ID, CHAPTER, levels, BATCH_ID)
         state_call = mock_neo4j_session.run.call_args_list[1]

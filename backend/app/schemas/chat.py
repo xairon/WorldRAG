@@ -16,10 +16,11 @@ class ChatRequest(BaseModel):
     book_id: str = Field(..., min_length=1, description="Book to query against")
     top_k: int = Field(default=20, ge=1, le=100, description="Chunks to retrieve")
     rerank_top_n: int = Field(default=5, ge=1, le=50, description="Chunks after reranking")
-    min_relevance: float = Field(
-        default=0.1, ge=0.0, le=1.0, description="Minimum reranker score"
-    )
+    min_relevance: float = Field(default=0.1, ge=0.0, le=1.0, description="Minimum reranker score")
     include_sources: bool = Field(default=True, description="Include source chunks in response")
+    max_chapter: int | None = Field(
+        default=None, ge=1, description="Spoiler guard: only search up to this chapter"
+    )
 
 
 class SourceChunk(BaseModel):

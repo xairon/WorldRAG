@@ -131,7 +131,9 @@ class ChatService:
 
         # Step 4: Fetch related KG entities
         chapter_numbers = list({c["chapter_number"] for c in top_chunks})
-        related_entities = await self._fetch_related_entities(book_id, chapter_numbers, max_chapter=max_chapter)
+        related_entities = await self._fetch_related_entities(
+            book_id, chapter_numbers, max_chapter=max_chapter
+        )
 
         # Step 5: Generate answer
         context = self._build_context(top_chunks, relevance_scores, related_entities)
@@ -201,11 +203,16 @@ class ChatService:
         if self.reranker:
             chunk_texts = [c["text"] for c in chunks]
             reranked = await self.reranker.rerank(
-                query=query, documents=chunk_texts,
-                top_n=rerank_top_n, min_relevance=min_relevance,
+                query=query,
+                documents=chunk_texts,
+                top_n=rerank_top_n,
+                min_relevance=min_relevance,
             )
             if not reranked:
-                yield {"event": "error", "data": json.dumps({"message": "Content not relevant enough."})}
+                yield {
+                    "event": "error",
+                    "data": json.dumps({"message": "Content not relevant enough."}),
+                }
                 return
             top_chunks = [chunks[r.index] for r in reranked]
             relevance_scores = [r.relevance_score for r in reranked]
@@ -215,7 +222,9 @@ class ChatService:
 
         # Step 4: Fetch related entities
         chapter_numbers = list({c["chapter_number"] for c in top_chunks})
-        related_entities = await self._fetch_related_entities(book_id, chapter_numbers, max_chapter=max_chapter)
+        related_entities = await self._fetch_related_entities(
+            book_id, chapter_numbers, max_chapter=max_chapter
+        )
 
         # Emit sources event before streaming tokens
         sources = [
@@ -230,12 +239,14 @@ class ChatService:
         ]
         yield {
             "event": "sources",
-            "data": json.dumps({
-                "sources": [s.model_dump() for s in sources],
-                "related_entities": [e.model_dump() for e in related_entities],
-                "chunks_retrieved": len(chunks),
-                "chunks_after_rerank": len(top_chunks),
-            }),
+            "data": json.dumps(
+                {
+                    "sources": [s.model_dump() for s in sources],
+                    "related_entities": [e.model_dump() for e in related_entities],
+                    "chunks_retrieved": len(chunks),
+                    "chunks_after_rerank": len(top_chunks),
+                }
+            ),
         }
 
         # Step 5: Stream LLM answer

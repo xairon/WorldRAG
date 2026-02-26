@@ -311,9 +311,7 @@ class TestGetProgressionMilestones:
         mock_neo4j_session,
     ):
         repo = CharacterStateRepository(mock_neo4j_driver_with_session)
-        await repo.get_progression_milestones(
-            CHARACTER, BOOK_ID, category="level"
-        )
+        await repo.get_progression_milestones(CHARACTER, BOOK_ID, category="level")
         # Both count and data queries should have been called
         assert mock_neo4j_session.run.call_count == 2
 
@@ -323,9 +321,7 @@ class TestGetProgressionMilestones:
         mock_neo4j_session,
     ):
         repo = CharacterStateRepository(mock_neo4j_driver_with_session)
-        await repo.get_progression_milestones(
-            CHARACTER, BOOK_ID, offset=10, limit=25
-        )
+        await repo.get_progression_milestones(CHARACTER, BOOK_ID, offset=10, limit=25)
         # Second call is the data query with offset/limit
         data_call = mock_neo4j_session.run.call_args_list[1]
         params = data_call[0][1]
@@ -350,9 +346,7 @@ class TestGetChangesBetweenChapters:
         mock_neo4j_session,
     ):
         repo = CharacterStateRepository(mock_neo4j_driver_with_session)
-        await repo.get_changes_between_chapters(
-            CHARACTER, BOOK_ID, from_chapter=5, to_chapter=10
-        )
+        await repo.get_changes_between_chapters(CHARACTER, BOOK_ID, from_chapter=5, to_chapter=10)
         call_args = mock_neo4j_session.run.call_args
         params = call_args[0][1]
         assert params["from_chapter"] == 5

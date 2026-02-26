@@ -55,6 +55,8 @@ class CircuitBreaker:
     last_failure_time: float = field(default=0.0, init=False)
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False)
 
+    _half_open_in_flight: int = field(default=0, init=False)
+
     async def call[T](self, func: Any, *args: Any, **kwargs: Any) -> T:
         """Execute a function through the circuit breaker.
 
@@ -72,6 +74,15 @@ class CircuitBreaker:
                 )
                 raise CircuitBreakerOpenError(self.name)
 
+            if (
+                self.state == CircuitState.HALF_OPEN
+                and self._half_open_in_flight >= self.half_open_max_calls
+            ):
+                raise CircuitBreakerOpenError(self.name)
+
+            if self.state == CircuitState.HALF_OPEN:
+                self._half_open_in_flight += 1
+
         try:
             result = await func(*args, **kwargs)
             await self._on_success()
@@ -79,6 +90,10 @@ class CircuitBreaker:
         except Exception as exc:
             await self._on_failure(exc)
             raise
+        finally:
+            async with self._lock:
+                if self._half_open_in_flight > 0:
+                    self._half_open_in_flight -= 1
 
     def _check_state_transition(self) -> None:
         """Check if we should transition from OPEN to HALF_OPEN."""

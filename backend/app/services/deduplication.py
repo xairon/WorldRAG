@@ -36,12 +36,22 @@ def normalize_name(name: str) -> str:
     # Remove common prefixes (English + French)
     for prefix in (
         # English
-        "the ", "a ", "an ",
+        "the ",
+        "a ",
+        "an ",
         # French — order matters: longer prefixes first
-        "les ", "des ",
-        "le ", "la ", "l'", "l'",
-        "un ", "une ",
-        "du ", "de ", "d'", "d'",
+        "les ",
+        "des ",
+        "le ",
+        "la ",
+        "l'",
+        "l'",
+        "un ",
+        "une ",
+        "du ",
+        "de ",
+        "d'",
+        "d'",
     ):
         if name.startswith(prefix):
             name = name[len(prefix) :]

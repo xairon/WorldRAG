@@ -95,7 +95,8 @@ _DIALOGUE_STARTERS = ("«", "\u201c", "\u201d", "—", "–")
 
 # Speaker extraction from French dialogue: "dit Jake", "murmura Caroline", "cria-t-il"
 _SPEAKER_RE = re.compile(
-    "(?:\u00bb|\u201d|\")" r"\s*"
+    '(?:\u00bb|\u201d|")'
+    r"\s*"
     r"(?:dit|murmura|chuchota|cria|hurla|demanda|r\u00e9pondit|souffla|grommela|lan\u00e7a"
     r"|s['\u2019]exclama|ajouta|reprit|continua|expliqua|affirma|soupira|g\u00e9mit"
     r"|ordonna|sugg\u00e9ra|protesta|marmonna|annon\u00e7a|d\u00e9clara|interrogea|confirma"

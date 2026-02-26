@@ -159,9 +159,7 @@ async def build_chapter_graph(
                 "classes": [c.name for c in extraction_result.systems.classes],
                 "bloodlines": [],
             }
-            prov_result = await extract_provenance(
-                chapter.text, skills_acquired, chapter_entities
-            )
+            prov_result = await extract_provenance(chapter.text, skills_acquired, chapter_entities)
             if prov_result.provenances:
                 grants_count = await entity_repo.upsert_grants_relations(
                     prov_result.provenances, str(uuid.uuid4())
@@ -235,10 +233,7 @@ async def build_book_graph(
         chapter_regex_matches = {}
 
     # ── Filter out non-content chapters (Sommaire, TOC, copyright) ───
-    content_chapters = [
-        ch for ch in chapters
-        if not _is_non_content_chapter(ch)
-    ]
+    content_chapters = [ch for ch in chapters if not _is_non_content_chapter(ch)]
     skipped = len(chapters) - len(content_chapters)
     if skipped:
         logger.info(
@@ -254,7 +249,8 @@ async def build_book_graph(
         try:
             entity_repo = EntityRepository(driver)
             series_entities = await entity_repo.get_series_entities(
-                series_name, exclude_book_id=book_id,
+                series_name,
+                exclude_book_id=book_id,
             )
             logger.info(
                 "series_entities_loaded_for_book",
@@ -291,7 +287,9 @@ async def build_book_graph(
 
     total_chapters = len(content_chapters)
 
-    async def _process_one(chapter: ChapterData) -> tuple[int, dict[str, Any] | None, Exception | None]:
+    async def _process_one(
+        chapter: ChapterData,
+    ) -> tuple[int, dict[str, Any] | None, Exception | None]:
         """Process a single chapter under semaphore control."""
         async with sem:
             regex_json = chapter_regex_matches.get(chapter.number, "[]")
@@ -309,7 +307,10 @@ async def build_book_graph(
                 )
                 if on_chapter_done:
                     await on_chapter_done(
-                        chapter.number, total_chapters, "extracted", stats["total_entities"],
+                        chapter.number,
+                        total_chapters,
+                        "extracted",
+                        stats["total_entities"],
                     )
                 return (chapter.number, stats, None)
             except Exception as exc:
@@ -373,10 +374,21 @@ async def build_book_graph(
 
 
 _NON_CONTENT_TITLES = {
-    "sommaire", "table des matières", "table of contents",
-    "couverture", "cover", "copyright", "mentions légales",
-    "colophon", "dédicace", "dedication", "remerciements",
-    "acknowledgements", "préface", "preface", "avant-propos",
+    "sommaire",
+    "table des matières",
+    "table of contents",
+    "couverture",
+    "cover",
+    "copyright",
+    "mentions légales",
+    "colophon",
+    "dédicace",
+    "dedication",
+    "remerciements",
+    "acknowledgements",
+    "préface",
+    "preface",
+    "avant-propos",
 }
 
 
@@ -397,10 +409,7 @@ def _is_non_content_chapter(chapter: ChapterData) -> bool:
     # If > 40% of lines start with "Chapitre" or "Chapter", it's a TOC
     lines = [ln.strip() for ln in chapter.text.split("\n") if ln.strip()]
     if len(lines) > 5:
-        chapter_lines = sum(
-            1 for ln in lines
-            if ln.lower().startswith(("chapitre", "chapter"))
-        )
+        chapter_lines = sum(1 for ln in lines if ln.lower().startswith(("chapitre", "chapter")))
         if chapter_lines / len(lines) > 0.4:
             return True
 

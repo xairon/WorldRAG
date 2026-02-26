@@ -44,7 +44,12 @@ async def get_dlq(request: Request) -> DeadLetterQueue:
 
 async def get_arq_pool(request: Request) -> ArqRedis:
     """Get arq Redis pool from app state for job enqueueing."""
-    return request.app.state.arq_pool
+    pool = request.app.state.arq_pool
+    if pool is None:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=503, detail="Task queue not available (Redis down?)")
+    return pool
 
 
 async def get_ontology(request: Request) -> OntologyLoader:

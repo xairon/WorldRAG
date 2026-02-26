@@ -77,9 +77,7 @@ async def delete_and_count(session, query: str) -> int:
 async def run_audit(session) -> None:
     """Print current state of the knowledge graph."""
     result = await session.run(
-        "MATCH (n) "
-        "RETURN labels(n)[0] AS label, count(n) AS cnt "
-        "ORDER BY cnt DESC"
+        "MATCH (n) RETURN labels(n)[0] AS label, count(n) AS cnt ORDER BY cnt DESC"
     )
     records = await result.data()
 
@@ -92,9 +90,7 @@ async def run_audit(session) -> None:
 
     # Relationship counts
     result = await session.run(
-        "MATCH ()-[r]->() "
-        "RETURN type(r) AS rel_type, count(r) AS cnt "
-        "ORDER BY cnt DESC"
+        "MATCH ()-[r]->() RETURN type(r) AS rel_type, count(r) AS cnt ORDER BY cnt DESC"
     )
     records = await result.data()
 
@@ -153,10 +149,7 @@ async def migrate_minimal(session, *, dry_run: bool = False) -> dict[str, int]:
         while True:
             batch_removed = await delete_and_count(
                 session,
-                "MATCH (p:Paragraph) "
-                "WITH p LIMIT 5000 "
-                "DETACH DELETE p "
-                "RETURN count(p) AS removed",
+                "MATCH (p:Paragraph) WITH p LIMIT 5000 DETACH DELETE p RETURN count(p) AS removed",
             )
             removed += batch_removed
             if batch_removed == 0:
@@ -246,8 +239,7 @@ async def migrate_full(session, *, dry_run: bool = False) -> dict[str, int]:
     # so they can be re-extracted
     status_count = await count_items(
         session,
-        "MATCH (b:Book) WHERE b.status IN ['extracted', 'embedded'] "
-        "RETURN count(b) AS cnt",
+        "MATCH (b:Book) WHERE b.status IN ['extracted', 'embedded'] RETURN count(b) AS cnt",
     )
     if status_count > 0:
         print(f"\n  Books to reset status: {status_count}")
@@ -287,16 +279,13 @@ async def main() -> None:
     mode = "FULL" if args.full else "MINIMAL"
     dry_label = " (DRY RUN)" if args.dry_run else ""
 
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print(f"WorldRAG V2 Migration — {mode}{dry_label}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print(f"Neo4j: {settings.neo4j_uri}")
 
     if args.full and not args.dry_run:
-        print(
-            "\nWARNING: --full mode will delete ALL extraction entities and "
-            "relationships."
-        )
+        print("\nWARNING: --full mode will delete ALL extraction entities and relationships.")
         print("Books, chapters, and chunks will be preserved.")
         print("You will need to re-extract all books after this migration.\n")
         confirm = input("Type 'yes' to proceed: ")
@@ -316,17 +305,17 @@ async def main() -> None:
             await run_audit(session)
 
             # Step 1: Minimal cleanup (always runs)
-            print(f"\n{'='*60}")
+            print(f"\n{'=' * 60}")
             print("Step 1: Remove legacy GROUNDED_IN + Paragraph nodes")
-            print(f"{'='*60}")
+            print(f"{'=' * 60}")
             minimal_counts = await migrate_minimal(session, dry_run=args.dry_run)
 
             # Step 2: Full cleanup (only with --full)
             full_counts: dict[str, int] = {}
             if args.full:
-                print(f"\n{'='*60}")
+                print(f"\n{'=' * 60}")
                 print("Step 2: Remove all extraction entities and relationships")
-                print(f"{'='*60}")
+                print(f"{'=' * 60}")
                 full_counts = await migrate_full(session, dry_run=args.dry_run)
 
             # Post-migration audit
@@ -336,9 +325,9 @@ async def main() -> None:
 
             # Summary
             all_counts = {**minimal_counts, **full_counts}
-            print(f"\n{'='*60}")
+            print(f"\n{'=' * 60}")
             print(f"Migration Summary{dry_label}")
-            print(f"{'='*60}")
+            print(f"{'=' * 60}")
             if all_counts:
                 for item, count in all_counts.items():
                     action = "Would delete" if args.dry_run else "Deleted"
@@ -348,19 +337,17 @@ async def main() -> None:
             else:
                 print("  Nothing to clean up — database is already migrated.")
 
-            print(f"\n{'='*60}")
+            print(f"\n{'=' * 60}")
             if not args.full:
                 print("Next steps:")
                 print("  1. Re-extract books: POST /api/books/{id}/extract")
                 print("  2. Or run: uv run python scripts/run_full_pipeline.py <book_id>")
-                print(
-                    "\nTip: Use --full to also delete entities for a clean re-extraction."
-                )
+                print("\nTip: Use --full to also delete entities for a clean re-extraction.")
             else:
                 print("Next steps:")
                 print("  1. Re-extract all books: POST /api/books/{id}/extract")
                 print("  2. Or run: uv run python scripts/run_full_pipeline.py <book_id>")
-            print(f"{'='*60}")
+            print(f"{'=' * 60}")
 
     finally:
         await driver.close()

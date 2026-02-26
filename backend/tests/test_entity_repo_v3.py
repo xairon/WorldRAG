@@ -9,7 +9,6 @@ Covers:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from types import SimpleNamespace
 
 import pytest
 

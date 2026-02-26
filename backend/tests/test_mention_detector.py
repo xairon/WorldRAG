@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from app.services.extraction.mention_detector import detect_mentions
 
 
@@ -51,7 +49,12 @@ class TestDetectMentions:
         text = "Jake Summers marchait dans la rue."
         entities = [
             {"canonical_name": "Jake", "entity_type": "character", "name": "Jake", "aliases": []},
-            {"canonical_name": "Jake Summers", "entity_type": "character", "name": "Jake Summers", "aliases": []},
+            {
+                "canonical_name": "Jake Summers",
+                "entity_type": "character",
+                "name": "Jake Summers",
+                "aliases": [],
+            },
         ]
         mentions = detect_mentions(text, entities)
         assert len(mentions) == 1
@@ -69,7 +72,12 @@ class TestDetectMentions:
         text = "Jake et Caroline marchaient ensemble."
         entities = [
             {"canonical_name": "Jake", "entity_type": "character", "name": "Jake", "aliases": []},
-            {"canonical_name": "Caroline", "entity_type": "character", "name": "Caroline", "aliases": []},
+            {
+                "canonical_name": "Caroline",
+                "entity_type": "character",
+                "name": "Caroline",
+                "aliases": [],
+            },
         ]
         mentions = detect_mentions(text, entities)
         assert len(mentions) == 2
@@ -93,7 +101,12 @@ class TestDetectMentions:
         assert mentions == []
 
     def test_empty_text(self):
-        mentions = detect_mentions("", [{"canonical_name": "Jake", "entity_type": "character", "name": "Jake"}])
+        entity = {
+            "canonical_name": "Jake",
+            "entity_type": "character",
+            "name": "Jake",
+        }
+        mentions = detect_mentions("", [entity])
         assert mentions == []
 
     def test_short_names_skipped(self):

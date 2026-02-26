@@ -8,21 +8,19 @@ Usage:
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
 import time
 
 from neo4j import AsyncGraphDatabase
 
 from app.config import settings
-from app.core.logging import get_logger, setup_logging
+from app.core.logging import setup_logging
 from app.repositories.book_repo import BookRepository
 from app.services.graph_builder import build_book_graph
 
 
 async def main(book_id: str) -> None:
     setup_logging(log_level="INFO", log_format="console")
-    logger = get_logger(__name__)
 
     driver = AsyncGraphDatabase.driver(
         settings.neo4j_uri,
@@ -44,11 +42,11 @@ async def main(book_id: str) -> None:
             return
 
         chapter_regex = await book_repo.get_chapter_regex_json(book_id)
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"Book: {book.get('title', book_id)}")
         print(f"Chapters: {len(chapters)}")
         print(f"Regex matches: {sum(1 for v in (chapter_regex or {}).values() if v != '[]')}")
-        print(f"{'='*60}\n")
+        print(f"{'=' * 60}\n")
 
         # 2. Run extraction pipeline
         t0 = time.time()
@@ -63,15 +61,15 @@ async def main(book_id: str) -> None:
         )
         extraction_time = time.time() - t0
 
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"EXTRACTION COMPLETE ({extraction_time:.1f}s)")
         print(f"  Chapters processed: {result['chapters_processed']}")
         print(f"  Chapters failed:    {result['chapters_failed']}")
         print(f"  Total entities:     {result['total_entities']}")
         print(f"  Status:             {result['status']}")
-        if result['failed_chapters']:
+        if result["failed_chapters"]:
             print(f"  Failed chapters:    {result['failed_chapters']}")
-        print(f"{'='*60}\n")
+        print(f"{'=' * 60}\n")
 
         # 3. Run embedding pipeline
         print("Starting embedding pipeline...")
@@ -92,12 +90,12 @@ async def main(book_id: str) -> None:
             if embed_result.failed == 0:
                 await book_repo.update_book_status(book_id, "embedded")
 
-            print(f"\n{'='*60}")
+            print(f"\n{'=' * 60}")
             print(f"EMBEDDING COMPLETE ({embed_time:.1f}s)")
             print(f"  Chunks embedded: {embed_result.embedded}")
             print(f"  Chunks failed:   {embed_result.failed}")
             print(f"  Total tokens:    {embed_result.total_tokens}")
-            print(f"{'='*60}\n")
+            print(f"{'=' * 60}\n")
         else:
             print("No chunks to embed.")
 
@@ -115,7 +113,7 @@ async def main(book_id: str) -> None:
             total = 0
             for rec in records:
                 print(f"  {rec['label']}: {rec['cnt']}")
-                total += rec['cnt']
+                total += rec["cnt"]
             print(f"  TOTAL: {total}")
 
     finally:
