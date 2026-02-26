@@ -165,5 +165,5 @@ async def extract_characters(state: ExtractionPipelineState) -> dict[str, Any]:
             "characters": CharacterExtractionResult(),
             "grounded_entities": [],
             "passes_completed": [],
-            "errors": [{"pass": PASS_NAME, "error": str(e)}],
+            "errors": [{"pass": PASS_NAME, "error": type(e).__name__}],
         }

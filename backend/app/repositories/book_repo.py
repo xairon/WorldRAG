@@ -266,19 +266,29 @@ class BookRepository(Neo4jRepository):
             """
             UNWIND $paragraphs AS p
             MATCH (c:Chapter {book_id: $book_id, number: $chapter_number})
-            CREATE (para:Paragraph {
+            MERGE (para:Paragraph {
                 book_id: $book_id,
                 chapter_number: $chapter_number,
-                index: p.index,
-                type: p.type,
-                text: p.text,
-                html: p.html,
-                char_start: p.char_start,
-                char_end: p.char_end,
-                speaker: p.speaker,
-                sentence_count: p.sentence_count,
-                word_count: p.word_count
+                index: p.index
             })
+            ON CREATE SET
+                para.type = p.type,
+                para.text = p.text,
+                para.html = p.html,
+                para.char_start = p.char_start,
+                para.char_end = p.char_end,
+                para.speaker = p.speaker,
+                para.sentence_count = p.sentence_count,
+                para.word_count = p.word_count
+            ON MATCH SET
+                para.type = p.type,
+                para.text = p.text,
+                para.html = p.html,
+                para.char_start = p.char_start,
+                para.char_end = p.char_end,
+                para.speaker = p.speaker,
+                para.sentence_count = p.sentence_count,
+                para.word_count = p.word_count
             MERGE (c)-[:HAS_PARAGRAPH {position: p.index}]->(para)
             """,
             {

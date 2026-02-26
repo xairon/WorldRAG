@@ -6,6 +6,7 @@ using Instructor + Gemini Flash.
 
 from __future__ import annotations
 
+import asyncio
 import re
 
 from pydantic import BaseModel, Field
@@ -75,52 +76,67 @@ async def resolve_coreferences(
 
     client, model = get_instructor_for_task("classification")
 
-    all_grounded: list[GroundedEntity] = []
+    sem = asyncio.Semaphore(5)
 
-    for segment_text, segment_offset in segments:
-        try:
-            prompt = COREFERENCE_PROMPT.format(
-                entity_context=entity_context,
-                text=segment_text,
-            )
-
-            result = await client.chat.completions.create(
-                model=model,
-                response_model=CoreferenceResult,
-                messages=[{"role": "user", "content": prompt}],
-            )
-
-            # Find pronoun positions in text and create grounded entities
-            for resolution in result.resolutions:
-                if resolution.confidence < 0.8:
-                    continue
-
-                # Locate ALL occurrences of the pronoun in the segment text
-                pattern = re.compile(
-                    r"\b" + re.escape(resolution.pronoun) + r"\b",
-                    re.IGNORECASE,
+    async def _resolve_segment(
+        segment_text: str,
+        segment_offset: int,
+    ) -> list[GroundedEntity]:
+        """Resolve pronouns in a single segment."""
+        async with sem:
+            try:
+                prompt = COREFERENCE_PROMPT.format(
+                    entity_context=entity_context,
+                    text=segment_text,
                 )
-                for match in pattern.finditer(segment_text):
-                    all_grounded.append(
-                        GroundedEntity(
-                            entity_type="character",
-                            entity_name=resolution.referent,
-                            extraction_text=match.group(),
-                            char_offset_start=segment_offset + match.start(),
-                            char_offset_end=segment_offset + match.end(),
-                            pass_name="coreference",
-                            alignment_status="fuzzy",
-                            confidence=resolution.confidence * 0.8,
-                            attributes={"mention_type": "pronoun"},
-                        )
-                    )
 
-        except Exception:
-            logger.exception(
-                "coreference_segment_failed",
-                segment_offset=segment_offset,
-            )
-            continue
+                result = await client.chat.completions.create(
+                    model=model,
+                    response_model=CoreferenceResult,
+                    messages=[{"role": "user", "content": prompt}],
+                )
+
+                grounded: list[GroundedEntity] = []
+                for resolution in result.resolutions:
+                    if resolution.confidence < 0.8:
+                        continue
+
+                    # Locate the FIRST occurrence of the pronoun in the segment.
+                    # We only resolve the first match because the LLM resolved
+                    # the pronoun for this segment as a whole — subsequent
+                    # occurrences of the same pronoun may refer to different entities.
+                    pattern = re.compile(
+                        r"\b" + re.escape(resolution.pronoun) + r"\b",
+                        re.IGNORECASE,
+                    )
+                    match = pattern.search(segment_text)
+                    if match:
+                        grounded.append(
+                            GroundedEntity(
+                                entity_type="character",
+                                entity_name=resolution.referent,
+                                extraction_text=match.group(),
+                                char_offset_start=segment_offset + match.start(),
+                                char_offset_end=segment_offset + match.end(),
+                                pass_name="coreference",
+                                alignment_status="fuzzy",
+                                confidence=resolution.confidence * 0.8,
+                                attributes={"mention_type": "pronoun"},
+                            )
+                        )
+                return grounded
+
+            except Exception:
+                logger.exception(
+                    "coreference_segment_failed",
+                    segment_offset=segment_offset,
+                )
+                return []
+
+    results = await asyncio.gather(
+        *[_resolve_segment(text, offset) for text, offset in segments]
+    )
+    all_grounded = [g for segment_results in results for g in segment_results]
 
     logger.info(
         "coreference_complete",

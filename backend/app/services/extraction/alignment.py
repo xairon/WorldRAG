@@ -6,10 +6,13 @@ grounded entities and decides whether to skip or discount confidence.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import structlog
 
 
-def check_alignment(entity: Any, logger: Any) -> tuple[bool, float]:
+def check_alignment(entity: object, logger: structlog.BoundLogger) -> tuple[bool, float]:
     """Check alignment status of a LangExtract entity.
 
     Args:
@@ -36,7 +39,7 @@ def check_alignment(entity: Any, logger: Any) -> tuple[bool, float]:
     return False, confidence
 
 
-def alignment_label(entity: Any) -> str:
+def alignment_label(entity: object) -> str:
     """Return the alignment label string for a LangExtract entity.
 
     Args:

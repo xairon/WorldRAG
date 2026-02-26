@@ -219,7 +219,7 @@ async def extract_systems(state: ExtractionPipelineState) -> dict[str, Any]:
             "systems": SystemExtractionResult(),
             "grounded_entities": [],
             "passes_completed": [],
-            "errors": [{"pass": PASS_NAME, "error": str(e)}],
+            "errors": [{"pass": PASS_NAME, "error": type(e).__name__}],
         }
 
 

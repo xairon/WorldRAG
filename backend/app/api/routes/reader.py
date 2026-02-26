@@ -54,24 +54,28 @@ async def get_chapter_text(
     chapter_number: int,
     driver: AsyncDriver = Depends(get_neo4j),
 ) -> ChapterTextResponse:
-    """Get full chapter text reconstructed from chunks."""
+    """Get full chapter text, preferring paragraphs (no overlap) over chunks."""
     repo = BookRepository(driver)
 
     chapter = await repo.get_chapter(book_id, chapter_number)
     if not chapter:
         raise HTTPException(status_code=404, detail=f"Chapter {chapter_number} not found")
 
-    # Get chunks ordered by position and concatenate
-    results = await repo.execute_read(
-        """
-        MATCH (c:Chapter {book_id: $book_id, number: $number})-[:HAS_CHUNK]->(ck:Chunk)
-        RETURN ck.text AS text, ck.position AS position
-        ORDER BY ck.position
-        """,
-        {"book_id": book_id, "number": chapter_number},
-    )
-
-    full_text = "\n".join(row["text"] for row in results if row.get("text"))
+    # Prefer paragraphs (V2, no overlap) over chunks (V1, may overlap)
+    paragraphs = await repo.get_paragraphs(book_id, chapter_number)
+    if paragraphs:
+        full_text = "\n".join(row["text"] for row in paragraphs if row.get("text"))
+    else:
+        # Fallback to chunks for pre-V2 books
+        results = await repo.execute_read(
+            """
+            MATCH (c:Chapter {book_id: $book_id, number: $number})-[:HAS_CHUNK]->(ck:Chunk)
+            RETURN ck.text AS text, ck.position AS position
+            ORDER BY ck.position
+            """,
+            {"book_id": book_id, "number": chapter_number},
+        )
+        full_text = "\n".join(row["text"] for row in results if row.get("text"))
 
     return ChapterTextResponse(
         book_id=book_id,
