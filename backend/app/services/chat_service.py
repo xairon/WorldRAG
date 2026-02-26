@@ -8,6 +8,7 @@ about novels grounded in the Knowledge Graph:
 
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING, Any
 
 from app.config import settings
@@ -68,6 +69,7 @@ class ChatService:
         rerank_top_n: int = 5,
         min_relevance: float = 0.1,
         include_sources: bool = True,
+        max_chapter: int | None = None,
     ) -> ChatResponse:
         """Run the full RAG pipeline.
 
@@ -92,7 +94,7 @@ class ChatService:
         query_embedding = await self.embedder.embed_query(query)
 
         # Step 2: Vector search on chunks
-        chunks = await self._vector_search(query_embedding, book_id, top_k)
+        chunks = await self._vector_search(query_embedding, book_id, top_k, max_chapter=max_chapter)
 
         if not chunks:
             return ChatResponse(
@@ -129,7 +131,7 @@ class ChatService:
 
         # Step 4: Fetch related KG entities
         chapter_numbers = list({c["chapter_number"] for c in top_chunks})
-        related_entities = await self._fetch_related_entities(book_id, chapter_numbers)
+        related_entities = await self._fetch_related_entities(book_id, chapter_numbers, max_chapter=max_chapter)
 
         # Step 5: Generate answer
         context = self._build_context(top_chunks, relevance_scores, related_entities)
@@ -166,11 +168,111 @@ class ChatService:
             chunks_after_rerank=len(top_chunks),
         )
 
+    async def query_stream(
+        self,
+        query: str,
+        book_id: str,
+        *,
+        top_k: int = 20,
+        rerank_top_n: int = 5,
+        min_relevance: float = 0.1,
+        max_chapter: int | None = None,
+    ) -> AsyncGenerator[dict[str, Any], None]:
+        """Stream the RAG pipeline as SSE events.
+
+        Yields dicts with "event" and "data" keys:
+          - {"event": "sources", "data": {sources, related_entities, chunks_retrieved, chunks_after_rerank}}
+          - {"event": "token", "data": {"token": "..."}}
+          - {"event": "done", "data": {}}
+          - {"event": "error", "data": {"message": "..."}}
+        """
+        import json
+
+        from langchain_core.messages import HumanMessage, SystemMessage
+
+        # Step 1-3: Retrieve and rerank (same as query)
+        query_embedding = await self.embedder.embed_query(query)
+        chunks = await self._vector_search(query_embedding, book_id, top_k, max_chapter=max_chapter)
+
+        if not chunks:
+            yield {"event": "error", "data": json.dumps({"message": "No relevant content found."})}
+            return
+
+        if self.reranker:
+            chunk_texts = [c["text"] for c in chunks]
+            reranked = await self.reranker.rerank(
+                query=query, documents=chunk_texts,
+                top_n=rerank_top_n, min_relevance=min_relevance,
+            )
+            if not reranked:
+                yield {"event": "error", "data": json.dumps({"message": "Content not relevant enough."})}
+                return
+            top_chunks = [chunks[r.index] for r in reranked]
+            relevance_scores = [r.relevance_score for r in reranked]
+        else:
+            top_chunks = chunks[:rerank_top_n]
+            relevance_scores = [c.get("score", 0.0) for c in top_chunks]
+
+        # Step 4: Fetch related entities
+        chapter_numbers = list({c["chapter_number"] for c in top_chunks})
+        related_entities = await self._fetch_related_entities(book_id, chapter_numbers, max_chapter=max_chapter)
+
+        # Emit sources event before streaming tokens
+        sources = [
+            SourceChunk(
+                text=chunk["text"][:500],
+                chapter_number=chunk["chapter_number"],
+                chapter_title=chunk.get("chapter_title", ""),
+                position=chunk.get("position", 0),
+                relevance_score=score,
+            )
+            for chunk, score in zip(top_chunks, relevance_scores, strict=True)
+        ]
+        yield {
+            "event": "sources",
+            "data": json.dumps({
+                "sources": [s.model_dump() for s in sources],
+                "related_entities": [e.model_dump() for e in related_entities],
+                "chunks_retrieved": len(chunks),
+                "chunks_after_rerank": len(top_chunks),
+            }),
+        }
+
+        # Step 5: Stream LLM answer
+        context = self._build_context(top_chunks, relevance_scores, related_entities)
+        llm = get_langchain_llm(settings.llm_chat)
+        messages = [
+            SystemMessage(content=_SYSTEM_PROMPT),
+            HumanMessage(content=f"{context}\n\n---\n\nQuestion: {query}"),
+        ]
+
+        try:
+            async for chunk in llm.astream(messages):
+                token = chunk.content if hasattr(chunk, "content") else str(chunk)
+                if token:
+                    yield {"event": "token", "data": json.dumps({"token": token})}
+        except Exception:
+            logger.exception("chat_stream_llm_error")
+            yield {"event": "error", "data": json.dumps({"message": "LLM generation failed."})}
+            return
+
+        yield {"event": "done", "data": "{}"}
+
+        logger.info(
+            "chat_stream_completed",
+            book_id=book_id,
+            query_len=len(query),
+            chunks_retrieved=len(chunks),
+            chunks_after_rerank=len(top_chunks),
+        )
+
     async def _vector_search(
         self,
         query_embedding: list[float],
         book_id: str,
         top_k: int,
+        *,
+        max_chapter: int | None = None,
     ) -> list[dict[str, Any]]:
         """Search chunks by vector similarity using the Neo4j vector index."""
         results = await self.repo.execute_read(
@@ -179,6 +281,7 @@ class ChatService:
             YIELD node AS chunk, score
             MATCH (chap:Chapter)-[:HAS_CHUNK]->(chunk)
             WHERE chap.book_id = $book_id
+              AND ($max_chapter IS NULL OR chap.number <= $max_chapter)
             RETURN chunk.text AS text,
                    chap.number AS chapter_number,
                    chap.title AS chapter_title,
@@ -190,6 +293,7 @@ class ChatService:
                 "embedding": query_embedding,
                 "book_id": book_id,
                 "top_k": top_k,
+                "max_chapter": max_chapter,
             },
         )
         return results
@@ -198,6 +302,8 @@ class ChatService:
         self,
         book_id: str,
         chapter_numbers: list[int],
+        *,
+        max_chapter: int | None = None,
     ) -> list[RelatedEntity]:
         """Fetch KG entities grounded in the relevant chapters."""
         if not chapter_numbers:
@@ -205,16 +311,17 @@ class ChatService:
 
         results = await self.repo.execute_read(
             """
-            MATCH (entity)-[:GROUNDED_IN]->(chap:Chapter)
+            MATCH (entity)-[:GROUNDED_IN|MENTIONED_IN]->(chap:Chapter)
             WHERE chap.book_id = $book_id AND chap.number IN $chapters
               AND NOT entity:Chunk AND NOT entity:Book AND NOT entity:Chapter
+              AND ($max_chapter IS NULL OR chap.number <= $max_chapter)
             RETURN DISTINCT entity.name AS name,
                    labels(entity)[0] AS label,
                    entity.description AS description
             ORDER BY label, name
             LIMIT 30
             """,
-            {"book_id": book_id, "chapters": chapter_numbers},
+            {"book_id": book_id, "chapters": chapter_numbers, "max_chapter": max_chapter},
         )
 
         return [
