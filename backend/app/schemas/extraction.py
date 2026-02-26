@@ -312,3 +312,72 @@ class ReconciliationResult(BaseModel):
         default_factory=list,
         description="Unresolved conflicts requiring human review",
     )
+
+
+# ── Provenance (V3) ──────────────────────────────────────────────────────
+
+
+class SkillProvenance(BaseModel):
+    """Provenance link: which source granted a skill."""
+
+    skill_name: str = Field(..., description="Name of the skill")
+    source_type: str = Field(
+        "unknown",
+        description="Source type: item, class, bloodline, title, unknown",
+    )
+    source_name: str = Field("", description="Name of the source entity")
+    confidence: float = Field(
+        0.5,
+        ge=0.0,
+        le=1.0,
+        description="Confidence that this source grants the skill",
+    )
+    context: str = Field("", description="Text evidence for the provenance")
+
+
+class ProvenanceResult(BaseModel):
+    """Result of provenance extraction for a chapter."""
+
+    provenances: list[SkillProvenance] = Field(default_factory=list)
+
+
+# ── Layer 3: Series-specific entities (V3) ───────────────────────────────
+
+
+class ExtractedBloodline(BaseModel):
+    """A bloodline extracted from text (Primal Hunter specific)."""
+
+    name: str = Field(..., description="Bloodline name")
+    description: str = ""
+    effects: list[str] = Field(default_factory=list)
+    origin: str = ""
+    owner: str = ""
+    awakened_chapter: int | None = None
+
+
+class ExtractedProfession(BaseModel):
+    """A profession extracted from text."""
+
+    name: str = Field(..., description="Profession name")
+    tier: int | None = None
+    profession_type: str = ""
+    owner: str = ""
+    acquired_chapter: int | None = None
+
+
+class ExtractedChurch(BaseModel):
+    """A primordial church/deity relation."""
+
+    deity_name: str = Field(..., description="Deity or Primordial name")
+    domain: str = ""
+    blessing: str = ""
+    worshipper: str = ""
+    valid_from_chapter: int | None = None
+
+
+class Layer3ExtractionResult(BaseModel):
+    """Result of Layer 3 series-specific extraction."""
+
+    bloodlines: list[ExtractedBloodline] = Field(default_factory=list)
+    professions: list[ExtractedProfession] = Field(default_factory=list)
+    churches: list[ExtractedChurch] = Field(default_factory=list)
