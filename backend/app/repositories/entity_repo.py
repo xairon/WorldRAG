@@ -784,19 +784,22 @@ class EntityRepository(Neo4jRepository):
         "concept": ("Concept", "name"),
     }
 
-    async def store_grounding(
+    async def store_mentions(
         self,
         book_id: str,
         chapter_number: int,
         grounded: list[GroundedEntity],
     ) -> int:
-        """Store GROUNDED_IN relationships between entities and chapter.
+        """Store MENTIONED_IN relationships between entities and chapter.
 
-        Creates proper graph relationships with char offsets for each
-        grounded entity mention, enabling reader text highlighting.
+        Creates one relationship PER MENTION (no merging/expanding).
+        Uses CREATE instead of MERGE — each mention is independent.
+        This fixes the span expansion bug where MERGE ON MATCH expanded
+        char offsets to min/max, causing entire text blocks to be
+        annotated as a single entity.
 
         Uses a label-aware UNWIND strategy: groups entities by Neo4j label,
-        then runs one MERGE per label group (Neo4j doesn't allow variable labels).
+        then runs one CREATE per label group (Neo4j doesn't allow variable labels).
         Also stores a JSON summary on the Chapter node for quick access.
         """
         if not grounded:
@@ -819,32 +822,30 @@ class EntityRepository(Neo4jRepository):
                     "match_prop": prop,
                     "char_start": g.char_offset_start,
                     "char_end": g.char_offset_end,
-                    "extraction_text": g.extraction_text[:200],
+                    "mention_text": g.extraction_text[:200],
+                    "mention_type": "langextract",
+                    "confidence": g.confidence,
+                    "alignment_status": g.alignment_status,
                     "pass_name": g.pass_name,
                 }
             )
 
-        # Create GROUNDED_IN relationships per label group
+        # Create MENTIONED_IN relationships per label group
         for label, entries in by_label.items():
-            # Neo4j doesn't support variable labels — build query per label
             prop_name = entries[0]["match_prop"]
             query = f"""
                 UNWIND $entries AS e
                 MATCH (chapter:Chapter {{book_id: $book_id, number: $chapter_num}})
                 MATCH (entity:{label} {{{prop_name}: e.entity_name}})
-                MERGE (entity)-[g:GROUNDED_IN]->(chapter)
-                ON CREATE SET
-                    g.char_offset_start = e.char_start,
-                    g.char_offset_end = e.char_end,
-                    g.extraction_text = e.extraction_text,
-                    g.pass_name = e.pass_name
-                ON MATCH SET
-                    g.char_offset_start = CASE
-                        WHEN e.char_start < g.char_offset_start
-                        THEN e.char_start ELSE g.char_offset_start END,
-                    g.char_offset_end = CASE
-                        WHEN e.char_end > g.char_offset_end
-                        THEN e.char_end ELSE g.char_offset_end END
+                CREATE (entity)-[:MENTIONED_IN {{
+                    char_start: e.char_start,
+                    char_end: e.char_end,
+                    mention_text: e.mention_text,
+                    mention_type: e.mention_type,
+                    confidence: e.confidence,
+                    alignment_status: e.alignment_status,
+                    pass_name: e.pass_name
+                }}]->(chapter)
             """
             await self.execute_write(
                 query,
@@ -856,7 +857,7 @@ class EntityRepository(Neo4jRepository):
             )
             linked += len(entries)
 
-        # Also store summary JSON on the Chapter for quick access
+        # Store summary JSON on Chapter for quick access
         import json
 
         summary = [
@@ -865,6 +866,7 @@ class EntityRepository(Neo4jRepository):
                 "entity_name": g.entity_name,
                 "char_start": g.char_offset_start,
                 "char_end": g.char_offset_end,
+                "mention_type": "langextract",
                 "pass_name": g.pass_name,
             }
             for g in grounded
@@ -872,22 +874,22 @@ class EntityRepository(Neo4jRepository):
         await self.execute_write(
             """
             MATCH (c:Chapter {book_id: $book_id, number: $chapter})
-            SET c.grounding_data = $grounding_json,
-                c.grounding_count = $count
+            SET c.mention_data = $mention_json,
+                c.mention_count = $count
             """,
             {
                 "book_id": book_id,
                 "chapter": chapter_number,
-                "grounding_json": json.dumps(summary, default=str),
+                "mention_json": json.dumps(summary, default=str),
                 "count": len(grounded),
             },
         )
 
         logger.info(
-            "grounding_stored",
+            "mentions_stored",
             book_id=book_id,
             chapter=chapter_number,
-            total_grounded=len(grounded),
+            total=len(grounded),
             linked=linked,
             labels=list(by_label.keys()),
         )
@@ -953,8 +955,8 @@ class EntityRepository(Neo4jRepository):
             self.upsert_concepts(book_id, chapter, result.lore.concepts, batch_id),
         )
 
-        # Phase 3: Grounding (depends on entities existing)
-        counts["grounding"] = await self.store_grounding(
+        # Phase 3: Mentions (depends on entities existing)
+        counts["mentions"] = await self.store_mentions(
             book_id,
             chapter,
             result.grounded_entities,
