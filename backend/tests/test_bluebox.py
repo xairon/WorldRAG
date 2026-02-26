@@ -8,7 +8,6 @@ from app.services.extraction.bluebox import (
     group_blue_boxes,
 )
 
-
 # -- Helper to build paragraph dicts ----------------------------------------
 
 
@@ -239,7 +238,7 @@ class TestClassification:
         assert _classify_box("Some random system text") == "mixed"
 
     def test_stat_with_level_is_level(self):
-        """Level takes precedence over stat when only level flag is set (stat is not in flags count)."""
+        """Level takes precedence over stat when only level flag is set."""
         text = "Level 5 → 6\n+3 Strength"
         # has_level=True, has_stat=True, but flags only counts level/skill/title
         # flags=1 (only level), so returns level_up

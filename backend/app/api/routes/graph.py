@@ -169,6 +169,94 @@ async def get_entity(
     }
 
 
+# ── Entity wiki page ──────────────────────────────────────────────────────
+
+
+@router.get("/wiki/{entity_type}/{entity_name}", dependencies=[Depends(require_auth)])
+async def get_entity_wiki(
+    entity_type: str,
+    entity_name: str,
+    book_id: str | None = None,
+    driver: AsyncDriver = Depends(get_neo4j),
+) -> dict:
+    """Get full entity wiki page data: properties, connections, appearances."""
+    if entity_type not in ALLOWED_LABELS:
+        raise NotFoundError(f"Unknown entity type: {entity_type}")
+
+    repo = Neo4jRepository(driver)
+
+    # Find entity by name and type
+    entities = await repo.execute_read(
+        f"""
+        MATCH (n:{entity_type})
+        WHERE (n.name = $name OR n.canonical_name = $name)
+              AND (CASE WHEN $has_book THEN n.book_id = $book_id ELSE true END)
+        RETURN properties(n) AS props, elementId(n) AS id, labels(n) AS labels
+        LIMIT 1
+        """,
+        {"name": entity_name, "book_id": book_id, "has_book": book_id is not None},
+    )
+
+    if not entities:
+        raise NotFoundError(f"{entity_type} '{entity_name}' not found")
+
+    entity = entities[0]
+    entity_id = entity["id"]
+
+    # Fetch connections and appearances in parallel
+    connections, appearances = await asyncio.gather(
+        repo.execute_read(
+            """
+            MATCH (n)-[r]-(m)
+            WHERE elementId(n) = $id
+              AND NOT m:Chunk AND NOT m:Book
+            RETURN type(r) AS rel_type,
+                   CASE WHEN startNode(r) = n THEN 'outgoing' ELSE 'incoming' END AS direction,
+                   labels(m)[0] AS target_label,
+                   m.name AS target_name,
+                   properties(r) AS rel_props,
+                   elementId(m) AS target_id
+            ORDER BY rel_type, target_name
+            LIMIT 100
+            """,
+            {"id": entity_id},
+        ),
+        repo.execute_read(
+            """
+            MATCH (n)-[:GROUNDED_IN|MENTIONED_IN]->(chap:Chapter)
+            WHERE elementId(n) = $id
+            RETURN chap.number AS chapter, chap.title AS title
+            ORDER BY chap.number
+            """,
+            {"id": entity_id},
+        ),
+    )
+
+    # Group connections by relationship type
+    grouped: dict[str, list[dict]] = {}
+    for conn in connections:
+        rel = conn["rel_type"]
+        if rel not in grouped:
+            grouped[rel] = []
+        grouped[rel].append(
+            {
+                "target_name": conn["target_name"],
+                "target_label": conn["target_label"],
+                "target_id": conn["target_id"],
+                "direction": conn["direction"],
+                "properties": conn["rel_props"],
+            }
+        )
+
+    return {
+        "id": entity_id,
+        "labels": entity["labels"],
+        "properties": entity["props"],
+        "connections": grouped,
+        "appearances": appearances,
+    }
+
+
 # ── Neighborhood (expand node) ──────────────────────────────────────────────
 
 
@@ -402,6 +490,7 @@ async def get_timeline(
     significance: str | None = Query(
         None, description="Min significance: minor, moderate, major, critical"
     ),
+    character: str | None = Query(None, description="Filter events by character name"),
     limit: int = Query(100, ge=1, le=500),
     driver: AsyncDriver = Depends(get_neo4j),
 ) -> list[dict]:
@@ -423,7 +512,11 @@ async def get_timeline(
         """
         MATCH (ev:Event)
         WHERE ev.book_id = $book_id
-              AND (CASE WHEN $has_sig THEN ev.significance IN $allowed ELSE true END)
+          AND (CASE WHEN $has_sig THEN ev.significance IN $allowed ELSE true END)
+          AND (CASE WHEN $has_character THEN EXISTS {
+                MATCH (ev)<-[:PARTICIPATES_IN]-(filter_ch:Character)
+                WHERE filter_ch.canonical_name = $character OR filter_ch.name = $character
+              } ELSE true END)
         OPTIONAL MATCH (ev)<-[:PARTICIPATES_IN]-(ch:Character)
         OPTIONAL MATCH (ev)-[:OCCURS_AT]->(loc:Location)
         RETURN ev.name AS name, ev.description AS description,
@@ -434,7 +527,14 @@ async def get_timeline(
         ORDER BY ev.chapter_start
         LIMIT $limit
         """,
-        {"book_id": book_id, "allowed": allowed, "has_sig": len(allowed) > 0, "limit": limit},
+        {
+            "book_id": book_id,
+            "character": character,
+            "has_character": character is not None,
+            "allowed": allowed,
+            "has_sig": len(allowed) > 0,
+            "limit": limit,
+        },
     )
 
     return results

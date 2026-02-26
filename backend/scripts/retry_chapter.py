@@ -63,9 +63,7 @@ async def main(book_id: str, chapter_number: int) -> None:
             """,
             {"book_id": book_id, "num": chapter_number},
         )
-        regex_json = (
-            regex_results[0].get("regex_json", "[]") if regex_results else "[]"
-        )
+        regex_json = regex_results[0].get("regex_json", "[]") if regex_results else "[]"
 
         # Run extraction
         stats = await build_chapter_graph(

@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
-
-from app.schemas.book import ParagraphData, ParagraphType
+from app.schemas.book import ParagraphType
 from app.services.ingestion import _build_paragraphs_from_html, _classify_block_text
 
 
@@ -18,19 +16,23 @@ class TestClassifyBlockText:
         assert _classify_block_text("h3", "Section") == ParagraphType.HEADER
 
     def test_dialogue_guillemets(self):
-        assert _classify_block_text("p", "\u00ab Bonjour ! \u00bb dit Jake.") == ParagraphType.DIALOGUE
+        result = _classify_block_text("p", "\u00ab Bonjour ! \u00bb dit Jake.")
+        assert result == ParagraphType.DIALOGUE
 
     def test_dialogue_tiret(self):
-        assert _classify_block_text("p", "\u2014 Tu viens ?") == ParagraphType.DIALOGUE
+        result = _classify_block_text("p", "\u2014 Tu viens ?")
+        assert result == ParagraphType.DIALOGUE
 
     def test_dialogue_dash(self):
-        assert _classify_block_text("p", "\u2013 Non, r\u00e9pondit-elle.") == ParagraphType.DIALOGUE
+        result = _classify_block_text("p", "\u2013 Non, r\u00e9pondit-elle.")
+        assert result == ParagraphType.DIALOGUE
 
     def test_dialogue_smart_quotes(self):
         assert _classify_block_text("p", "\u201cHello,\u201d he said.") == ParagraphType.DIALOGUE
 
     def test_narration_default(self):
-        assert _classify_block_text("p", "Jake observait la for\u00eat sombre.") == ParagraphType.NARRATION
+        result = _classify_block_text("p", "Jake observait la for\u00eat sombre.")
+        assert result == ParagraphType.NARRATION
 
     def test_scene_break_stars(self):
         assert _classify_block_text("p", "***") == ParagraphType.SCENE_BREAK
@@ -45,10 +47,12 @@ class TestClassifyBlockText:
         assert _classify_block_text("p", "[Skill Acquired: Shadowstep]") == ParagraphType.BLUE_BOX
 
     def test_blue_box_level(self):
-        assert _classify_block_text("p", "[Level Up! You are now level 12]") == ParagraphType.BLUE_BOX
+        result = _classify_block_text("p", "[Level Up! You are now level 12]")
+        assert result == ParagraphType.BLUE_BOX
 
     def test_blue_box_french(self):
-        assert _classify_block_text("p", "[Comp\u00e9tence acquise : Pas de l'ombre]") == ParagraphType.BLUE_BOX
+        text = "[Comp\u00e9tence acquise : Pas de l'ombre]"
+        assert _classify_block_text("p", text) == ParagraphType.BLUE_BOX
 
 
 class TestBuildParagraphsFromHtml:
@@ -94,7 +98,7 @@ class TestBuildParagraphsFromHtml:
         assert paragraphs[0].word_count == 5
 
     def test_dialogue_paragraphs(self):
-        html = '<p>\u00ab Salut ! \u00bb dit Jake.</p><p>Il sourit.</p>'
+        html = "<p>\u00ab Salut ! \u00bb dit Jake.</p><p>Il sourit.</p>"
         paragraphs = _build_paragraphs_from_html(html)
         assert paragraphs[0].type == ParagraphType.DIALOGUE
         assert paragraphs[1].type == ParagraphType.NARRATION

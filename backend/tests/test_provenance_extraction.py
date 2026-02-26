@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
-
-import pytest
+from unittest.mock import patch
 
 from app.schemas.extraction import SkillProvenance
 from app.services.extraction.provenance import extract_provenance
@@ -25,9 +23,7 @@ class TestExtractProvenance:
                     confidence=0.9,
                 ),
             ]
-            result = await extract_provenance(
-                "text", ["Shadow Strike"], {"items": ["Nanoblade"]}
-            )
+            result = await extract_provenance("text", ["Shadow Strike"], {"items": ["Nanoblade"]})
             assert len(result.provenances) == 1
             assert result.provenances[0].source_name == "Nanoblade"
 

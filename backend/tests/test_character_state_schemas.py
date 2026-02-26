@@ -12,8 +12,8 @@ from app.schemas.character_state import (
     ProgressionTimeline,
     SkillSnapshot,
     StatDiff,
-    StatEntry,
     StateChangeRecord,
+    StatEntry,
     TitleSnapshot,
 )
 
@@ -239,9 +239,7 @@ class TestCharacterStateSnapshot:
             as_of_chapter=1,
             total_chapters_in_book=10,
         )
-        snap1.stats.append(
-            StatEntry(name="Strength", value=10, last_changed_chapter=1)
-        )
+        snap1.stats.append(StatEntry(name="Strength", value=10, last_changed_chapter=1))
         assert len(snap2.stats) == 0
 
     def test_serialization_roundtrip(self):
@@ -321,9 +319,7 @@ class TestProgressionTimeline:
 
 class TestStatDiff:
     def test_creates_diff(self):
-        diff = StatDiff(
-            name="Perception", value_at_from=20, value_at_to=37, delta=17
-        )
+        diff = StatDiff(name="Perception", value_at_from=20, value_at_to=37, delta=17)
         assert diff.delta == 17
         assert diff.value_at_from == 20
 
@@ -358,9 +354,7 @@ class TestCharacterComparison:
                     delta=17,
                 ),
             ],
-            skills=CategoryDiff(
-                gained=["Mark of the Ambitious Hunter"], lost=[]
-            ),
+            skills=CategoryDiff(gained=["Mark of the Ambitious Hunter"], lost=[]),
             classes=CategoryDiff(),
             titles=CategoryDiff(),
             items=CategoryDiff(),

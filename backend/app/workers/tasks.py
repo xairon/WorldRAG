@@ -59,6 +59,25 @@ async def process_book_extraction(
     # Import here to avoid circular import at module load
     from app.services.graph_builder import build_book_graph
 
+    # Progress callback: publish to Redis pub/sub for SSE consumers
+    dlq_redis = ctx.get("dlq_redis")
+
+    async def _publish_progress(chapter: int, total: int, status: str, entities: int) -> None:
+        if dlq_redis is not None:
+            import json
+
+            await dlq_redis.publish(
+                f"worldrag:progress:{book_id}",
+                json.dumps(
+                    {
+                        "chapter": chapter,
+                        "total": total,
+                        "status": status,
+                        "entities_found": entities,
+                    }
+                ),
+            )
+
     result = await build_book_graph(
         driver=driver,
         book_repo=book_repo,
@@ -69,6 +88,7 @@ async def process_book_extraction(
         chapter_regex_matches=chapter_regex,
         dlq=dlq,
         cost_tracker=cost_tracker,
+        on_chapter_done=_publish_progress,
     )
 
     logger.info(

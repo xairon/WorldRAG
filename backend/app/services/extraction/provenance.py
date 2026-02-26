@@ -7,8 +7,6 @@ using an LLM with structured output.
 
 from __future__ import annotations
 
-from typing import Any
-
 from app.core.logging import get_logger
 from app.prompts.extraction_provenance import PROVENANCE_SYSTEM_PROMPT
 from app.schemas.extraction import ProvenanceResult, SkillProvenance
@@ -22,7 +20,6 @@ async def _call_instructor(
     entities: dict[str, list[str]],
 ) -> list[SkillProvenance]:
     """Call Instructor with Gemini Flash for provenance extraction."""
-    from app.config import settings
     from app.llm.providers import get_instructor_for_task
 
     client, model = get_instructor_for_task("reconciliation")

@@ -136,7 +136,4 @@ def detect_mentions(
 
 def _overlaps(start: int, end: int, occupied: list[tuple[int, int]]) -> bool:
     """Check if a span overlaps with any occupied span."""
-    for occ_start, occ_end in occupied:
-        if start < occ_end and end > occ_start:
-            return True
-    return False
+    return any(start < occ_end and end > occ_start for occ_start, occ_end in occupied)

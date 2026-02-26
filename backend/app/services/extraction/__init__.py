@@ -124,74 +124,92 @@ def _collect_entities_from_state(state: ExtractionPipelineState) -> list[dict]:
     characters = state.get("characters")
     if characters:
         for c in characters.characters:
-            entities.append({
-                "canonical_name": c.canonical_name or c.name,
-                "name": c.name,
-                "entity_type": "character",
-                "aliases": c.aliases,
-            })
+            entities.append(
+                {
+                    "canonical_name": c.canonical_name or c.name,
+                    "name": c.name,
+                    "entity_type": "character",
+                    "aliases": c.aliases,
+                }
+            )
 
     systems = state.get("systems")
     if systems:
         for s in systems.skills:
-            entities.append({
-                "canonical_name": s.name,
-                "name": s.name,
-                "entity_type": "skill",
-                "aliases": [],
-            })
+            entities.append(
+                {
+                    "canonical_name": s.name,
+                    "name": s.name,
+                    "entity_type": "skill",
+                    "aliases": [],
+                }
+            )
         for c in systems.classes:
-            entities.append({
-                "canonical_name": c.name,
-                "name": c.name,
-                "entity_type": "class",
-                "aliases": [],
-            })
+            entities.append(
+                {
+                    "canonical_name": c.name,
+                    "name": c.name,
+                    "entity_type": "class",
+                    "aliases": [],
+                }
+            )
         for t in systems.titles:
-            entities.append({
-                "canonical_name": t.name,
-                "name": t.name,
-                "entity_type": "title",
-                "aliases": [],
-            })
+            entities.append(
+                {
+                    "canonical_name": t.name,
+                    "name": t.name,
+                    "entity_type": "title",
+                    "aliases": [],
+                }
+            )
 
     lore = state.get("lore")
     if lore:
         for loc in lore.locations:
-            entities.append({
-                "canonical_name": loc.name,
-                "name": loc.name,
-                "entity_type": "location",
-                "aliases": [],
-            })
+            entities.append(
+                {
+                    "canonical_name": loc.name,
+                    "name": loc.name,
+                    "entity_type": "location",
+                    "aliases": [],
+                }
+            )
         for item in lore.items:
-            entities.append({
-                "canonical_name": item.name,
-                "name": item.name,
-                "entity_type": "item",
-                "aliases": [],
-            })
+            entities.append(
+                {
+                    "canonical_name": item.name,
+                    "name": item.name,
+                    "entity_type": "item",
+                    "aliases": [],
+                }
+            )
         for cr in lore.creatures:
-            entities.append({
-                "canonical_name": cr.name,
-                "name": cr.name,
-                "entity_type": "creature",
-                "aliases": [],
-            })
+            entities.append(
+                {
+                    "canonical_name": cr.name,
+                    "name": cr.name,
+                    "entity_type": "creature",
+                    "aliases": [],
+                }
+            )
         for f in lore.factions:
-            entities.append({
-                "canonical_name": f.name,
-                "name": f.name,
-                "entity_type": "faction",
-                "aliases": [],
-            })
+            entities.append(
+                {
+                    "canonical_name": f.name,
+                    "name": f.name,
+                    "entity_type": "faction",
+                    "aliases": [],
+                }
+            )
         for co in lore.concepts:
-            entities.append({
-                "canonical_name": co.name,
-                "name": co.name,
-                "entity_type": "concept",
-                "aliases": [],
-            })
+            entities.append(
+                {
+                    "canonical_name": co.name,
+                    "name": co.name,
+                    "entity_type": "concept",
+                    "aliases": [],
+                }
+            )
 
     return entities
 

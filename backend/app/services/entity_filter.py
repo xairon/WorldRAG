@@ -17,10 +17,12 @@ pre-persistence, so Neo4j only receives high-quality KG nodes.
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import TYPE_CHECKING
 
 from app.core.logging import get_logger
-from app.schemas.extraction import ChapterExtractionResult
+
+if TYPE_CHECKING:
+    from app.schemas.extraction import ChapterExtractionResult
 
 logger = get_logger(__name__)
 
@@ -32,29 +34,96 @@ MAX_ENTITY_NAME_LENGTH = 80
 
 PRONOUNS: set[str] = {
     # French
-    "il", "elle", "ils", "elles", "je", "tu", "nous", "vous",
-    "on", "lui", "leur", "eux", "me", "te", "se", "soi",
-    "celui", "celle", "ceux", "celles",
-    "celui-ci", "celle-ci", "ceux-ci", "celles-ci",
-    "celui-la", "celle-la", "ceux-la", "celles-la",
-    "celui-là", "celle-là", "ceux-là", "celles-là",
-    "ce", "ceci", "cela", "ca", "ça",
-    "qui", "que", "quoi", "dont", "où",
-    "y", "en",
+    "il",
+    "elle",
+    "ils",
+    "elles",
+    "je",
+    "tu",
+    "nous",
+    "vous",
+    "on",
+    "lui",
+    "leur",
+    "eux",
+    "me",
+    "te",
+    "se",
+    "soi",
+    "celui",
+    "celle",
+    "ceux",
+    "celles",
+    "celui-ci",
+    "celle-ci",
+    "ceux-ci",
+    "celles-ci",
+    "celui-la",
+    "celle-la",
+    "ceux-la",
+    "celles-la",
+    "celui-là",
+    "celle-là",
+    "ceux-là",
+    "celles-là",
+    "ce",
+    "ceci",
+    "cela",
+    "ca",
+    "ça",
+    "qui",
+    "que",
+    "quoi",
+    "dont",
+    "où",
+    "y",
+    "en",
     # English
-    "he", "she", "it", "they", "him", "her", "them",
-    "his", "hers", "its", "theirs",
-    "this", "that", "these", "those",
-    "who", "whom", "which", "what",
-    "i", "we", "you", "me", "us",
-    "myself", "himself", "herself", "itself", "themselves",
+    "he",
+    "she",
+    "it",
+    "they",
+    "him",
+    "her",
+    "them",
+    "his",
+    "hers",
+    "its",
+    "theirs",
+    "this",
+    "that",
+    "these",
+    "those",
+    "who",
+    "whom",
+    "which",
+    "what",
+    "i",
+    "we",
+    "you",
+    "us",
+    "myself",
+    "himself",
+    "herself",
+    "itself",
+    "themselves",
 }
 
 # ── Garbage / LLM artifacts (hard reject for ALL entity types) ───────
 
 GARBAGE_NAMES: set[str] = {
-    "null", "none", "unknown", "n/a", "na", "undefined", "unnamed",
-    "???", "...", "—", "-", "?",
+    "null",
+    "none",
+    "unknown",
+    "n/a",
+    "na",
+    "undefined",
+    "unnamed",
+    "???",
+    "...",
+    "—",
+    "-",
+    "?",
 }
 
 # ── Generic character descriptors (hard reject) ─────────────────────
@@ -236,24 +305,89 @@ _GENERIC_SKILL_PATTERNS: list[re.Pattern[str]] = [
 
 GENERIC_CONCEPTS: set[str] = {
     # French
-    "magie", "puissance", "pouvoir", "force", "combat", "bataille",
-    "guerre", "mort", "vie", "amour", "haine", "peur", "colère",
-    "temps", "espace", "lumière", "lumiere", "obscurité", "obscurite",
-    "bien", "mal", "nature", "énergie", "energie",
-    "vitesse", "agilité", "agilite", "endurance", "intelligence",
-    "sagesse", "charisme", "chance", "destin", "mana",
-    "survie", "évolution", "evolution", "progression", "croissance",
-    "récompense", "recompense", "punition", "danger", "sécurité", "securite",
+    "magie",
+    "puissance",
+    "pouvoir",
+    "force",
+    "combat",
+    "bataille",
+    "guerre",
+    "mort",
+    "vie",
+    "amour",
+    "haine",
+    "peur",
+    "colère",
+    "temps",
+    "espace",
+    "lumière",
+    "lumiere",
+    "obscurité",
+    "obscurite",
+    "bien",
+    "mal",
+    "nature",
+    "énergie",
+    "energie",
+    "vitesse",
+    "agilité",
+    "agilite",
+    "endurance",
+    "intelligence",
+    "sagesse",
+    "charisme",
+    "chance",
+    "destin",
+    "mana",
+    "survie",
+    "évolution",
+    "evolution",
+    "progression",
+    "croissance",
+    "récompense",
+    "recompense",
+    "punition",
+    "danger",
+    "sécurité",
+    "securite",
     # English
-    "magic", "power", "strength", "force", "combat", "battle",
-    "war", "death", "life", "love", "hate", "fear", "anger",
-    "time", "space", "light", "darkness", "good", "evil",
-    "nature", "energy", "speed", "agility", "endurance",
-    "intelligence", "wisdom", "charisma", "luck", "fate", "mana",
-    "health", "stamina", "perception", "willpower", "toughness",
-    "dexterity", "constitution", "vitality",
-    "survival", "evolution", "progression", "growth",
-    "reward", "punishment", "danger", "safety",
+    "magic",
+    "power",
+    "strength",
+    "battle",
+    "war",
+    "death",
+    "life",
+    "love",
+    "hate",
+    "fear",
+    "anger",
+    "time",
+    "space",
+    "light",
+    "darkness",
+    "good",
+    "evil",
+    "energy",
+    "speed",
+    "agility",
+    "wisdom",
+    "charisma",
+    "luck",
+    "fate",
+    "health",
+    "stamina",
+    "perception",
+    "willpower",
+    "toughness",
+    "dexterity",
+    "constitution",
+    "vitality",
+    "survival",
+    "growth",
+    "reward",
+    "punishment",
+    "safety",
 }
 
 
@@ -316,9 +450,7 @@ def _common_reject(name: str) -> bool:
         return True
     if _is_too_long(name):
         return True
-    if _has_parenthetical(name):
-        return True
-    return False
+    return bool(_has_parenthetical(name))
 
 
 def filter_characters(result: ChapterExtractionResult) -> int:
@@ -344,7 +476,9 @@ def filter_characters(result: ChapterExtractionResult) -> int:
     result.characters.characters = filtered
 
     # Also filter relationships involving removed characters
-    kept_names = {c.name.lower() for c in filtered} | {c.canonical_name.lower() for c in filtered if c.canonical_name}
+    kept_names = {c.name.lower() for c in filtered} | {
+        c.canonical_name.lower() for c in filtered if c.canonical_name
+    }
     original_rels = result.characters.relationships
     filtered_rels = []
     for rel in original_rels:

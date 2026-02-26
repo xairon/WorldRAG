@@ -63,7 +63,7 @@ async def main() -> None:
 
         chat = ChatService(driver)
         resp = await chat.query("Qui est Jake ?", "c55f36a8")
-        print(f"\nChat response:")
+        print("\nChat response:")
         print(f"  chunks_retrieved: {resp.chunks_retrieved}")
         print(f"  chunks_after_rerank: {resp.chunks_after_rerank}")
         print(f"  entities: {len(resp.related_entities)}")

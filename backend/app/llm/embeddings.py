@@ -29,7 +29,7 @@ async def _get_model():
         if _model_instance is not None:
             return _model_instance
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         _model_instance = await loop.run_in_executor(None, _load_model)
         return _model_instance
 
@@ -77,7 +77,7 @@ class LocalEmbedder:
             return []
 
         model = await _get_model()
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         embeddings = await loop.run_in_executor(
             None,
             lambda: model.encode(texts, normalize_embeddings=True, show_progress_bar=False),

@@ -184,8 +184,16 @@ async def get_chapter_entities(
         entity_type = "Concept"
         for label in labels:
             if label in (
-                "Character", "Skill", "Class", "Title", "Event",
-                "Location", "Item", "Creature", "Faction", "Concept",
+                "Character",
+                "Skill",
+                "Class",
+                "Title",
+                "Event",
+                "Location",
+                "Item",
+                "Creature",
+                "Faction",
+                "Concept",
             ):
                 entity_type = label
                 break

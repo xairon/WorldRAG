@@ -33,7 +33,15 @@ def _is_transient_error(exc: BaseException) -> bool:
     msg = str(exc).lower()
     return any(
         keyword in msg
-        for keyword in ("503", "unavailable", "429", "rate", "overloaded", "high demand", "resource_exhausted")
+        for keyword in (
+            "503",
+            "unavailable",
+            "429",
+            "rate",
+            "overloaded",
+            "high demand",
+            "resource_exhausted",
+        )
     )
 
 

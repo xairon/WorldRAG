@@ -767,7 +767,9 @@ class EntityRepository(Neo4jRepository):
                 "category": "level",
                 "name": "level",
                 "action": "gain",
-                "value_delta": (lc["new_level"] - lc["old_level"]) if lc["old_level"] and lc["new_level"] else None,
+                "value_delta": (lc["new_level"] - lc["old_level"])
+                if lc["old_level"] and lc["new_level"]
+                else None,
                 "value_after": lc["new_level"],
                 "detail": lc.get("realm", ""),
             }
@@ -909,7 +911,9 @@ class EntityRepository(Neo4jRepository):
                     "char_start": g.char_offset_start,
                     "char_end": g.char_offset_end,
                     "mention_text": g.extraction_text[:200],
-                    "mention_type": g.attributes.get("mention_type", "langextract") if g.attributes else "langextract",
+                    "mention_type": g.attributes.get("mention_type", "langextract")
+                    if g.attributes
+                    else "langextract",
                     "confidence": g.confidence,
                     "alignment_status": g.alignment_status,
                     "pass_name": g.pass_name,
@@ -952,7 +956,9 @@ class EntityRepository(Neo4jRepository):
                 "entity_name": g.entity_name,
                 "char_start": g.char_offset_start,
                 "char_end": g.char_offset_end,
-                "mention_type": g.attributes.get("mention_type", "langextract") if g.attributes else "langextract",
+                "mention_type": g.attributes.get("mention_type", "langextract")
+                if g.attributes
+                else "langextract",
                 "pass_name": g.pass_name,
             }
             for g in grounded
@@ -1099,7 +1105,8 @@ class EntityRepository(Neo4jRepository):
         with known source types (item, class, bloodline).
         """
         valid = [
-            p for p in provenances
+            p
+            for p in provenances
             if p.confidence >= 0.7
             and p.source_type in ("item", "class", "bloodline")
             and p.source_name
@@ -1116,8 +1123,7 @@ class EntityRepository(Neo4jRepository):
                 continue
 
             data = [
-                {"source_name": p.source_name, "skill_name": p.skill_name}
-                for p in type_provenances
+                {"source_name": p.source_name, "skill_name": p.skill_name} for p in type_provenances
             ]
 
             await self.execute_write(
@@ -1199,7 +1205,9 @@ class EntityRepository(Neo4jRepository):
         if state_change_data:
             await self._create_state_changes(book_id, chapter_number, state_change_data, batch_id)
 
-        logger.info("bloodlines_upserted", book_id=book_id, chapter=chapter_number, count=len(bloodlines))
+        logger.info(
+            "bloodlines_upserted", book_id=book_id, chapter=chapter_number, count=len(bloodlines)
+        )
         return len(bloodlines)
 
     # ── Layer 3: Professions ─────────────────────────────────────────────
@@ -1257,7 +1265,9 @@ class EntityRepository(Neo4jRepository):
         if state_change_data:
             await self._create_state_changes(book_id, chapter_number, state_change_data, batch_id)
 
-        logger.info("professions_upserted", book_id=book_id, chapter=chapter_number, count=len(professions))
+        logger.info(
+            "professions_upserted", book_id=book_id, chapter=chapter_number, count=len(professions)
+        )
         return len(professions)
 
     # ── Layer 3: Primordial Churches ─────────────────────────────────────
@@ -1301,7 +1311,9 @@ class EntityRepository(Neo4jRepository):
             {"churches": data, "book_id": book_id, "batch_id": batch_id},
         )
 
-        logger.info("churches_upserted", book_id=book_id, chapter=chapter_number, count=len(churches))
+        logger.info(
+            "churches_upserted", book_id=book_id, chapter=chapter_number, count=len(churches)
+        )
         return len(churches)
 
     # ── StateChange ledger (V3 dual-write) ──────────────────────────────

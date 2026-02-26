@@ -133,9 +133,7 @@ async def resolve_coreferences(
                 )
                 return []
 
-    results = await asyncio.gather(
-        *[_resolve_segment(text, offset) for text, offset in segments]
-    )
+    results = await asyncio.gather(*[_resolve_segment(text, offset) for text, offset in segments])
     all_grounded = [g for segment_results in results for g in segment_results]
 
     logger.info(
