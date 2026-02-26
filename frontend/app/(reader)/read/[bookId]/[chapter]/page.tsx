@@ -1,19 +1,20 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useParams } from "next/navigation"
 import Link from "next/link"
-import { ArrowLeft, BookOpen, Loader2 } from "lucide-react"
+import { ArrowLeft, BookOpen } from "lucide-react"
 import { getChapterText, getChapterEntities, getChapterParagraphs } from "@/lib/api/reader"
 import { getBook } from "@/lib/api/books"
 import type { ChapterText, ChapterEntities, ChapterParagraphs } from "@/lib/api/reader"
 import type { ChapterInfo } from "@/lib/api/types"
+import { LABEL_COLORS } from "@/lib/utils"
 import { AnnotatedText } from "@/components/reader/annotated-text"
+import { AnnotationSidebar } from "@/components/reader/annotation-sidebar"
 import { ParagraphRenderer } from "@/components/reader/paragraph-renderer"
 import { ChapterNav } from "@/components/reader/chapter-nav"
 import { ReadingToolbar } from "@/components/reader/reading-toolbar"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ScrollArea } from "@/components/ui/scroll-area"
 
 type ReadingMode = "annotated" | "clean" | "focus"
 
@@ -30,7 +31,7 @@ export default function ReaderPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [mode, setMode] = useState<ReadingMode>("annotated")
-  const [focusType, setFocusType] = useState<string | undefined>(undefined)
+  const [enabledTypes, setEnabledTypes] = useState<Set<string>>(new Set(Object.keys(LABEL_COLORS)))
 
   useEffect(() => {
     async function load() {
@@ -96,8 +97,30 @@ export default function ReaderPage() {
   const paragraphs = chapterParagraphs?.paragraphs ?? []
   const hasParagraphs = paragraphs.length > 0
 
+  const typeCounts = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const a of annotations) {
+      counts[a.entity_type] = (counts[a.entity_type] ?? 0) + 1
+    }
+    return counts
+  }, [annotations])
+
+  const filteredAnnotations = useMemo(() => {
+    if (mode === "clean") return []
+    return annotations.filter((a) => enabledTypes.has(a.entity_type))
+  }, [annotations, enabledTypes, mode])
+
+  const handleToggleType = (type: string) => {
+    setEnabledTypes((prev) => {
+      const next = new Set(prev)
+      if (next.has(type)) next.delete(type)
+      else next.add(type)
+      return next
+    })
+  }
+
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="max-w-5xl mx-auto space-y-6">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm text-slate-500">
         <Link href="/library" className="hover:text-slate-300 transition-colors">Library</Link>
@@ -125,43 +148,52 @@ export default function ReaderPage() {
       <div className="flex items-center justify-between border-b border-slate-800 pb-3">
         <ReadingToolbar
           mode={mode}
-          focusType={focusType}
+          enabledTypes={enabledTypes}
           onModeChange={setMode}
-          onFocusTypeChange={setFocusType}
-          annotationCount={annotations.length}
+          onToggleType={handleToggleType}
+          annotationCount={filteredAnnotations.length}
+          typeCounts={typeCounts}
         />
       </div>
 
       {/* Chapter content */}
-      <div className="rounded-xl border border-slate-800 bg-slate-900/30 p-6 md:p-10">
-        {hasParagraphs ? (
-          // V2: Paragraph-by-paragraph rendering with type styling
-          <div>
-            {paragraphs.map((para) => (
-              <ParagraphRenderer key={para.index} paragraph={para}>
-                <AnnotatedText
-                  text={para.text}
-                  annotations={annotations.filter(
-                    (a) => a.char_offset_start >= para.char_start && a.char_offset_end <= para.char_end
-                  ).map((a) => ({
-                    ...a,
-                    char_offset_start: a.char_offset_start - para.char_start,
-                    char_offset_end: a.char_offset_end - para.char_start,
-                  }))}
-                  mode={mode}
-                  focusType={focusType}
-                />
-              </ParagraphRenderer>
-            ))}
+      <div className="flex gap-6">
+        {/* Main content */}
+        <div className="flex-1 rounded-xl border border-slate-800 bg-slate-900/30 p-6 md:p-10">
+          {hasParagraphs ? (
+            // V2: Paragraph-by-paragraph rendering with type styling
+            <div>
+              {paragraphs.map((para) => (
+                <ParagraphRenderer key={para.index} paragraph={para}>
+                  <AnnotatedText
+                    text={para.text}
+                    annotations={filteredAnnotations.filter(
+                      (a) => a.char_offset_start >= para.char_start && a.char_offset_end <= para.char_end
+                    ).map((a) => ({
+                      ...a,
+                      char_offset_start: a.char_offset_start - para.char_start,
+                      char_offset_end: a.char_offset_end - para.char_start,
+                    }))}
+                    mode={mode}
+                  />
+                </ParagraphRenderer>
+              ))}
+            </div>
+          ) : (
+            // V1 fallback: Monolithic text rendering
+            <AnnotatedText
+              text={chapterText.text}
+              annotations={filteredAnnotations}
+              mode={mode}
+            />
+          )}
+        </div>
+
+        {/* Sidebar */}
+        {mode !== "clean" && filteredAnnotations.length > 0 && (
+          <div className="hidden lg:block w-56 shrink-0">
+            <AnnotationSidebar annotations={filteredAnnotations} className="sticky top-6" />
           </div>
-        ) : (
-          // V1 fallback: Monolithic text rendering
-          <AnnotatedText
-            text={chapterText.text}
-            annotations={annotations}
-            mode={mode}
-            focusType={focusType}
-          />
         )}
       </div>
 
