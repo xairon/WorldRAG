@@ -400,7 +400,8 @@ class TestUpsertChurches:
         ]
         result = await repo.upsert_churches(BOOK_ID, CHAPTER, churches, BATCH_ID)
         assert result == 1
-        assert mock_neo4j_session.run.call_count == 1
+        # 2 calls: church upsert + state change dual-write
+        assert mock_neo4j_session.run.call_count == 2
 
     async def test_church_without_worshipper(self, repo, mock_neo4j_session):
         churches = [
@@ -425,7 +426,8 @@ class TestUpsertChurches:
             ),
         ]
         await repo.upsert_churches(BOOK_ID, CHAPTER, churches, BATCH_ID)
-        params = mock_neo4j_session.run.call_args[0][1]
+        # First call is the church MERGE, second is state change dual-write
+        params = mock_neo4j_session.run.call_args_list[0][0][1]
         assert params["book_id"] == BOOK_ID
         assert params["batch_id"] == BATCH_ID
         assert len(params["churches"]) == 1
@@ -444,5 +446,6 @@ class TestUpsertChurches:
             ),
         ]
         await repo.upsert_churches(BOOK_ID, CHAPTER, churches, BATCH_ID)
-        params = mock_neo4j_session.run.call_args[0][1]
+        # First call is the church MERGE
+        params = mock_neo4j_session.run.call_args_list[0][0][1]
         assert params["churches"][0]["chapter"] == CHAPTER

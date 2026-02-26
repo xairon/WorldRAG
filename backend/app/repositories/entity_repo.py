@@ -1311,6 +1311,21 @@ class EntityRepository(Neo4jRepository):
             {"churches": data, "book_id": book_id, "batch_id": batch_id},
         )
 
+        # V3 dual-write: StateChange ledger
+        state_change_data = [
+            {
+                "character_name": c.worshipper,
+                "category": "church",
+                "name": c.deity_name,
+                "action": "worship",
+                "detail": c.blessing or "",
+            }
+            for c in churches
+            if c.worshipper
+        ]
+        if state_change_data:
+            await self._create_state_changes(book_id, chapter_number, state_change_data, batch_id)
+
         logger.info(
             "churches_upserted", book_id=book_id, chapter=chapter_number, count=len(churches)
         )
@@ -1342,19 +1357,26 @@ class EntityRepository(Neo4jRepository):
             """
             UNWIND $changes AS sc
             MATCH (ch:Character {canonical_name: sc.character_name})
-            CREATE (ch)-[:STATE_CHANGED]->(s:StateChange {
+            MERGE (s:StateChange {
                 character_name: sc.character_name,
                 book_id: $book_id,
                 chapter: $chapter,
                 category: sc.category,
                 name: sc.name,
-                action: sc.action,
-                value_delta: sc.value_delta,
-                value_after: sc.value_after,
-                detail: sc.detail,
-                batch_id: $batch_id,
-                created_at: timestamp()
+                action: sc.action
             })
+            ON CREATE SET
+                s.value_delta = sc.value_delta,
+                s.value_after = sc.value_after,
+                s.detail = sc.detail,
+                s.batch_id = $batch_id,
+                s.created_at = timestamp()
+            ON MATCH SET
+                s.value_delta = sc.value_delta,
+                s.value_after = sc.value_after,
+                s.detail = sc.detail,
+                s.batch_id = $batch_id
+            MERGE (ch)-[:STATE_CHANGED]->(s)
             """,
             {
                 "changes": changes,
