@@ -13,6 +13,7 @@ This is the main entry point called by the book processing pipeline.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
 from app.core.exceptions import CostCeilingError
@@ -30,6 +31,9 @@ if TYPE_CHECKING:
     from app.schemas.book import ChapterData
     from app.schemas.extraction import ChapterExtractionResult
 
+# Type for optional progress callback: (chapter_number, total_chapters, status, entities_found) -> None
+ProgressCallback = Callable[[int, int, str, int], Awaitable[None]]
+
 logger = get_logger(__name__)
 
 
@@ -42,6 +46,7 @@ async def build_chapter_graph(
     series_name: str = "",
     regex_matches_json: str = "[]",
     cost_tracker: CostTracker | None = None,
+    series_entities: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Process a single chapter through the full KG pipeline.
 
@@ -56,6 +61,8 @@ async def build_chapter_graph(
         series_name: Series name.
         regex_matches_json: Pre-extracted regex matches.
         cost_tracker: Optional cost tracker for ceiling enforcement.
+        series_entities: Known entities from other books in the same series
+            (for cross-book entity resolution).
 
     Returns:
         Dict with processing stats.
@@ -98,6 +105,7 @@ async def build_chapter_graph(
         genre=genre,
         series_name=series_name,
         regex_matches_json=regex_matches_json,
+        series_entities=series_entities,
     )
 
     # 2. Log extraction warnings
@@ -153,6 +161,7 @@ async def build_book_graph(
     chapter_regex_matches: dict[int, str] | None = None,
     dlq: DeadLetterQueue | None = None,
     cost_tracker: CostTracker | None = None,
+    on_chapter_done: ProgressCallback | None = None,
 ) -> dict[str, Any]:
     """Process all chapters of a book through the KG pipeline.
 
@@ -191,6 +200,28 @@ async def build_book_graph(
             reason="non-content (Sommaire/TOC/copyright)",
         )
 
+    # ── Load cross-book series entities for dedup ──────────────────
+    series_entities: list[dict[str, Any]] = []
+    if series_name:
+        try:
+            entity_repo = EntityRepository(driver)
+            series_entities = await entity_repo.get_series_entities(
+                series_name, exclude_book_id=book_id,
+            )
+            logger.info(
+                "series_entities_loaded_for_book",
+                book_id=book_id,
+                series_name=series_name,
+                series_entity_count=len(series_entities),
+            )
+        except Exception:
+            logger.warning(
+                "series_entities_load_failed",
+                book_id=book_id,
+                series_name=series_name,
+                exc_info=True,
+            )
+
     logger.info(
         "graph_build_book_started",
         book_id=book_id,
@@ -210,6 +241,8 @@ async def build_book_graph(
     # with LLM rate limits. Results are collected per-chapter.
     sem = asyncio.Semaphore(3)
 
+    total_chapters = len(content_chapters)
+
     async def _process_one(chapter: ChapterData) -> tuple[int, dict[str, Any] | None, Exception | None]:
         """Process a single chapter under semaphore control."""
         async with sem:
@@ -224,9 +257,16 @@ async def build_book_graph(
                     series_name=series_name,
                     regex_matches_json=regex_json,
                     cost_tracker=cost_tracker,
+                    series_entities=series_entities,
                 )
+                if on_chapter_done:
+                    await on_chapter_done(
+                        chapter.number, total_chapters, "extracted", stats["total_entities"],
+                    )
                 return (chapter.number, stats, None)
             except Exception as exc:
+                if on_chapter_done:
+                    await on_chapter_done(chapter.number, total_chapters, "failed", 0)
                 return (chapter.number, None, exc)
 
     tasks = [_process_one(ch) for ch in content_chapters]
