@@ -126,6 +126,11 @@ async def upload_book(
         await repo.create_chapters(book_id, chapters)
         await repo.update_book_chapter_count(book_id, len(chapters))
 
+        # Store paragraphs for each chapter
+        for chapter in chapters:
+            if chapter.paragraphs:
+                await repo.create_paragraphs(book_id, chapter.number, chapter.paragraphs)
+
         # 2. Chunk each chapter
         await repo.update_book_status(book_id, ProcessingStatus.CHUNKING.value)
         all_chunks = []
