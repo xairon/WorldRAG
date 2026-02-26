@@ -211,6 +211,20 @@ class EntityRepository(Neo4jRepository):
             {"skills": data, "book_id": book_id, "batch_id": batch_id},
         )
 
+        # V3: Create immutable StateChange ledger nodes
+        state_change_data = [
+            {
+                "character_name": s["owner"],
+                "category": "skill",
+                "name": s["name"],
+                "action": "acquire",
+            }
+            for s in data
+            if s["owner"]
+        ]
+        if state_change_data:
+            await self._create_state_changes(book_id, chapter_number, state_change_data, batch_id)
+
         logger.info(
             "skills_upserted",
             book_id=book_id,
@@ -262,6 +276,20 @@ class EntityRepository(Neo4jRepository):
             {"classes": data, "book_id": book_id, "batch_id": batch_id},
         )
 
+        # V3: Create immutable StateChange ledger nodes
+        state_change_data = [
+            {
+                "character_name": c["owner"],
+                "category": "class",
+                "name": c["name"],
+                "action": "acquire",
+            }
+            for c in data
+            if c["owner"]
+        ]
+        if state_change_data:
+            await self._create_state_changes(book_id, chapter_number, state_change_data, batch_id)
+
         logger.info(
             "classes_upserted",
             book_id=book_id,
@@ -312,6 +340,20 @@ class EntityRepository(Neo4jRepository):
             """,
             {"titles": data, "book_id": book_id, "batch_id": batch_id},
         )
+
+        # V3: Create immutable StateChange ledger nodes
+        state_change_data = [
+            {
+                "character_name": t["owner"],
+                "category": "title",
+                "name": t["name"],
+                "action": "acquire",
+            }
+            for t in data
+            if t["owner"]
+        ]
+        if state_change_data:
+            await self._create_state_changes(book_id, chapter_number, state_change_data, batch_id)
 
         return len(titles)
 
@@ -520,6 +562,20 @@ class EntityRepository(Neo4jRepository):
             },
         )
 
+        # V3: Create immutable StateChange ledger nodes
+        state_change_data = [
+            {
+                "character_name": i["owner"],
+                "category": "item",
+                "name": i["name"],
+                "action": "acquire",
+            }
+            for i in data
+            if i["owner"]
+        ]
+        if state_change_data:
+            await self._create_state_changes(book_id, chapter_number, state_change_data, batch_id)
+
         return len(items)
 
     # ── Creatures ───────────────────────────────────────────────────────
@@ -704,6 +760,22 @@ class EntityRepository(Neo4jRepository):
             {"changes": data, "book_id": book_id, "batch_id": batch_id},
         )
 
+        # V3: Create immutable StateChange ledger nodes
+        state_change_data = [
+            {
+                "character_name": lc["character"],
+                "category": "level",
+                "name": "level",
+                "action": "gain",
+                "value_delta": (lc["new_level"] - lc["old_level"]) if lc["old_level"] and lc["new_level"] else None,
+                "value_after": lc["new_level"],
+                "detail": lc.get("realm", ""),
+            }
+            for lc in data
+        ]
+        if state_change_data:
+            await self._create_state_changes(book_id, chapter_number, state_change_data, batch_id)
+
         logger.info(
             "level_changes_upserted",
             book_id=book_id,
@@ -759,6 +831,20 @@ class EntityRepository(Neo4jRepository):
                 "batch_id": batch_id,
             },
         )
+
+        # V3: Create immutable StateChange ledger nodes
+        state_change_data = [
+            {
+                "character_name": sc["character"],
+                "category": "stat",
+                "name": sc["stat_name"],
+                "action": "gain" if sc["value"] > 0 else "lose",
+                "value_delta": sc["value"],
+            }
+            for sc in data
+        ]
+        if state_change_data:
+            await self._create_state_changes(book_id, chapter_number, state_change_data, batch_id)
 
         logger.info(
             "stat_changes_upserted",
@@ -943,6 +1029,62 @@ class EntityRepository(Neo4jRepository):
             entity_count=len(results),
         )
         return results
+
+    # ── StateChange ledger (V3 dual-write) ──────────────────────────────
+
+    async def _create_state_changes(
+        self,
+        book_id: str,
+        chapter: int,
+        changes: list[dict[str, Any]],
+        batch_id: str,
+    ) -> int:
+        """Create immutable StateChange ledger nodes.
+
+        Each change dict must have: character_name, category, name, action.
+        Optional: value_delta, value_after, detail.
+        """
+        if not changes:
+            return 0
+
+        for sc in changes:
+            sc.setdefault("value_delta", None)
+            sc.setdefault("value_after", None)
+            sc.setdefault("detail", "")
+
+        await self.execute_write(
+            """
+            UNWIND $changes AS sc
+            MATCH (ch:Character {canonical_name: sc.character_name})
+            CREATE (ch)-[:STATE_CHANGED]->(s:StateChange {
+                character_name: sc.character_name,
+                book_id: $book_id,
+                chapter: $chapter,
+                category: sc.category,
+                name: sc.name,
+                action: sc.action,
+                value_delta: sc.value_delta,
+                value_after: sc.value_after,
+                detail: sc.detail,
+                batch_id: $batch_id,
+                created_at: timestamp()
+            })
+            """,
+            {
+                "changes": changes,
+                "book_id": book_id,
+                "chapter": chapter,
+                "batch_id": batch_id,
+            },
+        )
+
+        logger.info(
+            "state_changes_created",
+            book_id=book_id,
+            chapter=chapter,
+            count=len(changes),
+        )
+        return len(changes)
 
     # ── Bulk upsert from extraction result ─────────────────────────────
 
