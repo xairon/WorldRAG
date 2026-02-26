@@ -6,30 +6,35 @@ All settings are validated at startup.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Resolve .env from project root (two levels up from this file)
+_ENV_FILE = Path(__file__).resolve().parent.parent.parent / ".env"
 
 
 class Settings(BaseSettings):
     """WorldRAG application settings."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(_ENV_FILE) if _ENV_FILE.exists() else ".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
     )
 
     # --- Neo4j ---
-    neo4j_uri: str = "bolt://localhost:7687"
+    neo4j_uri: str = "bolt://127.0.0.1:7687"
     neo4j_user: str = "neo4j"
     neo4j_password: str = "worldrag"
 
     # --- Redis ---
-    redis_url: str = "redis://:worldrag@localhost:6379"
+    redis_url: str = "redis://:worldrag@127.0.0.1:6379"
 
     # --- PostgreSQL ---
-    postgres_uri: str = "postgresql://worldrag:worldrag@localhost:5432/worldrag"
+    postgres_uri: str = "postgresql://worldrag:worldrag@127.0.0.1:5432/worldrag"
 
     # --- LLM Providers ---
     openai_api_key: str = ""
@@ -41,6 +46,7 @@ class Settings(BaseSettings):
     langextract_passes: int = 2
     langextract_max_workers: int = 20
     langextract_batch_chapters: int = 10
+    langextract_max_char_buffer: int = 2000
 
     # --- Instructor (reconciliation, classification) ---
     llm_reconciliation: str = "gemini:gemini-2.5-flash"
