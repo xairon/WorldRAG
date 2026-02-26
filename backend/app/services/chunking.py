@@ -49,8 +49,15 @@ def chunk_chapter(
     if not text.strip():
         return []
 
-    # Split into paragraphs (preserve empty lines as boundaries)
-    paragraphs = _split_paragraphs(text)
+    # Use structured paragraphs if available (V2 epub), else fall back to regex split
+    if chapter.paragraphs:
+        paragraphs = [
+            (p.text, p.char_start, p.char_end)
+            for p in chapter.paragraphs
+            if p.text.strip()  # skip empty/scene-break paragraphs
+        ]
+    else:
+        paragraphs = _split_paragraphs(text)
 
     if not paragraphs:
         return []
