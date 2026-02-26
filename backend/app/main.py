@@ -19,7 +19,7 @@ from neo4j import AsyncGraphDatabase
 from redis.asyncio import Redis
 
 from app.api.middleware import RequestContextMiddleware
-from app.api.routes import admin, books, chat, graph, health
+from app.api.routes import admin, books, characters, chat, graph, health, reader, stream
 from app.config import settings
 from app.core.cost_tracker import CostTracker
 from app.core.dead_letter import DeadLetterQueue
@@ -63,7 +63,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         await neo4j_driver.verify_connectivity()
         logger.info("neo4j_connected", host=_safe_host(settings.neo4j_uri))
     except ConnectionError as e:
-        logger.error("neo4j_connection_failed", host=_safe_host(settings.neo4j_uri), error=str(e))
+        neo4j_host = _safe_host(settings.neo4j_uri)
+        logger.error("neo4j_connection_failed", host=neo4j_host, error=type(e).__name__)
     except Exception as e:
         logger.error("neo4j_connection_failed", error=type(e).__name__)
     app.state.neo4j_driver = neo4j_driver
@@ -74,7 +75,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         await redis.ping()
         logger.info("redis_connected", host=_safe_host(settings.redis_url))
     except ConnectionError as e:
-        logger.error("redis_connection_failed", host=_safe_host(settings.redis_url), error=str(e))
+        redis_host = _safe_host(settings.redis_url)
+        logger.error("redis_connection_failed", host=redis_host, error=type(e).__name__)
     except Exception as e:
         logger.error("redis_connection_failed", error=type(e).__name__)
     app.state.redis = redis
@@ -195,6 +197,9 @@ def create_app() -> FastAPI:
     app.include_router(books.router, prefix="/api")
     app.include_router(graph.router, prefix="/api")
     app.include_router(chat.router, prefix="/api")
+    app.include_router(reader.router, prefix="/api")
+    app.include_router(stream.router, prefix="/api")
+    app.include_router(characters.router, prefix="/api")
 
     return app
 
