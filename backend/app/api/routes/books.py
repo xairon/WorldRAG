@@ -211,6 +211,28 @@ async def list_books(
     return books
 
 
+@router.get("/series", dependencies=[Depends(require_auth)])
+async def list_series(
+    driver: AsyncDriver = Depends(get_neo4j),
+) -> list[dict]:
+    """List all series."""
+    repo = BookRepository(driver)
+    return await repo.list_series()
+
+
+@router.get("/series/{series_name}", dependencies=[Depends(require_auth)])
+async def get_series(
+    series_name: str,
+    driver: AsyncDriver = Depends(get_neo4j),
+) -> dict:
+    """Get series info with books."""
+    repo = BookRepository(driver)
+    result = await repo.get_series(series_name)
+    if not result:
+        raise NotFoundError(f"Series '{series_name}' not found")
+    return result
+
+
 @router.get("/{book_id}", response_model=BookDetail, dependencies=[Depends(require_auth)])
 async def get_book(
     book_id: str,
