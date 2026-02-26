@@ -17,7 +17,7 @@ from functools import partial
 from typing import TYPE_CHECKING
 
 from app.core.logging import get_logger
-from app.schemas.book import ChapterData
+from app.schemas.book import ChapterData, ParagraphData, ParagraphType
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -73,6 +73,162 @@ def _parse_chapter_number(raw: str) -> int:
     return NUMBER_WORDS.get(raw, 0)
 
 
+# --- Structure-aware paragraph parsing ---
+
+# Scene break patterns: just stars, dashes, spaced stars, or very short decorative text
+_SCENE_BREAK_RE = re.compile(
+    r"^[\s]*(\*\s*\*\s*\*|[*]{2,5}|[-]{2,5}|[—–]{2,5}|~{2,5}|[#]{2,5}|⁂)[\s]*$"
+)
+
+# Blue box markers (LitRPG system notifications)
+_BLUE_BOX_RE = re.compile(
+    r"^\[("
+    r"Skill|Level|New Title|Title|Class|Compétence|Niveau|Titre|Classe"
+    r"|Profession|Bloodline|Quest|Achievement|System|Warning|Evolution"
+    r"|Stat|Status|Notification"
+    r")\b",
+    re.IGNORECASE,
+)
+
+# Dialogue starters
+_DIALOGUE_STARTERS = ("«", "\u201c", "\u201d", "—", "–")
+
+# Speaker extraction from French dialogue: "dit Jake", "murmura Caroline", "cria-t-il"
+_SPEAKER_RE = re.compile(
+    "(?:\u00bb|\u201d|\")" r"\s*"
+    r"(?:dit|murmura|chuchota|cria|hurla|demanda|r\u00e9pondit|souffla|grommela|lan\u00e7a"
+    r"|s['\u2019]exclama|ajouta|reprit|continua|expliqua|affirma|soupira|g\u00e9mit"
+    r"|ordonna|sugg\u00e9ra|protesta|marmonna|annon\u00e7a|d\u00e9clara|interrogea|confirma"
+    r"|r\u00e9torqua|proposa|insista|objecta|admit|conc\u00e9da|pr\u00e9cisa|observa)"
+    r"(?:-t-(?:il|elle|on))?"
+    r"\s+([A-Z\u00c0-\u017d][a-z\u00e0-\u017e]+(?:\s+[A-Z\u00c0-\u017d][a-z\u00e0-\u017e]+)?)",
+    re.UNICODE,
+)
+
+_BLOCK_TAGS = {"p", "h1", "h2", "h3", "h4", "h5", "h6", "div", "blockquote", "li"}
+_HEADING_TAGS = {"h1", "h2", "h3", "h4", "h5", "h6"}
+
+# Sentence splitting: split on .!? followed by space or end, ignoring common abbreviations
+_SENTENCE_SPLIT_RE = re.compile(r"[.!?]+(?:\s|$)")
+
+
+def _classify_block_text(tag: str, text: str) -> ParagraphType:
+    """Classify an HTML block element into a ParagraphType.
+
+    Args:
+        tag: The HTML tag name (e.g. 'p', 'h1', 'div').
+        text: The text content of the element.
+
+    Returns:
+        The classified ParagraphType.
+    """
+    # Headers
+    if tag in _HEADING_TAGS:
+        return ParagraphType.HEADER
+
+    # Scene breaks: very short decorative separators
+    stripped = text.strip()
+    if _SCENE_BREAK_RE.match(stripped):
+        return ParagraphType.SCENE_BREAK
+
+    # Blue boxes: LitRPG system notifications in brackets
+    if _BLUE_BOX_RE.match(stripped):
+        return ParagraphType.BLUE_BOX
+
+    # Dialogue: starts with quote marks or dashes
+    if stripped and (
+        stripped[0] in _DIALOGUE_STARTERS
+        or (stripped.startswith('"') and not stripped.startswith('""'))
+    ):
+        return ParagraphType.DIALOGUE
+
+    return ParagraphType.NARRATION
+
+
+def _extract_speaker(text: str) -> str | None:
+    """Try to extract speaker name from dialogue text.
+
+    Looks for French dialogue attribution patterns like
+    'dit Jake', 'murmura Caroline', 'cria-t-il'.
+
+    Returns:
+        The speaker name if found, None otherwise.
+    """
+    match = _SPEAKER_RE.search(text)
+    if match:
+        return match.group(1)
+    return None
+
+
+def _count_sentences(text: str) -> int:
+    """Count sentences in text using simple punctuation splitting."""
+    if not text.strip():
+        return 0
+    parts = _SENTENCE_SPLIT_RE.split(text)
+    # Filter out empty parts
+    return len([p for p in parts if p.strip()])
+
+
+def _build_paragraphs_from_html(html: str) -> list[ParagraphData]:
+    """Parse HTML content into a list of typed paragraphs.
+
+    Walks the DOM finding block-level elements (p, h1-h6, div, blockquote, li),
+    classifies each one, and tracks character offsets for grounding.
+
+    Args:
+        html: Raw HTML content of a chapter.
+
+    Returns:
+        List of ParagraphData with types, offsets, and metadata.
+    """
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(html, "html.parser")
+    paragraphs: list[ParagraphData] = []
+    running_offset = 0
+    idx = 0
+
+    for element in soup.find_all(_BLOCK_TAGS):
+        # Skip elements that are nested inside another block element we already process
+        # (e.g. a <p> inside a <blockquote> — we'd get the <p> directly)
+        if element.parent and element.parent.name in _BLOCK_TAGS:
+            continue
+
+        text = element.get_text(strip=True)
+        if not text:
+            continue
+
+        tag = element.name or "p"
+        para_type = _classify_block_text(tag, text)
+
+        # Extract speaker for dialogue
+        speaker = None
+        if para_type == ParagraphType.DIALOGUE:
+            speaker = _extract_speaker(text)
+
+        char_start = running_offset
+        char_end = char_start + len(text)
+
+        paragraphs.append(
+            ParagraphData(
+                index=idx,
+                type=para_type,
+                text=text,
+                html=str(element),
+                char_start=char_start,
+                char_end=char_end,
+                speaker=speaker,
+                sentence_count=_count_sentences(text),
+                word_count=len(text.split()),
+            )
+        )
+
+        idx += 1
+        running_offset = char_end + 1  # +1 for \n separator
+
+    return paragraphs
+
+
 # --- ePub parsing ---
 
 
@@ -93,7 +249,12 @@ async def parse_epub(file_path: Path) -> list[ChapterData]:
     for item in book.get_items_of_type(ebooklib.ITEM_DOCUMENT):
         content = item.get_content().decode("utf-8", errors="replace")
         soup = BeautifulSoup(content, "html.parser")
-        text = soup.get_text(separator="\n", strip=True)
+
+        # Build paragraphs from HTML structure
+        paragraphs = _build_paragraphs_from_html(content)
+
+        # Reconstruct text from paragraphs (backward compatible)
+        text = "\n".join(p.text for p in paragraphs)
 
         # Skip very short documents (likely TOC, copyright, etc.)
         if len(text.strip()) < 200:
@@ -122,6 +283,7 @@ async def parse_epub(file_path: Path) -> list[ChapterData]:
                 number=chapter_num,
                 title=title,
                 text=text,
+                paragraphs=paragraphs,
             )
         )
 
