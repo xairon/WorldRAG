@@ -139,6 +139,34 @@ class RegexExtractor:
                 entity_type="Evolution",
                 captures={"target": 1},
             ),
+            # Layer 3: Primal Hunter series-specific
+            RegexPattern(
+                name="bloodline_notification",
+                pattern=re.compile(
+                    r"\[Bloodline\s+(?:Awakened|Evolved|Activated):\s*(.+?)\]",
+                    re.IGNORECASE,
+                ),
+                entity_type="Bloodline",
+                captures={"name": 1},
+            ),
+            RegexPattern(
+                name="profession_obtained",
+                pattern=re.compile(
+                    r"Profession\s+(?:Obtained|Acquired|Gained):\s*(.+?)\s*(?:\((.+?)\))?$",
+                    re.IGNORECASE | re.MULTILINE,
+                ),
+                entity_type="Profession",
+                captures={"name": 1, "tier_info": 2},
+            ),
+            RegexPattern(
+                name="blessing_received",
+                pattern=re.compile(
+                    r"\[Blessing\s+(?:of|from)\s+(.+?)(?:\s+received|\])",
+                    re.IGNORECASE,
+                ),
+                entity_type="Church",
+                captures={"name": 1},
+            ),
             RegexPattern(
                 name="blue_box_generic",
                 pattern=re.compile(

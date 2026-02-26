@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from app.services.extraction.regex_extractor import RegexExtractor
 
 # -- Default patterns -----------------------------------------------------
@@ -10,9 +12,9 @@ from app.services.extraction.regex_extractor import RegexExtractor
 class TestRegexExtractorDefault:
     """Tests for RegexExtractor.default() setup."""
 
-    def test_default_seven_patterns(self):
+    def test_default_ten_patterns(self):
         extractor = RegexExtractor.default()
-        assert len(extractor.patterns) == 7
+        assert len(extractor.patterns) == 10
 
     def test_pattern_names_exact(self):
         extractor = RegexExtractor.default()
@@ -24,6 +26,9 @@ class TestRegexExtractorDefault:
             "title_earned",
             "stat_increase",
             "evolution",
+            "bloodline_notification",
+            "profession_obtained",
+            "blessing_received",
             "blue_box_generic",
         }
 
@@ -125,3 +130,56 @@ class TestExtractOffsets:
         for m in matches:
             sliced = sample_chapter_text[m.char_offset_start : m.char_offset_end]
             assert sliced == m.raw_text
+
+
+# -- Layer 3: Primal Hunter series-specific patterns -------------------------
+
+
+class TestLayer3Patterns:
+    """Tests for Layer 3 series-specific regex patterns (bloodline, profession, blessing)."""
+
+    @pytest.fixture
+    def extractor(self) -> RegexExtractor:
+        return RegexExtractor.default()
+
+    def test_bloodline_notification(self, extractor: RegexExtractor):
+        text = "[Bloodline Awakened: Bloodline of the Primal Hunter]"
+        matches = extractor.extract(text, chapter_number=1)
+        bloodline_matches = [m for m in matches if m.pattern_name == "bloodline_notification"]
+        assert len(bloodline_matches) >= 1
+        names = [m.captures.get("name", "") for m in bloodline_matches]
+        assert "Bloodline of the Primal Hunter" in names
+
+    def test_bloodline_evolved(self, extractor: RegexExtractor):
+        text = "[Bloodline Evolved: Bloodline of the Primal Hunter]"
+        matches = extractor.extract(text, chapter_number=1)
+        bloodline_matches = [m for m in matches if m.pattern_name == "bloodline_notification"]
+        assert len(bloodline_matches) >= 1
+
+    def test_profession_obtained(self, extractor: RegexExtractor):
+        text = "Profession Obtained: Alchemist of the Malefic Viper (Legendary)"
+        matches = extractor.extract(text, chapter_number=1)
+        prof_matches = [m for m in matches if m.pattern_name == "profession_obtained"]
+        assert len(prof_matches) >= 1
+        names = [m.captures.get("name", "") for m in prof_matches]
+        assert "Alchemist of the Malefic Viper" in names
+
+    def test_profession_without_tier(self, extractor: RegexExtractor):
+        text = "Profession Acquired: Herbalist"
+        matches = extractor.extract(text, chapter_number=1)
+        prof_matches = [m for m in matches if m.pattern_name == "profession_obtained"]
+        assert len(prof_matches) >= 1
+
+    def test_blessing_received(self, extractor: RegexExtractor):
+        text = "[Blessing of the Malefic Viper received]"
+        matches = extractor.extract(text, chapter_number=1)
+        blessing_matches = [m for m in matches if m.pattern_name == "blessing_received"]
+        assert len(blessing_matches) >= 1
+        names = [m.captures.get("name", "") for m in blessing_matches]
+        assert "the Malefic Viper" in names
+
+    def test_blessing_from_variant(self, extractor: RegexExtractor):
+        text = "[Blessing from the Holy Mother]"
+        matches = extractor.extract(text, chapter_number=1)
+        blessing_matches = [m for m in matches if m.pattern_name == "blessing_received"]
+        assert len(blessing_matches) >= 1
