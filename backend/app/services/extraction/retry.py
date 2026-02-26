@@ -19,6 +19,7 @@ from tenacity import (
     wait_exponential,
 )
 
+from app.config import settings
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -84,6 +85,7 @@ async def extract_with_retry(
                 extraction_passes=extraction_passes,
                 max_workers=max_workers,
                 show_progress=show_progress,
+                max_char_buffer=settings.langextract_max_char_buffer,
             )
         )
         return result
