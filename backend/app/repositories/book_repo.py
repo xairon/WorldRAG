@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from app.core.logging import get_logger
 from app.repositories.base import Neo4jRepository
-from app.schemas.book import ChapterData
+from app.schemas.book import ChapterData, ParagraphData
 
 if TYPE_CHECKING:
     from app.schemas.book import ChunkData, RegexMatch
@@ -143,7 +143,8 @@ class BookRepository(Neo4jRepository):
             MATCH (b:Book {id: $id})
             OPTIONAL MATCH (b)-[:HAS_CHAPTER]->(ch:Chapter)
             OPTIONAL MATCH (ch)-[:HAS_CHUNK]->(ck:Chunk)
-            DETACH DELETE ck, ch, b
+            OPTIONAL MATCH (ch)-[:HAS_PARAGRAPH]->(p:Paragraph)
+            DETACH DELETE p, ck, ch, b
             RETURN count(DISTINCT ch) AS chapters_deleted
             """,
             {"id": book_id},
@@ -228,6 +229,95 @@ class BookRepository(Neo4jRepository):
             SET c.status = $status
             """,
             {"book_id": book_id, "number": chapter_number, "status": status},
+        )
+
+    # --- Paragraph operations ---
+
+    async def create_paragraphs(
+        self,
+        book_id: str,
+        chapter_number: int,
+        paragraphs: list[ParagraphData],
+    ) -> int:
+        """Bulk create Paragraph nodes linked to a Chapter via HAS_PARAGRAPH.
+
+        Uses UNWIND for efficient batch insertion.
+        Returns number of paragraphs created.
+        """
+        if not paragraphs:
+            return 0
+
+        para_data = [
+            {
+                "index": p.index,
+                "type": p.type.value,
+                "text": p.text,
+                "html": p.html,
+                "char_start": p.char_start,
+                "char_end": p.char_end,
+                "speaker": p.speaker,
+                "sentence_count": p.sentence_count,
+                "word_count": p.word_count,
+            }
+            for p in paragraphs
+        ]
+
+        await self.execute_write(
+            """
+            UNWIND $paragraphs AS p
+            MATCH (c:Chapter {book_id: $book_id, number: $chapter_number})
+            CREATE (para:Paragraph {
+                book_id: $book_id,
+                chapter_number: $chapter_number,
+                index: p.index,
+                type: p.type,
+                text: p.text,
+                html: p.html,
+                char_start: p.char_start,
+                char_end: p.char_end,
+                speaker: p.speaker,
+                sentence_count: p.sentence_count,
+                word_count: p.word_count
+            })
+            MERGE (c)-[:HAS_PARAGRAPH {position: p.index}]->(para)
+            """,
+            {
+                "book_id": book_id,
+                "chapter_number": chapter_number,
+                "paragraphs": para_data,
+            },
+        )
+
+        logger.info(
+            "paragraphs_created",
+            book_id=book_id,
+            chapter=chapter_number,
+            count=len(paragraphs),
+        )
+        return len(paragraphs)
+
+    async def get_paragraphs(
+        self,
+        book_id: str,
+        chapter_number: int,
+    ) -> list[dict[str, Any]]:
+        """Get all paragraphs for a chapter, ordered by index."""
+        return await self.execute_read(
+            """
+            MATCH (c:Chapter {book_id: $book_id, number: $chapter_number})
+                  -[:HAS_PARAGRAPH]->(p:Paragraph)
+            RETURN p.index AS index,
+                   p.type AS type,
+                   p.text AS text,
+                   p.html AS html,
+                   p.char_start AS char_start,
+                   p.char_end AS char_end,
+                   p.speaker AS speaker,
+                   p.sentence_count AS sentence_count,
+                   p.word_count AS word_count
+            ORDER BY p.index
+            """,
+            {"book_id": book_id, "chapter_number": chapter_number},
         )
 
     # --- Chunk operations ---
