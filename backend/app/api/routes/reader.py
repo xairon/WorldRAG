@@ -82,6 +82,70 @@ async def get_chapter_text(
     )
 
 
+class ParagraphResponse(BaseModel):
+    """A structured paragraph from a chapter."""
+
+    index: int
+    type: str  # narration, dialogue, blue_box, scene_break, header
+    text: str
+    html: str = ""
+    char_start: int
+    char_end: int
+    speaker: str | None = None
+    word_count: int = 0
+
+
+class ChapterParagraphsResponse(BaseModel):
+    """All paragraphs for a chapter."""
+
+    book_id: str
+    chapter_number: int
+    title: str
+    paragraphs: list[ParagraphResponse]
+    total_words: int = 0
+
+
+@router.get(
+    "/books/{book_id}/chapters/{chapter_number}/paragraphs",
+    dependencies=[Depends(require_auth)],
+)
+async def get_chapter_paragraphs(
+    book_id: str,
+    chapter_number: int,
+    driver: AsyncDriver = Depends(get_neo4j),
+) -> ChapterParagraphsResponse:
+    """Get structured paragraphs for a chapter."""
+    repo = BookRepository(driver)
+
+    chapter = await repo.get_chapter(book_id, chapter_number)
+    if not chapter:
+        raise HTTPException(status_code=404, detail=f"Chapter {chapter_number} not found")
+
+    paragraphs_raw = await repo.get_paragraphs(book_id, chapter_number)
+
+    paragraphs = [
+        ParagraphResponse(
+            index=row["index"],
+            type=row["type"],
+            text=row["text"],
+            html=row.get("html", ""),
+            char_start=row["char_start"],
+            char_end=row["char_end"],
+            speaker=row.get("speaker"),
+            word_count=row.get("word_count", 0),
+        )
+        for row in paragraphs_raw
+    ]
+
+    return ChapterParagraphsResponse(
+        book_id=book_id,
+        chapter_number=chapter_number,
+        title=chapter.get("title", f"Chapter {chapter_number}"),
+        paragraphs=paragraphs,
+        total_words=sum(p.word_count for p in paragraphs),
+    )
+
+
 @router.get(
     "/books/{book_id}/chapters/{chapter_number}/entities",
     dependencies=[Depends(require_auth)],
