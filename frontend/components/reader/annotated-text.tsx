@@ -8,6 +8,7 @@ import {
   HoverCardTrigger,
 } from "@/components/ui/hover-card"
 import { EntityBadge } from "@/components/shared/entity-badge"
+import { CharacterHoverContent } from "@/components/reader/character-hover-content"
 import type { EntityAnnotation } from "@/lib/api/reader"
 
 interface AnnotatedTextProps {
@@ -15,6 +16,8 @@ interface AnnotatedTextProps {
   annotations: EntityAnnotation[]
   mode: "annotated" | "clean" | "focus"
   focusType?: string // only show this entity type when mode === "focus"
+  bookId?: string
+  chapter?: number
   className?: string
 }
 
@@ -100,6 +103,8 @@ export function AnnotatedText({
   annotations,
   mode,
   focusType,
+  bookId,
+  chapter,
   className,
 }: AnnotatedTextProps) {
   const filteredAnnotations = useMemo(() => {
@@ -119,7 +124,7 @@ export function AnnotatedText({
     <div className={cn("text-sm leading-7 text-slate-300 whitespace-pre-wrap", className)}>
       {segments.map((seg, i) =>
         seg.annotation ? (
-          <AnnotatedSpan key={i} segment={seg} annotation={seg.annotation} />
+          <AnnotatedSpan key={i} segment={seg} annotation={seg.annotation} bookId={bookId} chapter={chapter} />
         ) : (
           <span key={i}>{seg.text}</span>
         ),
@@ -131,11 +136,16 @@ export function AnnotatedText({
 function AnnotatedSpan({
   segment,
   annotation,
+  bookId,
+  chapter,
 }: {
   segment: TextSegment
   annotation: EntityAnnotation
+  bookId?: string
+  chapter?: number
 }) {
   const color = labelColor(annotation.entity_type)
+  const isCharacter = annotation.entity_type === "Character"
 
   return (
     <HoverCard openDelay={200} closeDelay={100}>
@@ -156,22 +166,32 @@ function AnnotatedSpan({
         align="start"
         className="w-64 p-3 space-y-2"
       >
-        <div className="flex items-center gap-2">
-          <EntityBadge
-            name={annotation.entity_name}
-            type={annotation.entity_type}
-            size="sm"
+        {isCharacter ? (
+          <CharacterHoverContent
+            characterName={annotation.entity_name}
+            bookId={bookId}
+            chapter={chapter}
           />
-        </div>
-        {annotation.mention_type && annotation.mention_type !== "langextract" && (
-          <span className="text-[10px] text-slate-500 uppercase tracking-wider">
-            {annotation.mention_type.replace("_", " ")}
-          </span>
-        )}
-        {annotation.extraction_text && (
-          <p className="text-xs text-slate-500 leading-relaxed line-clamp-3">
-            {annotation.extraction_text}
-          </p>
+        ) : (
+          <>
+            <div className="flex items-center gap-2">
+              <EntityBadge
+                name={annotation.entity_name}
+                type={annotation.entity_type}
+                size="sm"
+              />
+            </div>
+            {annotation.mention_type && annotation.mention_type !== "langextract" && (
+              <span className="text-[10px] text-slate-500 uppercase tracking-wider">
+                {annotation.mention_type.replace("_", " ")}
+              </span>
+            )}
+            {annotation.extraction_text && (
+              <p className="text-xs text-slate-500 leading-relaxed line-clamp-3">
+                {annotation.extraction_text}
+              </p>
+            )}
+          </>
         )}
       </HoverCardContent>
     </HoverCard>
