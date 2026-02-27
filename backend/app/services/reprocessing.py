@@ -3,6 +3,7 @@
 Given a set of OntologyChanges, computes which chapters and phases
 need re-extraction, then runs only those phases.
 """
+
 from __future__ import annotations
 
 import re
@@ -10,12 +11,12 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from app.core.logging import get_logger
-from app.schemas.ontology import OntologyChange
 
 if TYPE_CHECKING:
     from neo4j import AsyncDriver
 
-    from app.repositories.book_repo import BookRepository
+    from app.schemas.ontology import OntologyChange
+
 
 logger = get_logger(__name__)
 
@@ -107,9 +108,7 @@ async def scan_chapters_for_impact(
             search_patterns.append(compiled)
         except re.error:
             # If the target isn't a valid regex, use it as literal
-            search_patterns.append(
-                re.compile(re.escape(pattern_info["target"]), re.IGNORECASE)
-            )
+            search_patterns.append(re.compile(re.escape(pattern_info["target"]), re.IGNORECASE))
 
     # If no specific patterns to scan for, return all chapters
     # (better to over-extract than miss something)
@@ -144,8 +143,11 @@ async def reextract_chapters(
 
     book_repo = BookRepository(driver)
 
-    # Load entity registry
+    # Load entity registry (accumulates across chapters)
+    from app.services.extraction.entity_registry import EntityRegistry
+
     registry_data = await book_repo.load_entity_registry(book_id)
+    entity_registry = EntityRegistry.from_dict(registry_data) if registry_data else EntityRegistry()
 
     chapters = await book_repo.get_chapters_for_extraction(book_id, chapters=chapter_numbers)
     chapter_regex = await book_repo.get_chapter_regex_json(book_id)
@@ -164,11 +166,32 @@ async def reextract_chapters(
                 genre=genre,
                 series_name=series_name,
                 regex_matches_json=regex_json,
-                entity_registry=registry_data,
+                entity_registry=entity_registry.to_dict(),
                 ontology_version=settings.ontology_version,
                 source_language=settings.extraction_language,
             )
             results.append(stats)
+
+            # Accumulate registry with extracted entities (same as tasks.py)
+            for ent in stats.get("extracted_entities") or []:
+                entity_registry.add(
+                    name=ent["name"],
+                    entity_type=ent["type"],
+                    aliases=ent.get("aliases", []),
+                    significance=ent.get("significance", ""),
+                    first_seen_chapter=chapter.number,
+                    description=ent.get("description", ""),
+                )
+                entity_registry.update_last_seen(ent["name"], chapter.number)
+
+            for _old, new in (stats.get("alias_map") or {}).items():
+                if not entity_registry.lookup(new):
+                    entity_registry.add(new, "Unknown")
+
+            # Persist updated registry
+            await book_repo.save_entity_registry(
+                book_id, entity_registry.to_dict(), settings.ontology_version,
+            )
         except Exception:
             logger.exception(
                 "reextract_chapter_failed",

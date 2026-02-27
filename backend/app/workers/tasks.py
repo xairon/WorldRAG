@@ -291,9 +291,22 @@ async def process_book_extraction_v3(
             total_entities += stats.get("total_entities", 0)
             chapter_stats.append(stats)
 
-            # Update registry with new entities from this chapter's alias_map
+            # Update registry with all extracted entities (rich data)
+            for ent in stats.get("extracted_entities") or []:
+                entity_registry.add(
+                    name=ent["name"],
+                    entity_type=ent["type"],
+                    aliases=ent.get("aliases", []),
+                    significance=ent.get("significance", ""),
+                    first_seen_chapter=chapter.number,
+                    description=ent.get("description", ""),
+                )
+                entity_registry.update_last_seen(ent["name"], chapter.number)
+
+            # Also record alias_map canonical names
             for _old_name, new_name in (stats.get("alias_map") or {}).items():
-                entity_registry.add(new_name, "Unknown")
+                if not entity_registry.lookup(new_name):
+                    entity_registry.add(new_name, "Unknown")
 
             # Save registry after each chapter
             await book_repo.save_entity_registry(

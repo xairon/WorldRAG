@@ -500,10 +500,16 @@ async def _persist_extraction_result(
 
     # Phase 1: Characters + relationships (sequential — rels reference chars)
     counts["characters"] = await entity_repo.upsert_characters(
-        book_id, chapter_number, result.characters.characters, batch_id,
+        book_id,
+        chapter_number,
+        result.characters.characters,
+        batch_id,
     )
     counts["relationships"] = await entity_repo.upsert_relationships(
-        book_id, chapter_number, result.characters.relationships, batch_id,
+        book_id,
+        chapter_number,
+        result.characters.relationships,
+        batch_id,
     )
 
     # Phase 2: All independent entity types in parallel
@@ -521,43 +527,92 @@ async def _persist_extraction_result(
         counts["concepts"],
     ) = await asyncio.gather(
         entity_repo.upsert_skills(
-            book_id, chapter_number, result.systems.skills, batch_id,
+            book_id,
+            chapter_number,
+            result.systems.skills,
+            batch_id,
         ),
         entity_repo.upsert_classes(
-            book_id, chapter_number, result.systems.classes, batch_id,
+            book_id,
+            chapter_number,
+            result.systems.classes,
+            batch_id,
         ),
         entity_repo.upsert_titles(
-            book_id, chapter_number, result.systems.titles, batch_id,
+            book_id,
+            chapter_number,
+            result.systems.titles,
+            batch_id,
         ),
         entity_repo.upsert_level_changes(
-            book_id, chapter_number, result.systems.level_changes, batch_id,
+            book_id,
+            chapter_number,
+            result.systems.level_changes,
+            batch_id,
         ),
         entity_repo.upsert_stat_changes(
-            book_id, chapter_number, result.systems.stat_changes, batch_id,
+            book_id,
+            chapter_number,
+            result.systems.stat_changes,
+            batch_id,
         ),
         entity_repo.upsert_events(
-            book_id, chapter_number, result.events.events, batch_id,
+            book_id,
+            chapter_number,
+            result.events.events,
+            batch_id,
         ),
         entity_repo.upsert_locations(
-            book_id, chapter_number, result.lore.locations, batch_id,
+            book_id,
+            chapter_number,
+            result.lore.locations,
+            batch_id,
         ),
         entity_repo.upsert_items(
-            book_id, chapter_number, result.lore.items, batch_id,
+            book_id,
+            chapter_number,
+            result.lore.items,
+            batch_id,
         ),
         entity_repo.upsert_creatures(
-            book_id, chapter_number, result.lore.creatures, batch_id,
+            book_id,
+            chapter_number,
+            result.lore.creatures,
+            batch_id,
         ),
         entity_repo.upsert_factions(
-            book_id, chapter_number, result.lore.factions, batch_id,
+            book_id,
+            chapter_number,
+            result.lore.factions,
+            batch_id,
         ),
         entity_repo.upsert_concepts(
-            book_id, chapter_number, result.lore.concepts, batch_id,
+            book_id,
+            chapter_number,
+            result.lore.concepts,
+            batch_id,
         ),
     )
 
-    # Phase 3: Mentions (depends on entities existing)
+    # Phase 3: Layer 3 (series-specific entities)
+    if result.layer3.bloodlines:
+        counts["bloodlines"] = await entity_repo.upsert_bloodlines(
+            book_id, chapter_number, result.layer3.bloodlines, batch_id,
+        )
+    if result.layer3.professions:
+        counts["professions"] = await entity_repo.upsert_professions(
+            book_id, chapter_number, result.layer3.professions, batch_id,
+        )
+    if result.layer3.churches:
+        counts["churches"] = await entity_repo.upsert_churches(
+            book_id, chapter_number, result.layer3.churches, batch_id,
+        )
+
+    # Phase 4: Mentions (depends on entities existing)
     counts["mentions"] = await entity_repo.store_mentions(
-        book_id, chapter_number, result.grounded_entities,
+        book_id,
+        chapter_number,
+        result.grounded_entities,
     )
 
     return counts
@@ -653,11 +708,50 @@ async def build_chapter_graph_v3(
     batch_id = str(uuid.uuid4())
 
     counts = await _persist_extraction_result(
-        entity_repo, book_id, chapter_number, result, batch_id,
+        entity_repo,
+        book_id,
+        chapter_number,
+        result,
+        batch_id,
     )
 
     # 5. Update chapter status
     await book_repo.update_chapter_status(book_id, chapter_number, "extracted")
+
+    # Build entity summary for EntityRegistry update by caller
+    extracted_entities: list[dict[str, Any]] = []
+    for char in result.characters.characters:
+        extracted_entities.append({
+            "name": char.canonical_name or char.name,
+            "type": "Character",
+            "aliases": list(char.aliases) if char.aliases else [],
+            "significance": char.role or "",
+            "description": char.description[:100] if char.description else "",
+        })
+    for skill in result.systems.skills:
+        extracted_entities.append({"name": skill.name, "type": "Skill"})
+    for cls in result.systems.classes:
+        extracted_entities.append({"name": cls.name, "type": "Class"})
+    for title in result.systems.titles:
+        extracted_entities.append({"name": title.name, "type": "Title"})
+    for event in result.events.events:
+        extracted_entities.append({"name": event.name, "type": "Event"})
+    for loc in result.lore.locations:
+        extracted_entities.append({"name": loc.name, "type": "Location"})
+    for item in result.lore.items:
+        extracted_entities.append({"name": item.name, "type": "Item"})
+    for creature in result.lore.creatures:
+        extracted_entities.append({"name": creature.name, "type": "Creature"})
+    for faction in result.lore.factions:
+        extracted_entities.append({"name": faction.name, "type": "Faction"})
+    for concept in result.lore.concepts:
+        extracted_entities.append({"name": concept.name, "type": "Concept"})
+    for bl in result.layer3.bloodlines:
+        extracted_entities.append({"name": bl.name, "type": "Bloodline"})
+    for prof in result.layer3.professions:
+        extracted_entities.append({"name": prof.name, "type": "Profession"})
+    for church in result.layer3.churches:
+        extracted_entities.append({"name": church.deity_name, "type": "Church"})
 
     stats: dict[str, Any] = {
         "chapter_number": chapter_number,
@@ -666,6 +760,7 @@ async def build_chapter_graph_v3(
         "batch_id": batch_id,
         "ontology_version": ontology_version,
         "neo4j_counts": counts,
+        "extracted_entities": extracted_entities,
     }
 
     logger.info(

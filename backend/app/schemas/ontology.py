@@ -1,4 +1,5 @@
 """Ontology evolution schemas for tracking changes across books."""
+
 from __future__ import annotations
 
 from typing import Literal
@@ -24,16 +25,16 @@ class OntologyChange(BaseModel):
     discovered_in_book: int = 0
     discovered_in_chapter: int = 0
     confidence: float = Field(ge=0.0, le=1.0)
-    evidence: list[str] = []  # Source text excerpts
+    evidence: list[str] = Field(default_factory=list)  # Source text excerpts
     status: Literal["proposed", "validated", "rejected", "applied"] = "proposed"
-    details: dict = {}  # Additional info (properties, pattern, etc.)
+    details: dict = Field(default_factory=dict)  # Additional info (properties, pattern, etc.)
 
 
 class OntologyChangelog(BaseModel):
     """Collection of ontology changes for a series."""
 
     series_name: str
-    changes: list[OntologyChange] = []
+    changes: list[OntologyChange] = Field(default_factory=list)
     current_version: str = "3.0.0"
 
     def add_change(self, change: OntologyChange) -> None:

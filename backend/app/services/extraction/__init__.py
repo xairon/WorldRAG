@@ -36,6 +36,7 @@ from app.schemas.extraction import (
     ChapterExtractionResult,
     CharacterExtractionResult,
     EventExtractionResult,
+    Layer3ExtractionResult,
     LoreExtractionResult,
     SystemExtractionResult,
 )
@@ -620,7 +621,6 @@ async def extract_chapter(
 import json
 import uuid
 
-
 # ── Phase 0: Regex extraction node ────────────────────────────────────
 
 
@@ -682,17 +682,21 @@ async def narrative_characters_node(state: ExtractionPipelineState) -> dict[str,
     characters_result = result.get("characters")
     if characters_result:
         for char in characters_result.characters:
-            phase1_entries.append({
-                "entity_type": "character",
-                "name": char.canonical_name or char.name,
-                "source_pass": "narrative_characters",
-            })
+            phase1_entries.append(
+                {
+                    "entity_type": "character",
+                    "name": char.canonical_name or char.name,
+                    "source_pass": "narrative_characters",
+                }
+            )
         for rel in characters_result.relationships:
-            phase1_entries.append({
-                "entity_type": "relationship",
-                "name": f"{rel.source}->{rel.target}",
-                "source_pass": "narrative_characters",
-            })
+            phase1_entries.append(
+                {
+                    "entity_type": "relationship",
+                    "name": f"{rel.source}->{rel.target}",
+                    "source_pass": "narrative_characters",
+                }
+            )
 
     result["phase1_narrative"] = phase1_entries
     return result
@@ -717,11 +721,13 @@ async def narrative_events_node(state: ExtractionPipelineState) -> dict[str, Any
     events_result = result.get("events")
     if events_result:
         for event in events_result.events:
-            phase1_entries.append({
-                "entity_type": "event",
-                "name": event.name,
-                "source_pass": "narrative_events",
-            })
+            phase1_entries.append(
+                {
+                    "entity_type": "event",
+                    "name": event.name,
+                    "source_pass": "narrative_events",
+                }
+            )
 
     result["phase1_narrative"] = phase1_entries
     return result
@@ -746,35 +752,45 @@ async def narrative_world_node(state: ExtractionPipelineState) -> dict[str, Any]
     lore_result = result.get("lore")
     if lore_result:
         for loc in lore_result.locations:
-            phase1_entries.append({
-                "entity_type": "location",
-                "name": loc.name,
-                "source_pass": "narrative_world",
-            })
+            phase1_entries.append(
+                {
+                    "entity_type": "location",
+                    "name": loc.name,
+                    "source_pass": "narrative_world",
+                }
+            )
         for item in lore_result.items:
-            phase1_entries.append({
-                "entity_type": "item",
-                "name": item.name,
-                "source_pass": "narrative_world",
-            })
+            phase1_entries.append(
+                {
+                    "entity_type": "item",
+                    "name": item.name,
+                    "source_pass": "narrative_world",
+                }
+            )
         for cr in lore_result.creatures:
-            phase1_entries.append({
-                "entity_type": "creature",
-                "name": cr.name,
-                "source_pass": "narrative_world",
-            })
+            phase1_entries.append(
+                {
+                    "entity_type": "creature",
+                    "name": cr.name,
+                    "source_pass": "narrative_world",
+                }
+            )
         for faction in lore_result.factions:
-            phase1_entries.append({
-                "entity_type": "faction",
-                "name": faction.name,
-                "source_pass": "narrative_world",
-            })
+            phase1_entries.append(
+                {
+                    "entity_type": "faction",
+                    "name": faction.name,
+                    "source_pass": "narrative_world",
+                }
+            )
         for concept in lore_result.concepts:
-            phase1_entries.append({
-                "entity_type": "concept",
-                "name": concept.name,
-                "source_pass": "narrative_world",
-            })
+            phase1_entries.append(
+                {
+                    "entity_type": "concept",
+                    "name": concept.name,
+                    "source_pass": "narrative_world",
+                }
+            )
 
     result["phase1_narrative"] = phase1_entries
     return result
@@ -831,23 +847,29 @@ async def genre_progression_node(state: ExtractionPipelineState) -> dict[str, An
     systems_result = result.get("systems")
     if systems_result:
         for skill in systems_result.skills:
-            phase2_entries.append({
-                "entity_type": "skill",
-                "name": skill.name,
-                "source_pass": "genre_progression",
-            })
+            phase2_entries.append(
+                {
+                    "entity_type": "skill",
+                    "name": skill.name,
+                    "source_pass": "genre_progression",
+                }
+            )
         for cls in systems_result.classes:
-            phase2_entries.append({
-                "entity_type": "class",
-                "name": cls.name,
-                "source_pass": "genre_progression",
-            })
+            phase2_entries.append(
+                {
+                    "entity_type": "class",
+                    "name": cls.name,
+                    "source_pass": "genre_progression",
+                }
+            )
         for title in systems_result.titles:
-            phase2_entries.append({
-                "entity_type": "title",
-                "name": title.name,
-                "source_pass": "genre_progression",
-            })
+            phase2_entries.append(
+                {
+                    "entity_type": "title",
+                    "name": title.name,
+                    "source_pass": "genre_progression",
+                }
+            )
 
     result["phase2_genre"] = phase2_entries
     return result
@@ -1180,8 +1202,11 @@ def build_extraction_graph_v3() -> CompiledStateGraph:
     graph.add_edge(START, "regex_extract")
 
     # Phase 0 → Phase 1 (parallel fan-out to 3 narrative passes)
-    graph.add_conditional_edges("regex_extract", fan_out_phase1,
-                                ["narrative_characters", "narrative_events", "narrative_world"])
+    graph.add_conditional_edges(
+        "regex_extract",
+        fan_out_phase1,
+        ["narrative_characters", "narrative_events", "narrative_world"],
+    )
 
     # Phase 1 passes → merge_phase1
     graph.add_edge("narrative_characters", "merge_phase1")
@@ -1191,16 +1216,20 @@ def build_extraction_graph_v3() -> CompiledStateGraph:
     # Phase 1 → Phase 2 (conditional fan-out on genre)
     # When genre is set, fan out to both genre sub-passes in parallel.
     # When no genre, skip directly to reconcile.
-    graph.add_conditional_edges("merge_phase1", _route_phase1_to_phase2,
-                                ["genre_progression", "genre_creatures", "reconcile"])
+    graph.add_conditional_edges(
+        "merge_phase1",
+        _route_phase1_to_phase2,
+        ["genre_progression", "genre_creatures", "reconcile"],
+    )
 
     # Phase 2 passes → merge_phase2
     graph.add_edge("genre_progression", "merge_phase2")
     graph.add_edge("genre_creatures", "merge_phase2")
 
     # Phase 2 → Phase 3 (conditional on series_name)
-    graph.add_conditional_edges("merge_phase2", _route_phase2_to_phase3,
-                                ["series_extract", "reconcile"])
+    graph.add_conditional_edges(
+        "merge_phase2", _route_phase2_to_phase3, ["series_extract", "reconcile"]
+    )
 
     # Phase 3 → Phase 4
     graph.add_edge("series_extract", "reconcile")
@@ -1301,11 +1330,13 @@ async def extract_chapter_v3(
         systems=final_state.get("systems", SystemExtractionResult()),
         events=final_state.get("events", EventExtractionResult()),
         lore=final_state.get("lore", LoreExtractionResult()),
+        layer3=final_state.get("layer3", Layer3ExtractionResult()),
         grounded_entities=final_state.get("grounded_entities", []),
         alias_map=final_state.get("alias_map", {}),
         total_entities=final_state.get("total_entities", 0),
         total_cost_usd=final_state.get("total_cost_usd", 0.0),
         passes_completed=final_state.get("passes_completed", []),
+        ontology_version=ontology_version,
     )
 
     result.count_entities()

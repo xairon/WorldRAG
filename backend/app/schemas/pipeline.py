@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
+from app.schemas.ontology import OntologyChange  # noqa: TC001 — runtime use by FastAPI
+
 # ── Prompts ──────────────────────────────────────────────────────────────
 
 
@@ -207,7 +209,7 @@ class ReprocessRequest(BaseModel):
         None,
         description="Specific chapters to reprocess. null = auto-detect.",
     )
-    changes: list[dict] | None = Field(
+    changes: list[OntologyChange] | None = Field(
         None,
         description="Ontology changes that triggered reprocessing.",
     )
