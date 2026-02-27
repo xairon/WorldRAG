@@ -28,6 +28,11 @@ from app.schemas.book import (
     JobEnqueuedResult,
     ProcessingStatus,
 )
+from app.schemas.pipeline import (  # noqa: TC001 — runtime use by FastAPI
+    ExtractionRequest,
+    ExtractionRequestV3,
+    ReprocessRequest,
+)
 from app.services.chunking import chunk_chapter
 from app.services.extraction.regex_extractor import RegexExtractor
 from app.services.ingestion import ingest_file
@@ -294,10 +299,15 @@ async def get_book_stats(
 )
 async def extract_book(
     book_id: str,
+    body: ExtractionRequest | None = None,
     driver: AsyncDriver = Depends(get_neo4j),
     arq_pool: ArqRedis = Depends(get_arq_pool),
 ) -> JobEnqueuedResult:
     """Enqueue LLM extraction pipeline for an ingested book.
+
+    Optionally pass ``{"chapters": [1, 3, 5]}`` in the request body
+    to extract only specific chapters.  Omit or pass ``null`` to
+    extract all chapters.
 
     Returns immediately with a job_id. The extraction runs in a
     background arq worker. Poll GET /books/{book_id}/jobs for status.
@@ -305,6 +315,8 @@ async def extract_book(
 
     After extraction completes, an embedding job is automatically enqueued.
     """
+    chapter_list = body.chapters if body else None
+
     repo = BookRepository(driver)
     book = await repo.get_book(book_id)
     if not book:
@@ -318,26 +330,174 @@ async def extract_book(
         )
 
     # Validate chapters exist before enqueueing
-    chapters = await repo.get_chapters_for_extraction(book_id)
+    chapters = await repo.get_chapters_for_extraction(
+        book_id,
+        chapters=chapter_list,
+    )
     if not chapters:
-        raise ValidationError("No chapter text found. Re-ingest the book.")
+        raise ValidationError("No chapter text found for the requested selection.")
+
+    # Include chapter selection in job_id to avoid collision
+    suffix = ""
+    if chapter_list:
+        suffix = f":{','.join(str(c) for c in sorted(chapter_list)[:5])}"
+        if len(chapter_list) > 5:
+            suffix += f"...({len(chapter_list)})"
 
     job = await arq_pool.enqueue_job(
         "process_book_extraction",
         book_id,
         book.get("genre", "litrpg"),
         book.get("series_name", "") or "",
+        chapter_list,
         _queue_name="worldrag:arq",
-        _job_id=f"extract:{book_id}",
+        _job_id=f"extract:{book_id}{suffix}",
     )
 
-    logger.info("book_extraction_enqueued", book_id=book_id, job_id=job.job_id)
+    if job is None:
+        raise ConflictError("Job already enqueued or could not be created.")
+
+    logger.info(
+        "book_extraction_enqueued",
+        book_id=book_id,
+        job_id=job.job_id,
+        chapters=chapter_list,
+    )
 
     return JobEnqueuedResult(
         book_id=book_id,
         job_id=job.job_id,
         status="enqueued",
         message="Extraction job enqueued. Poll GET /books/{book_id}/jobs for status.",
+    )
+
+
+@router.post(
+    "/{book_id}/extract/v3",
+    response_model=JobEnqueuedResult,
+    dependencies=[Depends(require_auth)],
+)
+async def extract_book_v3(
+    book_id: str,
+    body: ExtractionRequestV3 | None = None,
+    driver: AsyncDriver = Depends(get_neo4j),
+    arq_pool: ArqRedis = Depends(get_arq_pool),
+) -> JobEnqueuedResult:
+    """Enqueue V3 extraction pipeline for an ingested book.
+
+    Uses the 6-phase layered pipeline (narrative -> genre -> series)
+    with EntityRegistry for cross-chapter context accumulation.
+    """
+    repo = BookRepository(driver)
+    book = await repo.get_book(book_id)
+    if not book:
+        raise NotFoundError("Book not found")
+
+    current_status = book.get("status", "")
+    if current_status not in ("completed", "extracted", "partial", "embedded"):
+        raise ConflictError(
+            f"Book status is '{current_status}'. "
+            "Extraction requires ingestion to be completed first."
+        )
+
+    chapter_list = body.chapters if body else None
+    language = body.language if body else "fr"
+    genre = (body.genre if body else None) or book.get("genre", "litrpg")
+    series_name = (body.series_name if body else None) or book.get("series_name", "") or ""
+
+    chapters = await repo.get_chapters_for_extraction(book_id, chapters=chapter_list)
+    if not chapters:
+        raise ValidationError("No chapter text found for the requested selection.")
+
+    suffix = ""
+    if chapter_list:
+        suffix = f":{','.join(str(c) for c in sorted(chapter_list)[:5])}"
+        if len(chapter_list) > 5:
+            suffix += f"...({len(chapter_list)})"
+
+    job = await arq_pool.enqueue_job(
+        "process_book_extraction_v3",
+        book_id,
+        genre,
+        series_name,
+        chapter_list,
+        language,
+        _queue_name="worldrag:arq",
+        _job_id=f"extract-v3:{book_id}{suffix}",
+    )
+
+    if job is None:
+        raise ConflictError("Job already enqueued or could not be created.")
+
+    logger.info(
+        "book_extraction_v3_enqueued",
+        book_id=book_id,
+        job_id=job.job_id,
+        chapters=chapter_list,
+        language=language,
+    )
+
+    return JobEnqueuedResult(
+        book_id=book_id,
+        job_id=job.job_id,
+        status="enqueued",
+        message="V3 extraction job enqueued. Poll GET /books/{book_id}/jobs for status.",
+    )
+
+
+@router.post(
+    "/{book_id}/reprocess",
+    response_model=JobEnqueuedResult,
+    dependencies=[Depends(require_auth)],
+)
+async def reprocess_book(
+    book_id: str,
+    body: ReprocessRequest | None = None,
+    driver: AsyncDriver = Depends(get_neo4j),
+    arq_pool: ArqRedis = Depends(get_arq_pool),
+) -> JobEnqueuedResult:
+    """Reprocess specific chapters/phases after ontology evolution.
+
+    If chapter_range is provided, only those chapters are reprocessed.
+    If changes are provided, auto-detects affected chapters.
+    If neither, reprocesses all chapters.
+    """
+    repo = BookRepository(driver)
+    book = await repo.get_book(book_id)
+    if not book:
+        raise NotFoundError("Book not found")
+
+    current_status = book.get("status", "")
+    if current_status not in ("extracted", "partial", "embedded"):
+        raise ConflictError(
+            f"Book status is '{current_status}'. Reprocessing requires extraction first."
+        )
+
+    job = await arq_pool.enqueue_job(
+        "process_book_reprocessing",
+        book_id,
+        body.chapter_range if body else None,
+        body.changes if body else None,
+        book.get("genre", "litrpg"),
+        book.get("series_name", "") or "",
+        _queue_name="worldrag:arq",
+        _job_id=f"reprocess:{book_id}",
+    )
+
+    if job is None:
+        raise ConflictError("Reprocessing job already enqueued or could not be created.")
+
+    logger.info(
+        "book_reprocessing_enqueued",
+        book_id=book_id,
+        job_id=job.job_id,
+    )
+
+    return JobEnqueuedResult(
+        book_id=book_id,
+        job_id=job.job_id,
+        status="enqueued",
+        message="Reprocessing job enqueued. Poll GET /books/{book_id}/jobs for status.",
     )
 
 

@@ -582,6 +582,23 @@ class BookRepository(Neo4jRepository):
             return json.loads(results[0]["registry_json"])
         return None
 
+    async def get_series_book_ids(self, series_name: str, exclude: str = "") -> list[str]:
+        """Get all book IDs in a series, excluding one (for cross-book registry loading).
+
+        Returns book IDs ordered by order_in_series.
+        """
+        query = """
+        MATCH (s:Series {name: $series_name})-[:CONTAINS_WORK]->(b:Book)
+        WHERE b.id <> $exclude
+        RETURN b.id AS book_id
+        ORDER BY b.order_in_series
+        """
+        results = await self.execute_read(
+            query,
+            {"series_name": series_name, "exclude": exclude},
+        )
+        return [r["book_id"] for r in results]
+
     # --- Stats ---
 
     async def get_book_stats(self, book_id: str) -> dict[str, Any]:
