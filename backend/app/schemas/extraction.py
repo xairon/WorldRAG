@@ -12,7 +12,39 @@ and the reconciliation schemas used by Instructor.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
+
+
+# ── V3 Base Schema ─────────────────────────────────────────────────────
+
+
+class BaseExtractedEntity(BaseModel):
+    """V3 base for all extraction outputs with confidence and provenance."""
+
+    name: str
+    canonical_name: str
+    entity_type: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    extraction_text: str
+    char_offset_start: int
+    char_offset_end: int
+    chapter_number: int
+    extraction_layer: Literal["narrative", "genre", "series"]
+    extraction_phase: int
+    ontology_version: str
+
+
+class ExtractedStatBlock(BaseModel):
+    """Snapshot of character stats at a chapter."""
+
+    character_name: str
+    stats: dict[str, int]
+    total: int | None = None
+    source: Literal["blue_box", "narrative", "inferred"] = "blue_box"
+    chapter_number: int
+
 
 # ── Pass 1: Characters & Relationships ──────────────────────────────────
 
@@ -48,6 +80,10 @@ class ExtractedCharacter(BaseModel):
     )
     species: str = ""
     first_appearance_chapter: int | None = None
+    # V3 fields
+    status: Literal["alive", "dead", "unknown", "transformed"] = "alive"
+    last_seen_chapter: int | None = None
+    evolution_of: str | None = None
 
 
 class CharacterExtractionResult(BaseModel):
