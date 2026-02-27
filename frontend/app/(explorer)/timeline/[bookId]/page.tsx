@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { useParams } from "next/navigation"
 import { Clock, Filter } from "lucide-react"
-import { getTimeline, getBook, searchEntities } from "@/lib/api"
+import { getTimeline, getBook } from "@/lib/api"
 import type { TimelineEvent, BookDetail } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"

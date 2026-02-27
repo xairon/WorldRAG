@@ -110,6 +110,22 @@ export default function ReaderPage() {
     return annotations.filter((a) => enabledTypes.has(a.entity_type))
   }, [annotations, enabledTypes, mode])
 
+  // Pre-compute paragraph → annotation mapping to avoid O(paragraphs × annotations) per render
+  const paragraphAnnotations = useMemo(() => {
+    const map = new Map<number, typeof filteredAnnotations>()
+    for (const para of paragraphs) {
+      const paraAnns = filteredAnnotations
+        .filter((a) => a.char_offset_start >= para.char_start && a.char_offset_end <= para.char_end)
+        .map((a) => ({
+          ...a,
+          char_offset_start: a.char_offset_start - para.char_start,
+          char_offset_end: a.char_offset_end - para.char_start,
+        }))
+      map.set(para.index, paraAnns)
+    }
+    return map
+  }, [paragraphs, filteredAnnotations])
+
   const handleToggleType = (type: string) => {
     setEnabledTypes((prev) => {
       const next = new Set(prev)
@@ -167,13 +183,7 @@ export default function ReaderPage() {
                 <ParagraphRenderer key={para.index} paragraph={para}>
                   <AnnotatedText
                     text={para.text}
-                    annotations={filteredAnnotations.filter(
-                      (a) => a.char_offset_start >= para.char_start && a.char_offset_end <= para.char_end
-                    ).map((a) => ({
-                      ...a,
-                      char_offset_start: a.char_offset_start - para.char_start,
-                      char_offset_end: a.char_offset_end - para.char_start,
-                    }))}
+                    annotations={paragraphAnnotations.get(para.index) ?? []}
                     mode={mode}
                   />
                 </ParagraphRenderer>

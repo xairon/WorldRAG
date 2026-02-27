@@ -9,6 +9,10 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   if (!(init?.body instanceof FormData)) {
     (headers as Record<string, string>)["Content-Type"] = "application/json"
   }
+  const apiKey = process.env.NEXT_PUBLIC_API_KEY
+  if (apiKey) {
+    (headers as Record<string, string>)["X-API-Key"] = apiKey
+  }
   const res = await fetch(`${API_BASE}${path}`, { ...init, headers })
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
