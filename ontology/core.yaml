@@ -13,6 +13,9 @@
 # Temporal model: Chapter-based integers (not datetime)
 #   All temporal relations use valid_from_chapter / valid_to_chapter
 
+version: "3.0.0"
+layer: core
+
 node_types:
   # === BIBLIOGRAPHIC (FRBRoo/LRMoo) ===
   Series:
