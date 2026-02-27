@@ -1,76 +1,112 @@
-"""Prompts for Pass 2: Systems & Progression Extraction.
+"""Prompts V3 pour Phase 2 : Extraction de Systemes & Progression.
 
-Provides the LangExtract prompt description and few-shot examples
-for extracting LitRPG game-like systems: skills, classes, titles,
-levels, stats, and progression events. Optimized for French LitRPG.
+Fournit la description de prompt et les exemples few-shot pour extraire
+les competences, classes, titres, niveaux, et changements de stats.
+Ontologie cible : Skill, Class, Title, Level, StatBlock.
+
+Inclut le guidage pour le parsing des blue boxes et la reference croisee
+avec les indices Phase 0 (regex).
+
+Optimise pour les romans LitRPG en francais (Primal Hunter).
 """
 
 from __future__ import annotations
 
 import langextract as lx
 
-PROMPT_DESCRIPTION = """\
-Extrais TOUS les éléments de système de jeu / progression de ce chapitre.
+# ---------------------------------------------------------------------------
+# Constantes exportees (backward-compat avec services/extraction/systems.py)
+# ---------------------------------------------------------------------------
 
-Ce roman est en FRANÇAIS (LitRPG / progression fantasy). Tu DOIS extraire
-tous les noms de compétences, classes, titres en français, exactement comme
+PHASE = 2
+
+PROMPT_DESCRIPTION = """\
+Extrais TOUS les elements de systeme de jeu et de progression de ce chapitre.
+
+Ce roman est en FRANCAIS (LitRPG / progression fantasy). Tu DOIS extraire
+tous les noms de competences, classes, titres en francais, exactement comme
 ils apparaissent dans le texte source. Ne traduis JAMAIS en anglais.
 
-COMPÉTENCES & APTITUDES :
-- name : nom exact de la compétence tel qu'écrit dans le texte
-- type : active, passive, raciale, de classe, de profession, unique
-- rank/rareté si mentionnée (commun, peu commun, rare, épique, légendaire, etc.)
-- owner : personnage qui possède ou acquiert la compétence
-- effects : ce que fait la compétence
+=== TYPES D'ENTITES CIBLES (Ontologie V3) ===
 
-CLASSES & PROFESSIONS :
-- name : nom exact de la classe/profession
-- tier si mentionné
-- owner : qui possède cette classe
-- si c'est une nouvelle acquisition ou une classe existante
+SKILL (competence / aptitude) :
+- name : nom exact de la competence tel qu'ecrit dans le texte
+- skill_type : active, passive, racial, class, profession, unique
+- rank : common, uncommon, rare, epic, legendary, transcendent, divine
+- owner : personnage qui possede ou acquiert la competence
+- effects : description de ce que fait la competence
+- system_name : nom du systeme si mentionne
 
-TITRES :
+CLASS (classe / profession de combat) :
+- name : nom exact de la classe
+- tier : niveau de la classe si mentionne (entier)
+- owner : qui possede cette classe
+- requirements : conditions d'obtention si mentionnees
+- description : details supplementaires
+
+TITLE (titre) :
 - name : nom exact du titre
-- effects si mentionnés
-- owner : qui a gagné le titre
-- conditions si indiquées
+- effects : effets du titre si mentionnes
+- owner : qui a gagne le titre
+- requirements : conditions si indiquees
 
-CHANGEMENTS DE NIVEAU :
-- personnage qui a gagné un niveau
-- ancien et nouveau niveau
-- grade/rang si mentionné
+LEVEL (changement de niveau) :
+- character : personnage qui a gagne un niveau
+- old_level : ancien niveau (entier)
+- new_level : nouveau niveau (entier)
+- realm : grade/rang si mentionne (F-grade, E-grade, etc.)
 
-CHANGEMENTS DE STATS :
-- nom de la stat (Force, Agilité, Intelligence, etc.)
-- montant du changement
-- personnage affecté
+STAT_CHANGE (changement de statistique) :
+- stat_name : nom de la stat (Force, Agilite, Intelligence, Perception, etc.)
+- value : montant du changement (entier)
+- character : personnage affecte
 
-RÈGLES IMPORTANTES :
-- Extrais des NOTIFICATIONS (blue boxes/encadrés) ET du texte narratif.
-- Utilise les noms EXACTS tels qu'écrits (préserve majuscules, espaces, accents).
-- Lie chaque compétence/classe/titre à son propriétaire.
-- NE CRÉE PAS d'entité pour des descriptions génériques comme « compétence de combat »
-  ou « maniement d'armes » — seuls les noms PROPRES de compétences sont des entités.
+=== GUIDE BLUE BOXES ===
+Les romans LitRPG contiennent des notifications systeme entre crochets [] ou
+dans des blocs encadres. Ces blue boxes sont des sources de haute confiance :
+- [Skill Acquired: Nom - Rarete] => Skill
+- Level: X -> Y => Level change
+- +N Stat => Stat change
+- [Title earned: Nom] => Title
+- Class: Nom (Tier) => Class
+
+IMPORTANT : Les indices Phase 0 (regex) dans le CONTEXTE contiennent des
+extractions automatiques de ces blue boxes. Utilise-les pour CONFIRMER tes
+extractions narratives mais ne les copie pas aveuglement. Le texte narratif
+autour des blue boxes contient souvent des details supplementaires (owner,
+effets, contexte).
+
+=== REGLES D'EXTRACTION ===
+- Extrais des NOTIFICATIONS (blue boxes) ET du texte narratif.
+- Utilise les noms EXACTS tels qu'ecrits (preserve majuscules, espaces, accents).
+- Lie chaque competence/classe/titre a son proprietaire.
+- NE CREE PAS d'entite pour des descriptions generiques (competence de combat,
+  maniement d'armes) — seuls les noms PROPRES de competences sont des entites.
+- Distingue les nouvelles acquisitions des references a des elements existants.
 - Extrais dans l'ordre d'apparition.
 """
 
 FEW_SHOT_EXAMPLES = [
+    # --- Exemple 1 : Golden example (blue box + narration + stats) ---
     lx.data.ExampleData(
         text=(
-            "[Compétence acquise : Œil de l'Archer – Rare]\n"
-            "Jake sentit le pouvoir affluer en lui. Sa perception s'aiguisa.\n\n"
-            "+5 Perception\n+3 Agilité\n\n"
-            "Sa classe d'Archer bourdonna en approbation."
+            "[Competence acquise : \u0152il de l'Archer \u2013 Rare]\n"
+            "Jake sentit le pouvoir affluer en lui. Sa perception s'aiguisa, "
+            "chaque detail de la foret devenant net.\n\n"
+            "+5 Perception\n+3 Agilite\n\n"
+            "Sa classe d'Archer bourdonna en approbation. Au niveau 12, "
+            "il debloquait enfin cette aptitude passive tant attendue."
         ),
         extractions=[
             lx.data.Extraction(
                 extraction_class="skill",
-                extraction_text="Œil de l'Archer",
+                extraction_text="\u0152il de l'Archer",
                 attributes={
+                    "name": "\u0152il de l'Archer",
                     "rank": "rare",
-                    "owner": "Jake",
+                    "owner": "jake",
                     "skill_type": "passive",
-                    "effects": "aiguise la perception",
+                    "effects": "aiguise la perception, chaque detail devient net",
                 },
             ),
             lx.data.Extraction(
@@ -79,41 +115,45 @@ FEW_SHOT_EXAMPLES = [
                 attributes={
                     "stat_name": "Perception",
                     "value": "5",
-                    "character": "Jake",
+                    "character": "jake",
                 },
             ),
             lx.data.Extraction(
                 extraction_class="stat_change",
-                extraction_text="+3 Agilité",
+                extraction_text="+3 Agilite",
                 attributes={
-                    "stat_name": "Agilité",
+                    "stat_name": "Agilite",
                     "value": "3",
-                    "character": "Jake",
+                    "character": "jake",
                 },
             ),
             lx.data.Extraction(
                 extraction_class="class",
                 extraction_text="Archer",
                 attributes={
-                    "owner": "Jake",
-                    "note": "classe existante, pas nouvellement acquise",
+                    "name": "Archer",
+                    "owner": "jake",
+                    "description": "classe existante, pas nouvellement acquise",
                 },
             ),
         ],
     ),
+    # --- Exemple 2 : Evolution de classe + titre (blue box formel) ---
     lx.data.ExampleData(
         text=(
             "Niveau : 3 -> 5\n"
             "Classe : Chasseur Ambitieux\n\n"
             "Titre obtenu : Pionnier du Nouveau Monde\n"
-            "Effet : +10% de dégâts contre les créatures du tutoriel."
+            "Effet : +10% de degats contre les creatures du tutoriel.\n\n"
+            "Jake sourit. Le titre confirmait ce que le Vilain Vipere "
+            "lui avait laisse entendre : il etait special."
         ),
         extractions=[
             lx.data.Extraction(
                 extraction_class="level_change",
                 extraction_text="Niveau : 3 -> 5",
                 attributes={
-                    "character": "Jake",
+                    "character": "jake",
                     "old_level": "3",
                     "new_level": "5",
                 },
@@ -123,17 +163,31 @@ FEW_SHOT_EXAMPLES = [
                 extraction_text="Chasseur Ambitieux",
                 attributes={
                     "name": "Chasseur Ambitieux",
-                    "owner": "Jake",
+                    "owner": "jake",
                 },
             ),
             lx.data.Extraction(
                 extraction_class="title",
                 extraction_text="Pionnier du Nouveau Monde",
                 attributes={
-                    "owner": "Jake",
-                    "effects": "+10% de dégâts contre les créatures du tutoriel",
+                    "name": "Pionnier du Nouveau Monde",
+                    "owner": "jake",
+                    "effects": "+10% de degats contre les creatures du tutoriel",
                 },
             ),
+        ],
+    ),
+    # --- Exemple 3 : Negative example (descriptions generiques) ---
+    lx.data.ExampleData(
+        text=(
+            "Il utilisa sa competence de combat pour esquiver l'attaque. "
+            "Sa maitrise du maniement d'armes lui avait sauve la vie. "
+            "Le niveau de son adversaire semblait bien plus eleve."
+        ),
+        extractions=[
+            # Aucune extraction : "competence de combat" et "maniement d'armes"
+            # sont des descriptions generiques, pas des noms propres de competences.
+            # "Le niveau de son adversaire" est vague (pas de valeur concrete).
         ],
     ),
 ]

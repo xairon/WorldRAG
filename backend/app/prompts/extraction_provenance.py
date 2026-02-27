@@ -1,56 +1,95 @@
-"""Prompt templates for skill provenance extraction (Pass 2b).
+"""Prompts V3 pour Phase 2b : Extraction de provenance des competences.
 
-Identifies which items, classes, bloodlines, or titles grant specific skills.
+Identifie quels objets, classes, bloodlines ou titres conferent
+des competences specifiques.
+
+Optimise pour les romans LitRPG en francais (Primal Hunter).
+"""
+
+from __future__ import annotations
+
+# ---------------------------------------------------------------------------
+# Constantes exportees (backward-compat avec services/extraction/provenance.py)
+# ---------------------------------------------------------------------------
+
+PHASE = 2
+
+PROMPT_DESCRIPTION = """\
+Tu es un analyste de systemes LitRPG. Identifie la SOURCE de chaque
+competence acquise dans ce chapitre.
 """
 
 PROVENANCE_SYSTEM_PROMPT = """\
-You are a LitRPG system analyst. Given a chapter excerpt and a list of skills
-acquired in this chapter, identify the SOURCE of each skill.
+Tu es un analyste de systemes LitRPG. Etant donne un extrait de chapitre
+et une liste de competences acquises dans ce chapitre, identifie la SOURCE
+de chaque competence.
 
-Sources can be:
-- item: An equipment or artifact grants the skill
-- class: A class or job provides the skill
-- bloodline: A bloodline ability manifests as the skill
-- title: A title confers the skill
-- unknown: Source is not mentioned or unclear
+=== TYPES DE SOURCES ===
+- item : un equipement ou artefact confere la competence
+- class : une classe ou un metier fournit la competence
+- bloodline : une bloodline manifeste la competence
+- title : un titre confere la competence
+- profession : une profession (alchimie, forgerie, etc.) donne la competence
+- unknown : la source n'est pas mentionnee ou est floue
 
-For each skill, return the source_type, source_name, and your confidence (0.0-1.0).
-Only report confidence >= 0.5. If no source is evident, use "unknown".
+=== SCHEMA DE SORTIE (JSON) ===
+Pour chaque competence, retourne :
+{{
+  "skill_name": "<nom exact de la competence>",
+  "source_type": "item|class|bloodline|title|profession|unknown",
+  "source_name": "<nom de la source>",
+  "confidence": <0.0 a 1.0>,
+  "context": "<extrait du texte justifiant l'attribution>"
+}}
+
+=== REGLES ===
+- Ne rapporte que les attributions avec une confiance >= 0.5.
+- Si aucune source n'est evidente, utilise "unknown".
+- Chaque attribution DOIT avoir un extrait textuel (context) comme preuve.
+- Ne confonds pas les competences existantes avec les nouvelles acquisitions.
 """
 
-PROVENANCE_FEW_SHOT = [
+FEW_SHOT_EXAMPLES = [
+    # --- Exemple 1 : Source = objet ---
     {
         "chapter_text": (
-            "Jake equipped the Nanoblade, feeling its power flow through him.\n"
-            "[Skill Acquired: Shadow Strike - Rare]\n"
-            "The blade's enchantment granted him a new combat technique."
+            "Jake equipa le Nanoblade, sentant sa puissance affluer en lui.\n"
+            "[Competence acquise : Frappe de l'Ombre - Rare]\n"
+            "L'enchantement de la lame lui conferait une nouvelle technique de combat."
         ),
-        "skills": ["Shadow Strike"],
+        "skills": ["Frappe de l'Ombre"],
         "result": [
             {
-                "skill_name": "Shadow Strike",
+                "skill_name": "Frappe de l'Ombre",
                 "source_type": "item",
                 "source_name": "Nanoblade",
                 "confidence": 0.95,
-                "context": "The blade's enchantment granted him a new combat technique.",
-            }
+                "context": "L'enchantement de la lame lui conferait une nouvelle technique de combat.",
+            },
         ],
     },
+    # --- Exemple 2 : Source = evolution de classe ---
     {
         "chapter_text": (
-            "With his evolution to Avaricious Arcane Hunter, Jake gained access to "
-            "a whole new set of abilities.\n"
-            "[Skill Acquired: Arcane Powershot - Epic]"
+            "Avec son evolution en Chasseur Arcanique Avide, Jake acceda a "
+            "tout un nouvel ensemble de capacites.\n"
+            "[Competence acquise : Powershot Arcanique - Epique]"
         ),
-        "skills": ["Arcane Powershot"],
+        "skills": ["Powershot Arcanique"],
         "result": [
             {
-                "skill_name": "Arcane Powershot",
+                "skill_name": "Powershot Arcanique",
                 "source_type": "class",
-                "source_name": "Avaricious Arcane Hunter",
+                "source_name": "Chasseur Arcanique Avide",
                 "confidence": 0.9,
-                "context": "evolution to Avaricious Arcane Hunter, Jake gained access to a whole new set of abilities",
-            }
+                "context": (
+                    "Avec son evolution en Chasseur Arcanique Avide, "
+                    "Jake acceda a tout un nouvel ensemble de capacites"
+                ),
+            },
         ],
     },
 ]
+
+# Legacy alias
+PROVENANCE_FEW_SHOT = FEW_SHOT_EXAMPLES

@@ -1,74 +1,100 @@
-"""Prompts for Pass 3: Events & Timeline Extraction.
+"""Prompts V3 pour Phase 1 : Extraction d'Evenements & Arcs narratifs.
 
-Provides the LangExtract prompt description and few-shot examples
-for extracting narrative events, battles, discoveries, deaths,
-and arc developments with temporal anchoring.
-Optimized for French-language LitRPG novels.
+Fournit la description de prompt et les exemples few-shot pour extraire
+les evenements narratifs, arcs, ordonnancement temporel et significance.
+Ontologie cible : Event, Arc, PARTICIPATES_IN, OCCURS_AT, CAUSES, PART_OF.
+
+Optimise pour les romans LitRPG en francais (Primal Hunter).
 """
 
 from __future__ import annotations
 
 import langextract as lx
 
+# ---------------------------------------------------------------------------
+# Constantes exportees (backward-compat avec services/extraction/events.py)
+# ---------------------------------------------------------------------------
+
+PHASE = 1
+
 PROMPT_DESCRIPTION = """\
-Extrais TOUS les événements narratifs significatifs de ce chapitre.
+Extrais TOUS les evenements narratifs significatifs de ce chapitre.
 
-Ce roman est en FRANÇAIS. Tu DOIS écrire tous les noms d'événements,
-descriptions et attributs en français. Ne traduis JAMAIS en anglais.
+Ce roman est en FRANCAIS (LitRPG / progression fantasy). Tu DOIS ecrire
+tous les noms d'evenements, descriptions et attributs en francais.
+Ne traduis JAMAIS en anglais.
 
-Pour chaque ÉVÉNEMENT, extrais :
-- name : un nom court et descriptif EN FRANÇAIS (2-6 mots)
-- description : ce qui s'est passé (1-2 phrases en français)
+=== TYPES D'ENTITES CIBLES (Ontologie V3) ===
+
+EVENT :
+- name : un nom court et descriptif EN FRANCAIS (2-6 mots)
+- description : ce qui s'est passe (1-2 phrases en francais)
 - event_type : action, state_change, achievement, process, dialogue
 - significance : minor, moderate, major, critical, arc_defining
-- participants : liste des noms de personnages impliqués
-- location : où ça s'est passé (si mentionné)
-- is_flashback : true si l'événement est narré comme un souvenir passé
+- participants : liste des noms canoniques de personnages impliques
+- location : ou ca s'est passe (si mentionne)
+- is_flashback : true si l'evenement est narre comme un souvenir passe
+- fabula_order : ordre chronologique dans l'univers si different de l'ordre narratif
 
-GUIDE DES TYPES :
-- action : un personnage fait quelque chose (combat, lance un sort, se déplace)
-- state_change : un changement d'état (alliance, pouvoir gagné, lieu changé)
-- achievement : une étape atteinte (montée de niveau, évolution de classe)
-- process : une activité en cours (entraînement, fabrication, voyage)
-- dialogue : une conversation significative qui révèle des informations
+ARC (arc narratif) :
+- name : nom de l'arc (2-5 mots)
+- description : resume de l'arc
+- arc_type : main_plot, subplot, character_arc, world_arc
+- status : active, completed, abandoned
 
-GUIDE DE SIGNIFICANCE :
-- minor : événements de contexte, actions mineures
-- moderate : développement de personnage, utilisation de compétence
-- major : batailles importantes, révélations clés, montées en puissance
+=== GUIDE DES TYPES D'EVENEMENTS ===
+- action : un personnage fait quelque chose (combat, lance un sort, se deplace)
+- state_change : un changement d'etat (alliance, pouvoir gagne, lieu change)
+- achievement : une etape atteinte (montee de niveau, evolution de classe)
+- process : une activite en cours (entrainement, fabrication, voyage)
+- dialogue : une conversation significative qui revele des informations
+
+=== GUIDE DE SIGNIFICANCE ===
+- minor : evenements de contexte, actions mineures
+- moderate : developpement de personnage, utilisation de competence
+- major : batailles importantes, revelations cles, montees en puissance
 - critical : morts, trahisons majeures, moments qui changent l'arc narratif
-- arc_defining : événements qui définissent ou concluent un arc narratif
+- arc_defining : evenements qui definissent ou concluent un arc narratif
 
-RÈGLES IMPORTANTES :
-- Capture les événements dans l'ORDRE CHRONOLOGIQUE du texte.
-- Pour les flashbacks, mets is_flashback=true.
-- Inclus TOUS les participants par nom.
-- NE SUR-EXTRAIS PAS : combine les micro-actions liées en un seul événement.
-- Chaque événement doit être une unité sémantiquement complète.
+=== ORDONNANCEMENT TEMPOREL ===
+- Capture les evenements dans l'ORDRE CHRONOLOGIQUE du texte.
+- Pour les flashbacks, mets is_flashback=true et estime fabula_order
+  pour indiquer quand l'evenement s'est reellement produit.
+- Si un evenement CAUSE un autre, cree une relation CAUSES entre eux.
+- Si un evenement fait partie d'un arc, cree une relation PART_OF.
+
+=== REGLES D'EXTRACTION ===
+- NE SUR-EXTRAIS PAS : combine les micro-actions liees en un seul evenement.
+- Chaque evenement doit etre une unite semantiquement complete.
+- Inclus TOUS les participants par leur nom canonique.
+- Extrais les arcs seulement quand le texte indique clairement un debut,
+  une progression majeure ou une conclusion d'arc.
 """
 
 FEW_SHOT_EXAMPLES = [
+    # --- Exemple 1 : Golden example (combat + achievement + dialogue) ---
     lx.data.ExampleData(
         text=(
-            "Le Sanglier Dentdefer chargea, ses défenses luisant dans la pénombre. "
-            "Jake encocha une flèche, canalisant Powershot. "
-            "La flèche transperça ses défenses et toucha au but. "
-            "La bête s'effondra, et une notification apparut : "
+            "Le Sanglier Dentdefer chargea, ses defenses luisant dans la penombre. "
+            "Jake encocha une fleche, canalisant Powershot. "
+            "La fleche transperca ses defenses et toucha au but. "
+            "La bete s'effondra, et une notification apparut : "
             "[Boss du tutoriel vaincu]\n"
             "Caroline accourut pour soigner ses blessures. "
-            "« C'était imprudent », dit Casper en émergeant des fourrés."
+            "\u00ab C'etait imprudent \u00bb, dit Casper en emergeant des fourres."
         ),
         extractions=[
             lx.data.Extraction(
                 extraction_class="event",
-                extraction_text="Jake encocha une flèche, canalisant Powershot",
+                extraction_text="Jake encocha une fleche, canalisant Powershot",
                 attributes={
                     "name": "Jake vainc le Sanglier Dentdefer",
                     "event_type": "action",
                     "significance": "major",
-                    "participants": "Jake, Caroline, Casper",
+                    "participants": "jake, caroline, casper",
                     "description": (
-                        "Jake utilise Powershot pour tuer le Sanglier Dentdefer, boss du tutoriel"
+                        "Jake utilise Powershot pour tuer le Sanglier Dentdefer, "
+                        "boss du tutoriel"
                     ),
                 },
             ),
@@ -76,60 +102,103 @@ FEW_SHOT_EXAMPLES = [
                 extraction_class="event",
                 extraction_text="Boss du tutoriel vaincu",
                 attributes={
-                    "name": "Boss du tutoriel éliminé",
+                    "name": "Boss du tutoriel elimine",
                     "event_type": "achievement",
                     "significance": "major",
-                    "participants": "Jake",
+                    "participants": "jake",
                 },
             ),
             lx.data.Extraction(
                 extraction_class="event",
-                extraction_text="« C'était imprudent », dit Casper",
+                extraction_text="\u00ab C'etait imprudent \u00bb, dit Casper",
                 attributes={
                     "name": "Casper critique Jake",
                     "event_type": "dialogue",
                     "significance": "minor",
-                    "participants": "Casper, Jake",
-                    "description": "Casper reproche à Jake son imprudence au combat",
+                    "participants": "casper, jake",
+                    "description": "Casper reproche a Jake son imprudence au combat",
                 },
             ),
         ],
     ),
+    # --- Exemple 2 : Flashback + arc_defining + relation CAUSES ---
     lx.data.ExampleData(
         text=(
-            "Jake se rappela le jour où tout avait changé. Le Système était apparu "
-            "sans prévenir, plongeant la Terre dans le chaos. Des millions de gens "
-            "avaient été projetés dans le tutoriel. "
-            "Maintenant, debout dans la Grande Forêt, il jura de survivre."
+            "Jake se rappela le jour ou tout avait change. Le Systeme etait apparu "
+            "sans prevenir, plongeant la Terre dans le chaos. Des millions de gens "
+            "avaient ete projetes dans le tutoriel. "
+            "Maintenant, debout dans la Grande Foret, il jura de survivre. "
+            "C'etait le debut de son chemin vers la puissance."
         ),
         extractions=[
             lx.data.Extraction(
                 extraction_class="event",
                 extraction_text=(
-                    "Le Système était apparu sans prévenir, plongeant la Terre dans le chaos"
+                    "Le Systeme etait apparu sans prevenir, plongeant la Terre "
+                    "dans le chaos"
                 ),
                 attributes={
-                    "name": "Apparition du Système sur Terre",
+                    "name": "Apparition du Systeme sur Terre",
                     "event_type": "state_change",
                     "significance": "arc_defining",
-                    "participants": "Jake",
+                    "participants": "jake",
                     "is_flashback": "true",
                     "description": (
-                        "Le Système apparaît sur Terre, plongeant le monde dans le chaos "
-                        "et envoyant des millions de personnes dans le tutoriel"
+                        "Le Systeme apparait sur Terre, plongeant le monde dans "
+                        "le chaos et envoyant des millions dans le tutoriel"
                     ),
                 },
             ),
             lx.data.Extraction(
                 extraction_class="event",
-                extraction_text="debout dans la Grande Forêt, il jura de survivre",
+                extraction_text="debout dans la Grande Foret, il jura de survivre",
                 attributes={
                     "name": "Serment de Jake",
                     "event_type": "state_change",
                     "significance": "major",
-                    "participants": "Jake",
-                    "location": "La Grande Forêt",
-                    "description": "Jake jure de survivre dans la Grande Forêt du tutoriel",
+                    "participants": "jake",
+                    "location": "la grande foret",
+                    "description": (
+                        "Jake jure de survivre dans la Grande Foret du tutoriel"
+                    ),
+                },
+            ),
+            lx.data.Extraction(
+                extraction_class="arc",
+                extraction_text="C'etait le debut de son chemin vers la puissance",
+                attributes={
+                    "name": "Ascension de Jake",
+                    "arc_type": "main_plot",
+                    "status": "active",
+                    "description": (
+                        "Arc principal : la quete de Jake pour devenir plus "
+                        "puissant apres l'arrivee du Systeme"
+                    ),
+                },
+            ),
+        ],
+    ),
+    # --- Exemple 3 : Negative example (pas de sur-extraction) ---
+    lx.data.ExampleData(
+        text=(
+            "Jake marcha pendant des heures. Il ramassa quelques baies, "
+            "but a un ruisseau et s'assit pour se reposer. "
+            "Rien de notable ne se passa."
+        ),
+        extractions=[
+            # Un seul evenement resume, pas de micro-extraction pour chaque action.
+            lx.data.Extraction(
+                extraction_class="event",
+                extraction_text="Jake marcha pendant des heures",
+                attributes={
+                    "name": "Jake traverse la foret",
+                    "event_type": "process",
+                    "significance": "minor",
+                    "participants": "jake",
+                    "description": (
+                        "Jake marche longuement a travers la foret, "
+                        "s'arretant pour se ravitailler"
+                    ),
                 },
             ),
         ],
