@@ -12,15 +12,17 @@ class OntologyChange(BaseModel):
     change_type: Literal[
         "add_entity_type",
         "add_relationship",
+        "add_relationship_type",
         "add_regex",
         "extend_enum",
         "add_property",
+        "modify_property",
     ]
     layer: Literal["core", "genre", "series"]
     target: str  # Entity type or relationship name
-    proposed_by: Literal["auto_discovery", "user", "migration"]
-    discovered_in_book: int
-    discovered_in_chapter: int
+    proposed_by: Literal["auto_discovery", "user", "migration", "system", "admin"]
+    discovered_in_book: int = 0
+    discovered_in_chapter: int = 0
     confidence: float = Field(ge=0.0, le=1.0)
     evidence: list[str] = []  # Source text excerpts
     status: Literal["proposed", "validated", "rejected", "applied"] = "proposed"
