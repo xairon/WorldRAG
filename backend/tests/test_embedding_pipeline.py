@@ -10,12 +10,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.config import settings
 from app.services.embedding_pipeline import (
-    EMBEDDING_BATCH_SIZE,
     EmbeddingResult,
     _write_embeddings,
     embed_book_chunks,
 )
+
+EMBEDDING_BATCH_SIZE = settings.embedding_batch_size
 
 # ── Fixtures ──────────────────────────────────────────────────────────────
 

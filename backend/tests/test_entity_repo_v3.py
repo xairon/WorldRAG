@@ -120,6 +120,7 @@ class TestUpsertGrantsRelations:
                 source_type="item",
                 source_name="Nanoblade",
                 confidence=0.3,  # below 0.7 threshold
+                context="test context",
             ),
         ]
         result = await repo.upsert_grants_relations(provenances, BATCH_ID)
@@ -133,6 +134,7 @@ class TestUpsertGrantsRelations:
                 source_type="unknown",  # not in (item, class, bloodline)
                 source_name="Some Source",
                 confidence=0.9,
+                context="test context",
             ),
         ]
         result = await repo.upsert_grants_relations(provenances, BATCH_ID)
@@ -146,6 +148,7 @@ class TestUpsertGrantsRelations:
                 source_type="item",
                 source_name="",  # empty source name
                 confidence=0.9,
+                context="test context",
             ),
         ]
         result = await repo.upsert_grants_relations(provenances, BATCH_ID)
@@ -159,6 +162,7 @@ class TestUpsertGrantsRelations:
                 source_type="item",
                 source_name="Nanoblade",
                 confidence=0.95,
+                context="test context",
             ),
         ]
         result = await repo.upsert_grants_relations(provenances, BATCH_ID)
@@ -172,6 +176,7 @@ class TestUpsertGrantsRelations:
                 source_type="class",
                 source_name="Avaricious Arcane Hunter",
                 confidence=0.9,
+                context="test context",
             ),
         ]
         result = await repo.upsert_grants_relations(provenances, BATCH_ID)
@@ -185,6 +190,7 @@ class TestUpsertGrantsRelations:
                 source_type="bloodline",
                 source_name="Bloodline of the Primal Hunter",
                 confidence=0.85,
+                context="test context",
             ),
         ]
         result = await repo.upsert_grants_relations(provenances, BATCH_ID)
@@ -198,18 +204,21 @@ class TestUpsertGrantsRelations:
                 source_type="item",
                 source_name="Nanoblade",
                 confidence=0.95,
+                context="test context",
             ),
             SkillProvenance(
                 skill_name="Arcane Powershot",
                 source_type="class",
                 source_name="Avaricious Arcane Hunter",
                 confidence=0.9,
+                context="test context",
             ),
             SkillProvenance(
                 skill_name="Low Confidence Skill",
                 source_type="item",
                 source_name="Some Item",
                 confidence=0.3,  # filtered
+                context="test context",
             ),
         ]
         result = await repo.upsert_grants_relations(provenances, BATCH_ID)
@@ -224,6 +233,7 @@ class TestUpsertGrantsRelations:
                 source_type="item",
                 source_name="Boundary Item",
                 confidence=0.7,  # exactly at threshold
+                context="test context",
             ),
         ]
         result = await repo.upsert_grants_relations(provenances, BATCH_ID)
@@ -236,6 +246,7 @@ class TestUpsertGrantsRelations:
                 source_type="item",
                 source_name="Boundary Item",
                 confidence=0.69,  # just below threshold
+                context="test context",
             ),
         ]
         result = await repo.upsert_grants_relations(provenances, BATCH_ID)

@@ -221,7 +221,11 @@ class TestNodeFunctions:
             "chapter_number": 1,
             "phase1_narrative": [
                 {"entity_type": "character", "name": "Jake", "source_pass": "narrative_characters"},
-                {"entity_type": "event", "name": "Tutorial Start", "source_pass": "narrative_events"},
+                {
+                    "entity_type": "event",
+                    "name": "Tutorial Start",
+                    "source_pass": "narrative_events",
+                },
             ],
         }
         result = merge_phase1_node(state)  # type: ignore[arg-type]

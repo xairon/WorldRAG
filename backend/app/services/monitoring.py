@@ -52,7 +52,7 @@ class MonitoringService:
         if not self._enabled:
             return None
 
-        return self.langfuse.trace(
+        return self.langfuse.trace(  # type: ignore[union-attr]
             name=name,
             metadata=metadata or {},
             tags=tags or [],
@@ -147,7 +147,7 @@ class MonitoringService:
             return None
 
         try:
-            from langfuse.callback import CallbackHandler
+            from langfuse.callback import CallbackHandler  # type: ignore[import-not-found]
 
             return CallbackHandler(
                 public_key=settings.langfuse_public_key,

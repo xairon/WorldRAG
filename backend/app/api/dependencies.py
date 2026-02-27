@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from fastapi import Request
+from fastapi import Request  # noqa: TC002 (needed at runtime for FastAPI DI)
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator

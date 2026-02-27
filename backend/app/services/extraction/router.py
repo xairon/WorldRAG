@@ -115,9 +115,9 @@ def route_extraction_passes(state: ExtractionPipelineState) -> dict[str, Any]:
     Returns:
         State update with passes_to_run list.
     """
-    chapter_text = state["chapter_text"]
-    book_id = state["book_id"]
-    chapter_number = state["chapter_number"]
+    chapter_text = state["chapter_text"]  # type: ignore[typeddict-item]
+    book_id = state["book_id"]  # type: ignore[typeddict-item]
+    chapter_number = state["chapter_number"]  # type: ignore[typeddict-item]
     genre = state.get("genre", "litrpg")
 
     passes: list[str] = ["characters"]  # Always run Pass 1

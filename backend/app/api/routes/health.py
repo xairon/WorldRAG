@@ -16,7 +16,7 @@ router = APIRouter(tags=["health"])
 
 
 @router.get("/health", response_model=None)
-async def health_check(request: Request) -> dict:
+async def health_check(request: Request) -> dict | JSONResponse:
     """Comprehensive health check for all services.
 
     Returns status of each service and overall health.

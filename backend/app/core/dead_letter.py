@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import asdict, dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from app.core.logging import get_logger
 
@@ -49,7 +49,7 @@ class DeadLetterQueue:
 
     async def push(self, entry: DLQEntry) -> None:
         """Add a failed operation to the DLQ."""
-        await self.redis.rpush(self.key, entry.to_json())
+        await self.redis.rpush(self.key, entry.to_json())  # type: ignore[misc]
         logger.error(
             "dlq_push",
             book_id=entry.book_id,
@@ -80,28 +80,28 @@ class DeadLetterQueue:
 
     async def list_all(self) -> list[DLQEntry]:
         """List all entries in the DLQ."""
-        raw_entries = await self.redis.lrange(self.key, 0, -1)
+        raw_entries = await self.redis.lrange(self.key, 0, -1)  # type: ignore[misc]
         return [DLQEntry.from_json(entry) for entry in raw_entries]
 
     async def pop(self) -> DLQEntry | None:
         """Remove and return the oldest entry."""
-        raw = await self.redis.lpop(self.key)
+        raw = await self.redis.lpop(self.key)  # type: ignore[misc]
         if raw is None:
             return None
-        return DLQEntry.from_json(raw)
+        return DLQEntry.from_json(cast("str", raw))
 
     async def size(self) -> int:
         """Return the number of entries in the DLQ."""
-        return await self.redis.llen(self.key)
+        return await self.redis.llen(self.key)  # type: ignore[misc]
 
     async def remove_by_book_chapter(self, book_id: str, chapter: int) -> int:
         """Remove all entries for a specific book/chapter. Returns count removed."""
-        entries = await self.redis.lrange(self.key, 0, -1)
+        entries = await self.redis.lrange(self.key, 0, -1)  # type: ignore[misc]
         removed = 0
         for raw in entries:
-            entry = DLQEntry.from_json(raw)
+            entry = DLQEntry.from_json(str(raw))
             if entry.book_id == book_id and entry.chapter == chapter:
-                await self.redis.lrem(self.key, 1, raw)
+                await self.redis.lrem(self.key, 1, raw)  # type: ignore[misc]
                 removed += 1
         if removed:
             logger.info(
@@ -114,7 +114,7 @@ class DeadLetterQueue:
 
     async def clear(self) -> int:
         """Clear all entries from the DLQ. Returns count of removed entries."""
-        count = await self.redis.llen(self.key)
-        await self.redis.delete(self.key)
+        count = await self.redis.llen(self.key)  # type: ignore[misc]
+        await self.redis.delete(self.key)  # type: ignore[misc]
         logger.info("dlq_cleared", count=count)
         return count

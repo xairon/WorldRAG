@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 
 class TestPromptLanguage:
     def test_french_config(self) -> None:
@@ -151,8 +149,7 @@ class TestPromptModuleExports:
         )
 
         assert (
-            "personnage" in PROMPT_DESCRIPTION.lower()
-            or "character" in PROMPT_DESCRIPTION.lower()
+            "personnage" in PROMPT_DESCRIPTION.lower() or "character" in PROMPT_DESCRIPTION.lower()
         )
         assert len(FEW_SHOT_EXAMPLES) >= 1
 
@@ -217,7 +214,6 @@ class TestPromptModuleExports:
     def test_provenance_prompt(self) -> None:
         from app.prompts.extraction_provenance import (
             FEW_SHOT_EXAMPLES,
-            PROMPT_DESCRIPTION,
             PROVENANCE_FEW_SHOT,
             PROVENANCE_SYSTEM_PROMPT,
         )
@@ -231,7 +227,6 @@ class TestPromptModuleExports:
         from app.prompts.coreference import (
             COREFERENCE_PROMPT,
             FEW_SHOT_EXAMPLES,
-            PROMPT_DESCRIPTION,
         )
 
         assert isinstance(COREFERENCE_PROMPT, str)
@@ -243,7 +238,6 @@ class TestPromptModuleExports:
         from app.prompts.narrative_analysis import (
             FEW_SHOT_EXAMPLES,
             NARRATIVE_ANALYSIS_PROMPT,
-            PROMPT_DESCRIPTION,
         )
 
         assert isinstance(NARRATIVE_ANALYSIS_PROMPT, str)

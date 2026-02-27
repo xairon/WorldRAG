@@ -73,8 +73,16 @@ FEW_SHOT_EXAMPLES = [
     # --- Exemple 1 : Decouverte d'un type manquant ---
     {
         "ontology_types": [
-            "Character", "Skill", "Class", "Title", "Event", "Location",
-            "Item", "Creature", "Faction", "Concept",
+            "Character",
+            "Skill",
+            "Class",
+            "Title",
+            "Event",
+            "Location",
+            "Item",
+            "Creature",
+            "Faction",
+            "Concept",
         ],
         "chapter_text": (
             "Jake entra dans le Donjon du Sanglier, un espace cree par le Systeme. "
@@ -104,7 +112,10 @@ FEW_SHOT_EXAMPLES = [
                         "properties": {
                             "name": {"type": "string", "description": "nom du donjon"},
                             "floor_count": {"type": "integer", "description": "nombre d'etages"},
-                            "difficulty_grade": {"type": "string", "description": "grade de difficulte"},
+                            "difficulty_grade": {
+                                "type": "string",
+                                "description": "grade de difficulte",
+                            },
                             "boss_name": {"type": "string", "description": "nom du boss final"},
                             "location_name": {"type": "string", "description": "lieu parent"},
                         },
@@ -117,9 +128,19 @@ FEW_SHOT_EXAMPLES = [
     # --- Exemple 2 : Aucune decouverte necessaire ---
     {
         "ontology_types": [
-            "Character", "Skill", "Class", "Title", "Event", "Location",
-            "Item", "Creature", "Faction", "Concept", "Bloodline",
-            "Profession", "PrimordialChurch",
+            "Character",
+            "Skill",
+            "Class",
+            "Title",
+            "Event",
+            "Location",
+            "Item",
+            "Creature",
+            "Faction",
+            "Concept",
+            "Bloodline",
+            "Profession",
+            "PrimordialChurch",
         ],
         "chapter_text": (
             "Jake s'entraina avec son arc, ameliorant sa competence Powershot. "

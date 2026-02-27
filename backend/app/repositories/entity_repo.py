@@ -223,7 +223,12 @@ class EntityRepository(Neo4jRepository):
             MERGE (ch)-[r:HAS_SKILL]->(sk)
             ON CREATE SET r.valid_from_chapter = s.chapter
             """,
-            {"skills": data, "book_id": book_id, "batch_id": batch_id, "ontology_version": ontology_version},
+            {
+                "skills": data,
+                "book_id": book_id,
+                "batch_id": batch_id,
+                "ontology_version": ontology_version,
+            },
         )
 
         # V3: Create immutable StateChange ledger nodes
@@ -425,7 +430,12 @@ class EntityRepository(Neo4jRepository):
             MATCH (chap:Chapter {{book_id: $book_id, number: e.chapter}})
             MERGE (ev)-[:FIRST_MENTIONED_IN]->(chap)
             """,
-            {"events": data, "book_id": book_id, "batch_id": batch_id, "ontology_version": ontology_version},
+            {
+                "events": data,
+                "book_id": book_id,
+                "batch_id": batch_id,
+                "ontology_version": ontology_version,
+            },
         )
 
         # Link participants
@@ -1286,7 +1296,10 @@ class EntityRepository(Neo4jRepository):
         ]
         if state_change_data:
             await self._create_state_changes(
-                book_id, chapter_number, state_change_data, batch_id,
+                book_id,
+                chapter_number,
+                state_change_data,
+                batch_id,
             )
 
         logger.info(
