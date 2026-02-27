@@ -1,7 +1,5 @@
 """Tests for the 3-layer ontology loader with V3 version support."""
 
-import pytest
-
 from app.core.ontology_loader import OntologyLoader
 
 

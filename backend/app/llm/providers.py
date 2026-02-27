@@ -11,6 +11,7 @@ from functools import lru_cache
 import instructor
 from anthropic import AsyncAnthropic
 from openai import AsyncOpenAI
+from pydantic import SecretStr
 
 from app.config import settings
 from app.core.logging import get_logger
@@ -115,7 +116,7 @@ def get_langchain_llm(spec: str | None = None):
 
         primary = ChatOpenAI(
             model=model,
-            api_key=settings.openai_api_key,
+            api_key=SecretStr(settings.openai_api_key),
             temperature=0,
         )
         # Fallback to Anthropic if available
@@ -123,8 +124,8 @@ def get_langchain_llm(spec: str | None = None):
             from langchain_anthropic import ChatAnthropic
 
             fallback = ChatAnthropic(
-                model="claude-3-5-haiku-latest",
-                api_key=settings.anthropic_api_key,
+                model="claude-3-5-haiku-latest",  # type: ignore[call-arg]
+                api_key=SecretStr(settings.anthropic_api_key),
                 temperature=0,
             )
             return primary.with_fallbacks([fallback])
@@ -134,8 +135,8 @@ def get_langchain_llm(spec: str | None = None):
         from langchain_anthropic import ChatAnthropic
 
         primary = ChatAnthropic(
-            model=model,
-            api_key=settings.anthropic_api_key,
+            model=model,  # type: ignore[call-arg]
+            api_key=SecretStr(settings.anthropic_api_key),
             temperature=0,
         )
         if settings.openai_api_key:
@@ -143,7 +144,7 @@ def get_langchain_llm(spec: str | None = None):
 
             fallback = ChatOpenAI(
                 model="gpt-4o-mini",
-                api_key=settings.openai_api_key,
+                api_key=SecretStr(settings.openai_api_key),
                 temperature=0,
             )
             return primary.with_fallbacks([fallback])
@@ -163,7 +164,7 @@ def get_langchain_llm(spec: str | None = None):
 
             fallback = ChatOpenAI(
                 model="gpt-4o-mini",
-                api_key=settings.openai_api_key,
+                api_key=SecretStr(settings.openai_api_key),
                 temperature=0,
             )
             return primary.with_fallbacks([fallback])
@@ -175,6 +176,6 @@ def get_langchain_llm(spec: str | None = None):
 
         return ChatOpenAI(
             model=model,
-            api_key=settings.openai_api_key,
+            api_key=SecretStr(settings.openai_api_key),
             temperature=0,
         )

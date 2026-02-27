@@ -124,14 +124,11 @@ FEW_SHOT_EXAMPLES = [
             ),
             lx.data.Extraction(
                 extraction_class="system",
-                extraction_text=(
-                    "Le Systeme classifiait automatiquement les creatures"
-                ),
+                extraction_text=("Le Systeme classifiait automatiquement les creatures"),
                 attributes={
                     "name": "Systeme de classification des creatures",
                     "description": (
-                        "classifie automatiquement les creatures par grade "
-                        "de puissance, de F a SSS"
+                        "classifie automatiquement les creatures par grade de puissance, de F a SSS"
                     ),
                     "system_type": "stat_based",
                 },

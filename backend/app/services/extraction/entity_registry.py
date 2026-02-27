@@ -4,6 +4,7 @@ Accumulates known entities, aliases, and chapter summaries.
 Injected into LLM prompts as context for better disambiguation.
 Serializable to dict for Neo4j persistence and cross-book sharing.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

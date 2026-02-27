@@ -38,7 +38,7 @@ class TestExtractedBloodline:
 
     def test_missing_name_rejected(self):
         with pytest.raises(ValidationError):
-            ExtractedBloodline()
+            ExtractedBloodline()  # type: ignore[reportCallIssue]
 
     def test_effects_default_independent(self):
         """Verify default_factory creates independent lists per instance."""
@@ -85,7 +85,7 @@ class TestExtractedProfession:
 
     def test_missing_name_rejected(self):
         with pytest.raises(ValidationError):
-            ExtractedProfession()
+            ExtractedProfession()  # type: ignore[reportCallIssue]
 
     def test_serialization_roundtrip(self):
         prof = ExtractedProfession(
@@ -123,7 +123,7 @@ class TestExtractedChurch:
 
     def test_missing_deity_name_rejected(self):
         with pytest.raises(ValidationError):
-            ExtractedChurch()
+            ExtractedChurch()  # type: ignore[reportCallIssue]
 
     def test_serialization_roundtrip(self):
         church = ExtractedChurch(

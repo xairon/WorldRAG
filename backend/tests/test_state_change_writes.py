@@ -148,14 +148,14 @@ class TestUpsertLevelChangesCreatesStateChange:
 class TestUpsertSkillsCreatesStateChange:
     async def test_creates_state_change_nodes(self, repo, mock_neo4j_session):
         skills = [
-            ExtractedSkill(name="Arcane Powershot", owner="Jake Thayne"),
+            ExtractedSkill(name="Arcane Powershot", skill_type="active", owner="Jake Thayne"),
         ]
         await repo.upsert_skills(BOOK_ID, CHAPTER, skills, BATCH_ID)
         assert mock_neo4j_session.run.call_count >= 2
 
     async def test_state_change_has_correct_fields(self, repo, mock_neo4j_session):
         skills = [
-            ExtractedSkill(name="Arcane Powershot", owner="Jake Thayne"),
+            ExtractedSkill(name="Arcane Powershot", skill_type="active", owner="Jake Thayne"),
         ]
         await repo.upsert_skills(BOOK_ID, CHAPTER, skills, BATCH_ID)
         state_call = mock_neo4j_session.run.call_args_list[1]
@@ -169,7 +169,7 @@ class TestUpsertSkillsCreatesStateChange:
 
     async def test_empty_owner_filtered_out(self, repo, mock_neo4j_session):
         skills = [
-            ExtractedSkill(name="Arcane Powershot", owner=""),
+            ExtractedSkill(name="Arcane Powershot", skill_type="active", owner=""),
         ]
         await repo.upsert_skills(BOOK_ID, CHAPTER, skills, BATCH_ID)
         # 1 call for the MERGE (skills are still created), but no StateChange call
@@ -181,9 +181,9 @@ class TestUpsertSkillsCreatesStateChange:
 
     async def test_mixed_owners_filters_empty(self, repo, mock_neo4j_session):
         skills = [
-            ExtractedSkill(name="Arcane Powershot", owner="Jake Thayne"),
-            ExtractedSkill(name="Fire Bolt", owner=""),
-            ExtractedSkill(name="Shadow Step", owner="Sylphie"),
+            ExtractedSkill(name="Arcane Powershot", skill_type="active", owner="Jake Thayne"),
+            ExtractedSkill(name="Fire Bolt", skill_type="active", owner=""),
+            ExtractedSkill(name="Shadow Step", skill_type="active", owner="Sylphie"),
         ]
         await repo.upsert_skills(BOOK_ID, CHAPTER, skills, BATCH_ID)
         # 1 MERGE + 1 StateChange
@@ -275,14 +275,14 @@ class TestUpsertTitlesCreatesStateChange:
 class TestUpsertItemsCreatesStateChange:
     async def test_creates_state_change_nodes(self, repo, mock_neo4j_session):
         items = [
-            ExtractedItem(name="Nanoblade", owner="Jake Thayne"),
+            ExtractedItem(name="Nanoblade", item_type="weapon", owner="Jake Thayne"),
         ]
         await repo.upsert_items(BOOK_ID, CHAPTER, items, BATCH_ID)
         assert mock_neo4j_session.run.call_count >= 2
 
     async def test_state_change_has_correct_fields(self, repo, mock_neo4j_session):
         items = [
-            ExtractedItem(name="Nanoblade", owner="Jake Thayne"),
+            ExtractedItem(name="Nanoblade", item_type="weapon", owner="Jake Thayne"),
         ]
         await repo.upsert_items(BOOK_ID, CHAPTER, items, BATCH_ID)
         state_call = mock_neo4j_session.run.call_args_list[1]
@@ -295,7 +295,7 @@ class TestUpsertItemsCreatesStateChange:
 
     async def test_empty_owner_filtered_out(self, repo, mock_neo4j_session):
         items = [
-            ExtractedItem(name="Nanoblade", owner=""),
+            ExtractedItem(name="Nanoblade", item_type="weapon", owner=""),
         ]
         await repo.upsert_items(BOOK_ID, CHAPTER, items, BATCH_ID)
         assert mock_neo4j_session.run.call_count == 1

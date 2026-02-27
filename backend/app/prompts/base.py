@@ -85,9 +85,7 @@ def build_extraction_prompt(
     # [SYSTEM]
     sections.append(f"[SYSTEM]\n{lang.role_prefix} {role_description}.")
     sections.append(
-        f"Phase d'extraction: {phase}"
-        if language == "fr"
-        else f"Extraction phase: {phase}"
+        f"Phase d'extraction: {phase}" if language == "fr" else f"Extraction phase: {phase}"
     )
     sections.append(
         f"Ontologie cible:\n```json\n{schema_json}\n```"
@@ -110,30 +108,16 @@ def build_extraction_prompt(
         )
         sections.append("- NE PAS inventer d'informations absentes du texte")
         sections.append(
-            "- NE PAS traduire les noms propres, les conserver tels quels "
-            "dans le texte source"
+            "- NE PAS traduire les noms propres, les conserver tels quels dans le texte source"
         )
-        sections.append(
-            "- Utiliser le canonical_name en minuscules, sans articles "
-            "(le/la/les/the)"
-        )
+        sections.append("- Utiliser le canonical_name en minuscules, sans articles (le/la/les/the)")
     else:
-        sections.append(
-            "- Extract ONLY entity types listed in the target ontology"
-        )
-        sections.append(
-            "- Each entity MUST have extraction_text matching the source text EXACTLY"
-        )
-        sections.append(
-            "- Assign a confidence score (0.0 to 1.0) for each extracted entity"
-        )
+        sections.append("- Extract ONLY entity types listed in the target ontology")
+        sections.append("- Each entity MUST have extraction_text matching the source text EXACTLY")
+        sections.append("- Assign a confidence score (0.0 to 1.0) for each extracted entity")
         sections.append("- Do NOT invent information absent from the text")
-        sections.append(
-            "- Do NOT translate proper nouns \u2014 keep them as-is from source text"
-        )
-        sections.append(
-            "- Use canonical_name in lowercase, without articles (the/a/an)"
-        )
+        sections.append("- Do NOT translate proper nouns \u2014 keep them as-is from source text")
+        sections.append("- Use canonical_name in lowercase, without articles (the/a/an)")
 
     # [CONTEXTE]
     has_context = entity_registry_context or previous_summary or phase0_hints
@@ -141,9 +125,7 @@ def build_extraction_prompt(
         sections.append(f"\n[{lang.context_label}]")
         if entity_registry_context:
             label = (
-                "Registre d'entit\u00e9s connues"
-                if language == "fr"
-                else "Known entity registry"
+                "Registre d'entit\u00e9s connues" if language == "fr" else "Known entity registry"
             )
             sections.append(f"{label}:\n{entity_registry_context}")
         if previous_summary:
@@ -154,11 +136,7 @@ def build_extraction_prompt(
             )
             sections.append(f"\n{label}:\n{previous_summary}")
         if phase0_hints:
-            label = (
-                "Indices Phase 0 (regex)"
-                if language == "fr"
-                else "Phase 0 hints (regex)"
-            )
+            label = "Indices Phase 0 (regex)" if language == "fr" else "Phase 0 hints (regex)"
             hints_json = json.dumps(phase0_hints, ensure_ascii=False)
             sections.append(f"\n{label}:\n{hints_json}")
 

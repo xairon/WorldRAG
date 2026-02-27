@@ -39,9 +39,9 @@ async def extract_events(state: ExtractionPipelineState) -> dict[str, Any]:
     Returns:
         Dict update for the LangGraph state.
     """
-    chapter_text = state["chapter_text"]
-    book_id = state["book_id"]
-    chapter_number = state["chapter_number"]
+    chapter_text = state["chapter_text"]  # type: ignore[typeddict-item]
+    book_id = state["book_id"]  # type: ignore[typeddict-item]
+    chapter_number = state["chapter_number"]  # type: ignore[typeddict-item]
 
     logger.info(
         "extraction_pass_started",
@@ -94,7 +94,7 @@ async def extract_events(state: ExtractionPipelineState) -> dict[str, Any]:
 
             # Build grounding
             if entity.char_interval:
-                should_skip, confidence = check_alignment(entity, logger)
+                should_skip, confidence = check_alignment(entity, logger)  # type: ignore[arg-type]
                 if should_skip:
                     continue
 

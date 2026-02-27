@@ -227,7 +227,9 @@ class TestYamlDrivenRegex:
 
         loader = OntologyLoader.from_layers(genre="litrpg")
         extractor = RegexExtractor.from_ontology(loader)
-        text = "[Quest Received: Defeat the Dungeon Boss]\n[Quest Completed: Defeat the Dungeon Boss]"
+        text = (
+            "[Quest Received: Defeat the Dungeon Boss]\n[Quest Completed: Defeat the Dungeon Boss]"
+        )
         matches = extractor.extract(text, chapter_number=1)
         quests = [m for m in matches if "quest" in m.pattern_name.lower()]
         assert len(quests) >= 2

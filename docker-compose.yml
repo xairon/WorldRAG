@@ -3,8 +3,8 @@ services:
     image: neo4j:5-community
     restart: unless-stopped
     ports:
-      - "127.0.0.1:7474:7474"
-      - "127.0.0.1:7687:7687"
+      - "${BIND_HOST:-127.0.0.1}:7474:7474"
+      - "${BIND_HOST:-127.0.0.1}:7687:7687"
     environment:
       NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-worldrag}
       NEO4J_PLUGINS: '["apoc"]'
@@ -24,7 +24,7 @@ services:
     image: redis:7-alpine
     restart: unless-stopped
     ports:
-      - "127.0.0.1:6379:6379"
+      - "${BIND_HOST:-127.0.0.1}:6379:6379"
     command: redis-server --requirepass ${REDIS_PASSWORD:-worldrag}
     volumes:
       - redis_data:/data
@@ -39,7 +39,7 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     ports:
-      - "127.0.0.1:5432:5432"
+      - "${BIND_HOST:-127.0.0.1}:5432:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-worldrag}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-worldrag}
@@ -53,54 +53,18 @@ services:
       timeout: 3s
       retries: 5
 
-  langfuse:
-    image: langfuse/langfuse:2
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:3001:3000"
-    environment:
-      DATABASE_URL: postgresql://${LANGFUSE_DB_USER:-langfuse}:${LANGFUSE_DB_PASSWORD:-langfuse}@langfuse-db:5432/langfuse
-      NEXTAUTH_URL: http://localhost:3001
-      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-worldrag-secret}
-      SALT: ${LANGFUSE_SALT:-worldrag-salt}
-      TELEMETRY_ENABLED: "false"
-    mem_limit: 1g
-    depends_on:
-      langfuse-db:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/public/health"]
-      interval: 15s
-      timeout: 5s
-      retries: 3
-
-  langfuse-db:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${LANGFUSE_DB_USER:-langfuse}
-      POSTGRES_PASSWORD: ${LANGFUSE_DB_PASSWORD:-langfuse}
-      POSTGRES_DB: langfuse
-    volumes:
-      - langfuse_pgdata:/var/lib/postgresql/data
-    mem_limit: 512m
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${LANGFUSE_DB_USER:-langfuse}"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-
   backend:
     build: .
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8000:8000"
+      - "${BIND_HOST:-127.0.0.1}:8000:8000"
     env_file: .env
     environment:
       NEO4J_URI: bolt://neo4j:7687
       REDIS_URL: redis://:${REDIS_PASSWORD:-worldrag}@redis:6379
       POSTGRES_URI: postgresql://${POSTGRES_USER:-worldrag}:${POSTGRES_PASSWORD:-worldrag}@postgres:5432/${POSTGRES_DB:-worldrag}
-      LANGFUSE_HOST: http://langfuse:3000
+      EMBEDDING_DEVICE: cpu
+      CORS_ORIGINS: '["http://localhost:3500","http://localhost:3000"]'
     depends_on:
       neo4j:
         condition: service_healthy
@@ -109,12 +73,6 @@ services:
       postgres:
         condition: service_healthy
     mem_limit: 2g
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 15s
 
   worker:
     build: .
@@ -125,7 +83,7 @@ services:
       NEO4J_URI: bolt://neo4j:7687
       REDIS_URL: redis://:${REDIS_PASSWORD:-worldrag}@redis:6379
       POSTGRES_URI: postgresql://${POSTGRES_USER:-worldrag}:${POSTGRES_PASSWORD:-worldrag}@postgres:5432/${POSTGRES_DB:-worldrag}
-      LANGFUSE_HOST: http://langfuse:3000
+      EMBEDDING_DEVICE: cpu
     depends_on:
       neo4j:
         condition: service_healthy
@@ -134,9 +92,30 @@ services:
       postgres:
         condition: service_healthy
     mem_limit: 4g
+    healthcheck:
+      test: ["CMD", "python", "-c", "import redis; r=redis.from_url('redis://:${REDIS_PASSWORD:-worldrag}@redis:6379'); r.ping()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./frontend
+      target: dev
+    restart: unless-stopped
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:${FRONTEND_PORT:-3500}:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      BACKEND_URL: http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy
 
 volumes:
   neo4j_data:
   redis_data:
   postgres_data:
-  langfuse_pgdata:

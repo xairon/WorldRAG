@@ -1,7 +1,6 @@
 """Tests for EntityRegistry — growing context for extraction."""
-import pytest
 
-from app.services.extraction.entity_registry import EntityRegistry, RegistryEntry
+from app.services.extraction.entity_registry import EntityRegistry
 
 
 class TestEntityRegistryBasics:

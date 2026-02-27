@@ -97,7 +97,7 @@ class Neo4jRepository:
             List of record dictionaries.
         """
         async with self.driver.session() as session:
-            result = await session.run(query, parameters or {})
+            result = await session.run(query, parameters or {})  # type: ignore[arg-type]
             records = await result.data()
             logger.debug(
                 "neo4j_read",
@@ -123,7 +123,7 @@ class Neo4jRepository:
             List of record dictionaries (if any RETURN clause).
         """
         async with self.driver.session() as session:
-            result = await session.run(query, parameters or {})
+            result = await session.run(query, parameters or {})  # type: ignore[arg-type]
             records = await result.data()
             summary = await result.consume()
             logger.info(
@@ -146,10 +146,13 @@ class Neo4jRepository:
             queries: List of (query, parameters) tuples.
         """
         async with self.driver.session() as session:
-            async with session.begin_transaction() as tx:
+            tx = await session.begin_transaction()
+            try:
                 for query, params in queries:
-                    await tx.run(query, params)
+                    await tx.run(query, params)  # type: ignore[arg-type]
                 await tx.commit()
+            finally:
+                await tx.close()
             logger.info("neo4j_batch", query_count=len(queries))
 
     async def count(self, label: str) -> int:

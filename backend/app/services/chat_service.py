@@ -8,8 +8,10 @@ about novels grounded in the Knowledge Graph:
 
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
 
 from app.config import settings
 from app.core.logging import get_logger
@@ -116,8 +118,12 @@ class ChatService:
 
             if not reranked:
                 return ChatResponse(
-                    answer="I found some content but it doesn't seem relevant enough to your question. "
-                    "Try rephrasing or asking something more specific about the story.",
+                    answer=(
+                        "I found some content but it doesn't seem"
+                        " relevant enough to your question. "
+                        "Try rephrasing or asking something more"
+                        " specific about the story."
+                    ),
                     chunks_retrieved=len(chunks),
                     chunks_after_rerank=0,
                 )
@@ -183,7 +189,8 @@ class ChatService:
         """Stream the RAG pipeline as SSE events.
 
         Yields dicts with "event" and "data" keys:
-          - {"event": "sources", "data": {sources, related_entities, chunks_retrieved, chunks_after_rerank}}
+          - {"event": "sources", "data": {sources, related_entities,
+            chunks_retrieved, chunks_after_rerank}}
           - {"event": "token", "data": {"token": "..."}}
           - {"event": "done", "data": {}}
           - {"event": "error", "data": {"message": "..."}}
@@ -386,4 +393,7 @@ class ChatService:
             HumanMessage(content=f"{context}\n\n---\n\nQuestion: {query}"),
         ]
         response = await llm.ainvoke(messages)
-        return response.content or "I wasn't able to generate an answer."
+        content = response.content
+        if isinstance(content, str):
+            return content or "I wasn't able to generate an answer."
+        return "I wasn't able to generate an answer."

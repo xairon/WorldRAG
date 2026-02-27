@@ -21,6 +21,7 @@ class TestExtractProvenance:
                     source_type="item",
                     source_name="Nanoblade",
                     confidence=0.9,
+                    context="test context",
                 ),
             ]
             result = await extract_provenance("text", ["Shadow Strike"], {"items": ["Nanoblade"]})
@@ -35,12 +36,14 @@ class TestExtractProvenance:
                     source_type="item",
                     source_name="X",
                     confidence=0.9,
+                    context="test context",
                 ),
                 SkillProvenance(
                     skill_name="B",
                     source_type="unknown",
                     source_name="",
                     confidence=0.3,
+                    context="",
                 ),
             ]
             result = await extract_provenance("text", ["A", "B"], {})
@@ -62,6 +65,7 @@ class TestExtractProvenance:
                     source_type="class",
                     source_name="Warrior",
                     confidence=0.5,
+                    context="test context",
                 ),
             ]
             result = await extract_provenance("text", ["Edge"], {})
@@ -76,18 +80,21 @@ class TestExtractProvenance:
                     source_type="item",
                     source_name="Sword",
                     confidence=0.95,
+                    context="test context",
                 ),
                 SkillProvenance(
                     skill_name="B",
                     source_type="class",
                     source_name="Mage",
                     confidence=0.6,
+                    context="test context",
                 ),
                 SkillProvenance(
                     skill_name="C",
                     source_type="unknown",
                     source_name="",
                     confidence=0.2,
+                    context="",
                 ),
             ]
             result = await extract_provenance("text", ["A", "B", "C"], {})

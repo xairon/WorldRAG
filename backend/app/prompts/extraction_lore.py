@@ -129,8 +129,7 @@ FEW_SHOT_EXAMPLES = [
                     "name": "Races de la Myriade",
                     "domain": "cosmologie",
                     "description": (
-                        "races disseminees a travers des milliers de mondes "
-                        "dans le Multivers"
+                        "races disseminees a travers des milliers de mondes dans le Multivers"
                     ),
                 },
             ),
@@ -166,9 +165,7 @@ FEW_SHOT_EXAMPLES = [
                 ),
                 attributes={
                     "name": "Ancienne Prophetie des Primordiaux",
-                    "description": (
-                        "une race tardive bouleverserait l'equilibre du Multivers"
-                    ),
+                    "description": ("une race tardive bouleverserait l'equilibre du Multivers"),
                     "status": "unfulfilled",
                 },
             ),

@@ -1,4 +1,5 @@
 """Tests for V3 reconciliation with cross-book matching and ontology schemas."""
+
 import pytest
 
 from app.schemas.ontology import OntologyChange, OntologyChangelog, RegexProposal
@@ -92,8 +93,8 @@ class TestOntologyChange:
 class TestCrossBookReconciliation:
     @pytest.mark.asyncio
     async def test_reconcile_with_empty_series_registry(self):
-        from app.services.extraction.reconciler import reconcile_with_cross_book
         from app.schemas.extraction import ChapterExtractionResult
+        from app.services.extraction.reconciler import reconcile_with_cross_book
 
         result = ChapterExtractionResult(book_id="test-book", chapter_number=1)
         reconciled = await reconcile_with_cross_book(result, series_registry=None)
@@ -104,7 +105,6 @@ class TestCrossBookReconciliation:
 
     @pytest.mark.asyncio
     async def test_reconcile_with_series_registry_matching(self):
-        from app.services.extraction.reconciler import reconcile_with_cross_book
         from app.schemas.extraction import (
             ChapterExtractionResult,
             CharacterExtractionResult,
@@ -113,6 +113,7 @@ class TestCrossBookReconciliation:
 
         # Build a registry with a known entity
         from app.services.extraction.entity_registry import EntityRegistry
+        from app.services.extraction.reconciler import reconcile_with_cross_book
 
         registry = EntityRegistry()
         registry.add(
@@ -140,13 +141,13 @@ class TestCrossBookReconciliation:
 
     @pytest.mark.asyncio
     async def test_reconcile_no_match_in_registry(self):
-        from app.services.extraction.reconciler import reconcile_with_cross_book
         from app.schemas.extraction import (
             ChapterExtractionResult,
             CharacterExtractionResult,
             ExtractedCharacter,
         )
         from app.services.extraction.entity_registry import EntityRegistry
+        from app.services.extraction.reconciler import reconcile_with_cross_book
 
         registry = EntityRegistry()
         registry.add(name="Vilastromoz", entity_type="Character")

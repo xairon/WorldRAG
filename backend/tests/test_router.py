@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 
+from app.agents.state import ExtractionPipelineState  # noqa: TC001
 from app.services.extraction.router import route_extraction_passes
 
 
@@ -11,15 +14,18 @@ def make_state(
     text: str,
     genre: str = "litrpg",
     regex_json: str = "",
-) -> dict:
+) -> ExtractionPipelineState:
     """Build a minimal state dict for the router."""
-    return {
-        "book_id": "book-1",
-        "chapter_number": 1,
-        "chapter_text": text,
-        "genre": genre,
-        "regex_matches_json": regex_json,
-    }
+    return cast(
+        "ExtractionPipelineState",
+        {
+            "book_id": "book-1",
+            "chapter_number": 1,
+            "chapter_text": text,
+            "genre": genre,
+            "regex_matches_json": regex_json,
+        },
+    )
 
 
 # Padding text with no keywords (just filler)

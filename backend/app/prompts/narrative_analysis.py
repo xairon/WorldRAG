@@ -136,8 +136,7 @@ FEW_SHOT_EXAMPLES = [
                         "suggere un lien de sang avec les Primordiaux."
                     ),
                     "evidence": (
-                        "Le sang des Primordiaux coule en toi, plus fort "
-                        "que tu ne le crois."
+                        "Le sang des Primordiaux coule en toi, plus fort que tu ne le crois."
                     ),
                     "confidence": 0.85,
                     "possible_payoff": (
@@ -163,10 +162,7 @@ FEW_SHOT_EXAMPLES = [
                         "du Systeme se manifeste par le plaisir que Jake "
                         "prend au combat."
                     ),
-                    "evidence": (
-                        "il ressentait une excitation primitive, un plaisir "
-                        "de predateur"
-                    ),
+                    "evidence": ("il ressentait une excitation primitive, un plaisir de predateur"),
                 },
             ],
         },
@@ -189,9 +185,7 @@ FEW_SHOT_EXAMPLES = [
                         "Jake accepte sa nature de chasseur avec la conviction "
                         "que c'est son identite profonde."
                     ),
-                    "evidence": (
-                        "Il etait un chasseur. Il l'avait toujours ete."
-                    ),
+                    "evidence": ("Il etait un chasseur. Il l'avait toujours ete."),
                     "significance": "major",
                 },
             ],
@@ -203,9 +197,7 @@ FEW_SHOT_EXAMPLES = [
                         "Eveil de la Bloodline of the Primal Hunter, "
                         "conferant une perception accrue."
                     ),
-                    "evidence": (
-                        "[Bloodline Awakened: Bloodline of the Primal Hunter]"
-                    ),
+                    "evidence": ("[Bloodline Awakened: Bloodline of the Primal Hunter]"),
                 },
             ],
             "foreshadowing": [],

@@ -83,10 +83,7 @@ FEW_SHOT_EXAMPLES = [
     },
     # --- Exemple 2 : Cas ambigu (deux personnages masculins, certains non resolus) ---
     {
-        "entity_context": (
-            "- dennis (Character, ally)\n"
-            "- bertram (Character, ally)"
-        ),
+        "entity_context": ("- dennis (Character, ally)\n- bertram (Character, ally)"),
         "text": (
             "Dennis et Bertram combattaient cote a cote. "
             "Il frappa de sa hache tandis que l'autre esquivait. "

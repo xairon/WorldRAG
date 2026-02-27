@@ -11,7 +11,13 @@ from app.schemas.extraction import (
 
 class TestSkillProvenance:
     def test_creates_with_required_fields(self):
-        prov = SkillProvenance(skill_name="Shadow Strike")
+        prov = SkillProvenance(
+            skill_name="Shadow Strike",
+            source_type="unknown",
+            source_name="",
+            confidence=0.5,
+            context="",
+        )
         assert prov.skill_name == "Shadow Strike"
         assert prov.source_type == "unknown"
         assert prov.source_name == ""
@@ -32,27 +38,57 @@ class TestSkillProvenance:
         assert "enchantment" in prov.context
 
     def test_confidence_min_bound(self):
-        prov = SkillProvenance(skill_name="Test", confidence=0.0)
+        prov = SkillProvenance(
+            skill_name="Test",
+            source_type="unknown",
+            source_name="",
+            confidence=0.0,
+            context="",
+        )
         assert prov.confidence == 0.0
 
     def test_confidence_max_bound(self):
-        prov = SkillProvenance(skill_name="Test", confidence=1.0)
+        prov = SkillProvenance(
+            skill_name="Test",
+            source_type="unknown",
+            source_name="",
+            confidence=1.0,
+            context="",
+        )
         assert prov.confidence == 1.0
 
     def test_confidence_below_zero_rejected(self):
         with pytest.raises(ValidationError):
-            SkillProvenance(skill_name="Test", confidence=-0.1)
+            SkillProvenance(
+                skill_name="Test",
+                source_type="unknown",
+                source_name="",
+                confidence=-0.1,
+                context="",
+            )
 
     def test_confidence_above_one_rejected(self):
         with pytest.raises(ValidationError):
-            SkillProvenance(skill_name="Test", confidence=1.1)
+            SkillProvenance(
+                skill_name="Test",
+                source_type="unknown",
+                source_name="",
+                confidence=1.1,
+                context="",
+            )
 
     def test_missing_skill_name_rejected(self):
         with pytest.raises(ValidationError):
-            SkillProvenance()
+            SkillProvenance()  # type: ignore[reportCallIssue]
 
     def test_default_source_type(self):
-        prov = SkillProvenance(skill_name="Arcane Powershot")
+        prov = SkillProvenance(
+            skill_name="Arcane Powershot",
+            source_type="unknown",
+            source_name="",
+            confidence=0.5,
+            context="",
+        )
         assert prov.source_type == "unknown"
 
     def test_serialization_roundtrip(self):
@@ -82,12 +118,14 @@ class TestProvenanceResult:
                     source_type="item",
                     source_name="Nanoblade",
                     confidence=0.95,
+                    context="",
                 ),
                 SkillProvenance(
                     skill_name="Arcane Powershot",
                     source_type="class",
                     source_name="Avaricious Arcane Hunter",
                     confidence=0.9,
+                    context="",
                 ),
             ]
         )
@@ -99,7 +137,15 @@ class TestProvenanceResult:
         """Verify default_factory creates independent lists per instance."""
         r1 = ProvenanceResult()
         r2 = ProvenanceResult()
-        r1.provenances.append(SkillProvenance(skill_name="Test"))
+        r1.provenances.append(
+            SkillProvenance(
+                skill_name="Test",
+                source_type="unknown",
+                source_name="",
+                confidence=0.5,
+                context="",
+            )
+        )
         assert len(r2.provenances) == 0
 
     def test_serialization_roundtrip(self):
@@ -110,6 +156,7 @@ class TestProvenanceResult:
                     source_type="item",
                     source_name="Nanoblade",
                     confidence=0.95,
+                    context="",
                 ),
             ]
         )

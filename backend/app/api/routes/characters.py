@@ -8,7 +8,7 @@ and fetching lightweight character summaries.
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import APIRouter, Depends, Query
 
@@ -68,16 +68,7 @@ async def get_character_state_at_chapter(
         raise NotFoundError(f"Character '{name}' not found")
 
     # Run all aggregation queries in parallel
-    (
-        stats_raw,
-        level_raw,
-        skills_raw,
-        classes_raw,
-        titles_raw,
-        items_raw,
-        chapter_changes_raw,
-        total_chapters,
-    ) = await asyncio.gather(
+    _gather_results = await asyncio.gather(
         repo.get_stats_at_chapter(name, book_id, chapter),
         repo.get_level_at_chapter(name, book_id, chapter),
         repo.get_skills_at_chapter(name, book_id, chapter),
@@ -87,6 +78,14 @@ async def get_character_state_at_chapter(
         repo.get_chapter_changes(name, book_id, chapter),
         repo.get_total_chapters(book_id),
     )
+    stats_raw = cast("list[dict[str, Any]]", _gather_results[0])
+    level_raw = cast("dict[str, Any]", _gather_results[1])
+    skills_raw = cast("list[dict[str, Any]]", _gather_results[2])
+    classes_raw = cast("list[dict[str, Any]]", _gather_results[3])
+    titles_raw = cast("list[dict[str, Any]]", _gather_results[4])
+    items_raw = cast("list[dict[str, Any]]", _gather_results[5])
+    chapter_changes_raw = cast("list[dict[str, Any]]", _gather_results[6])
+    total_chapters = cast("int", _gather_results[7])
 
     # Count total changes to date (sum of all changes up to this chapter)
     # We use the progression milestones count for this
@@ -259,19 +258,18 @@ async def compare_character_state(
     repo = CharacterStateRepository(driver)
 
     # Get stats and levels at both chapters in parallel
-    (
-        stats_from_raw,
-        stats_to_raw,
-        level_from_raw,
-        level_to_raw,
-        changes_raw,
-    ) = await asyncio.gather(
+    _cmp_results = await asyncio.gather(
         repo.get_stats_at_chapter(name, book_id, from_chapter),
         repo.get_stats_at_chapter(name, book_id, to_chapter),
         repo.get_level_at_chapter(name, book_id, from_chapter),
         repo.get_level_at_chapter(name, book_id, to_chapter),
         repo.get_changes_between_chapters(name, book_id, from_chapter, to_chapter),
     )
+    stats_from_raw = cast("list[dict[str, Any]]", _cmp_results[0])
+    stats_to_raw = cast("list[dict[str, Any]]", _cmp_results[1])
+    level_from_raw = cast("dict[str, Any]", _cmp_results[2])
+    level_to_raw = cast("dict[str, Any]", _cmp_results[3])
+    changes_raw = cast("list[dict[str, Any]]", _cmp_results[4])
 
     # Compute stat diffs
     stats_from_map = {s["stat_name"]: s["value"] for s in stats_from_raw}
@@ -359,11 +357,14 @@ async def get_character_summary(
 
     # If chapter and book_id are provided, fetch temporal data
     if chapter is not None and book_id is not None:
-        level_raw, skills_raw, classes_raw = await asyncio.gather(
+        _sum_results = await asyncio.gather(
             repo.get_level_at_chapter(name, book_id, chapter),
             repo.get_skills_at_chapter(name, book_id, chapter),
             repo.get_classes_at_chapter(name, book_id, chapter),
         )
+        level_raw = cast("dict[str, Any]", _sum_results[0])
+        skills_raw = cast("list[dict[str, Any]]", _sum_results[1])
+        classes_raw = cast("list[dict[str, Any]]", _sum_results[2])
         level_val = level_raw.get("level")
         realm = level_raw.get("realm") or ""
         top_skills = [s["name"] for s in skills_raw[:5]]

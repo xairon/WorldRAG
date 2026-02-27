@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
+from pathlib import Path
+
 import asyncpg
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,7 +21,7 @@ from neo4j import AsyncGraphDatabase
 from redis.asyncio import Redis
 
 from app.api.middleware import RequestContextMiddleware
-from app.api.routes import admin, books, characters, chat, graph, health, reader, stream
+from app.api.routes import admin, books, characters, chat, graph, health, pipeline, reader, stream
 from app.config import settings
 from app.core.cost_tracker import CostTracker
 from app.core.dead_letter import DeadLetterQueue
@@ -62,6 +64,29 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     try:
         await neo4j_driver.verify_connectivity()
         logger.info("neo4j_connected", host=_safe_host(settings.neo4j_uri))
+
+        # Auto-init schema if empty (first boot)
+        async with neo4j_driver.session() as session:
+            result = await session.run("SHOW CONSTRAINTS")
+            constraints = await result.data()
+            if len(constraints) == 0:
+                logger.info("neo4j_schema_empty_initializing")
+                cypher_path = Path(__file__).resolve().parents[2] / "scripts" / "init_neo4j.cypher"
+                if cypher_path.exists():
+                    cypher_text = cypher_path.read_text(encoding="utf-8")
+                    statements = [
+                        s.strip()
+                        for s in cypher_text.split(";")
+                        if s.strip() and not s.strip().startswith("//")
+                    ]
+                    for stmt in statements:
+                        await session.run(stmt)  # type: ignore[arg-type]
+                    logger.info("neo4j_schema_initialized", statements=len(statements))
+                else:
+                    logger.warning("neo4j_schema_file_not_found", path=str(cypher_path))
+            else:
+                logger.info("neo4j_schema_already_initialized", constraints=len(constraints))
+
     except ConnectionError as e:
         neo4j_host = _safe_host(settings.neo4j_uri)
         logger.error("neo4j_connection_failed", host=neo4j_host, error=type(e).__name__)
@@ -96,7 +121,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
     # --- LangFuse ---
     langfuse = None
-    if settings.langfuse_public_key and settings.langfuse_secret_key:
+    if settings.langfuse_host and settings.langfuse_public_key and settings.langfuse_secret_key:
         try:
             from langfuse import Langfuse
 
@@ -200,6 +225,7 @@ def create_app() -> FastAPI:
     app.include_router(reader.router, prefix="/api")
     app.include_router(stream.router, prefix="/api")
     app.include_router(characters.router, prefix="/api")
+    app.include_router(pipeline.router, prefix="/api")
 
     return app
 

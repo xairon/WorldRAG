@@ -300,10 +300,7 @@ class OntologyLoader:
     @property
     def active_layer_names(self) -> list[str]:
         """Ordered list of layer labels (core, genre, series)."""
-        return [
-            self._layer_labels.get(name, name)
-            for name in self.layers_loaded
-        ]
+        return [self._layer_labels.get(name, name) for name in self.layers_loaded]
 
     def get_node_types_for_layer(self, layer_label: str) -> list[str]:
         """Get node type names originating from a specific layer.
@@ -367,13 +364,15 @@ class OntologyLoader:
         """
         result: list[dict[str, Any]] = []
         for name, spec in self.regex_patterns.items():
-            result.append({
-                "name": name,
-                "pattern": spec.get("pattern", ""),
-                "entity_type": spec.get("entity_type", ""),
-                "captures": spec.get("captures", {}),
-                "layer": self._regex_origin.get(name, "unknown"),
-            })
+            result.append(
+                {
+                    "name": name,
+                    "pattern": spec.get("pattern", ""),
+                    "entity_type": spec.get("entity_type", ""),
+                    "captures": spec.get("captures", {}),
+                    "layer": self._regex_origin.get(name, "unknown"),
+                }
+            )
         return result
 
 

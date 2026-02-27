@@ -93,8 +93,7 @@ FEW_SHOT_EXAMPLES = [
                     "significance": "major",
                     "participants": "jake, caroline, casper",
                     "description": (
-                        "Jake utilise Powershot pour tuer le Sanglier Dentdefer, "
-                        "boss du tutoriel"
+                        "Jake utilise Powershot pour tuer le Sanglier Dentdefer, boss du tutoriel"
                     ),
                 },
             ),
@@ -134,8 +133,7 @@ FEW_SHOT_EXAMPLES = [
             lx.data.Extraction(
                 extraction_class="event",
                 extraction_text=(
-                    "Le Systeme etait apparu sans prevenir, plongeant la Terre "
-                    "dans le chaos"
+                    "Le Systeme etait apparu sans prevenir, plongeant la Terre dans le chaos"
                 ),
                 attributes={
                     "name": "Apparition du Systeme sur Terre",
@@ -158,9 +156,7 @@ FEW_SHOT_EXAMPLES = [
                     "significance": "major",
                     "participants": "jake",
                     "location": "la grande foret",
-                    "description": (
-                        "Jake jure de survivre dans la Grande Foret du tutoriel"
-                    ),
+                    "description": ("Jake jure de survivre dans la Grande Foret du tutoriel"),
                 },
             ),
             lx.data.Extraction(
@@ -196,8 +192,7 @@ FEW_SHOT_EXAMPLES = [
                     "significance": "minor",
                     "participants": "jake",
                     "description": (
-                        "Jake marche longuement a travers la foret, "
-                        "s'arretant pour se ravitailler"
+                        "Jake marche longuement a travers la foret, s'arretant pour se ravitailler"
                     ),
                 },
             ),

@@ -243,9 +243,7 @@ async def reconcile_with_cross_book(
         if not entity_type_entities:
             continue
         for entity in entity_type_entities:
-            name = getattr(entity, "name", None) or getattr(
-                entity, "canonical_name", None
-            )
+            name = getattr(entity, "name", None) or getattr(entity, "canonical_name", None)
             if not name:
                 continue
             match = registry.lookup(name)
