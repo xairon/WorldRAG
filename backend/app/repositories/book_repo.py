@@ -448,23 +448,32 @@ class BookRepository(Neo4jRepository):
     async def get_chapters_for_extraction(
         self,
         book_id: str,
+        chapters: list[int] | None = None,
     ) -> list[ChapterData]:
-        """Retrieve all chapter texts for a book, ordered by number.
+        """Retrieve chapter texts for a book, ordered by number.
 
-        Returns ChapterData objects suitable for the extraction pipeline.
+        If *chapters* is given, only those chapter numbers are returned.
+        Otherwise all chapters are returned.
         """
+        params: dict[str, object] = {"book_id": book_id}
+        where = ""
+        if chapters is not None:
+            where = "WHERE c.number IN $chapters"
+            params["chapters"] = chapters
+
         results = await self.execute_read(
-            """
-            MATCH (b:Book {id: $book_id})-[:HAS_CHAPTER]->(c:Chapter)
+            f"""
+            MATCH (b:Book {{id: $book_id}})-[:HAS_CHAPTER]->(c:Chapter)
+            {where}
             OPTIONAL MATCH (c)-[:HAS_CHUNK]->(ck:Chunk)
             WITH c, collect(ck.text) AS chunk_texts
             ORDER BY c.number
             RETURN c.number AS number,
                    c.title AS title,
                    c.word_count AS word_count,
-                   reduce(s = '', t IN chunk_texts | s + t + '\n') AS text
+                   reduce(s = '', t IN chunk_texts | s + t + '\\n') AS text
             """,
-            {"book_id": book_id},
+            params,
         )
         return [
             ChapterData(
@@ -526,6 +535,52 @@ class BookRepository(Neo4jRepository):
             ORDER BY s.name
             """
         )
+
+    # --- Entity Registry persistence (V3) ---
+
+    async def save_entity_registry(
+        self,
+        book_id: str,
+        registry_data: dict,
+        ontology_version: str,
+    ) -> None:
+        """Persist entity registry as JSON on the Book node."""
+        import json
+
+        query = """
+        MATCH (b:Book {id: $book_id})
+        SET b.entity_registry = $registry_json,
+            b.registry_version = $ontology_version,
+            b.registry_updated_at = datetime()
+        """
+        await self.execute_write(
+            query,
+            {
+                "book_id": book_id,
+                "registry_json": json.dumps(registry_data, ensure_ascii=False),
+                "ontology_version": ontology_version,
+            },
+        )
+
+        logger.info(
+            "entity_registry_saved",
+            book_id=book_id,
+            ontology_version=ontology_version,
+        )
+
+    async def load_entity_registry(self, book_id: str) -> dict | None:
+        """Load entity registry from Book node."""
+        import json
+
+        query = """
+        MATCH (b:Book {id: $book_id})
+        WHERE b.entity_registry IS NOT NULL
+        RETURN b.entity_registry AS registry_json
+        """
+        results = await self.execute_read(query, {"book_id": book_id})
+        if results and results[0].get("registry_json"):
+            return json.loads(results[0]["registry_json"])
+        return None
 
     # --- Stats ---
 

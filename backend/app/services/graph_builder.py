@@ -32,7 +32,7 @@ if TYPE_CHECKING:
     from app.schemas.book import ChapterData
     from app.schemas.extraction import ChapterExtractionResult
 
-# Type for optional progress callback: (chapter_number, total_chapters, status, entities_found) -> None
+# Progress callback: (chapter_number, total, status, entities) -> None
 ProgressCallback = Callable[[int, int, str, int], Awaitable[None]]
 
 logger = get_logger(__name__)
@@ -482,3 +482,196 @@ def _apply_alias_map(
 
     for concept in result.lore.concepts:
         concept.name = alias_map.get(concept.name, concept.name)
+
+
+async def _persist_extraction_result(
+    entity_repo: EntityRepository,
+    book_id: str,
+    chapter_number: int,
+    result: ChapterExtractionResult,
+    batch_id: str,
+) -> dict[str, int]:
+    """Persist all entity types from extraction result to Neo4j.
+
+    Mirrors the persistence pattern from upsert_extraction_result but
+    called from build_chapter_graph_v3 with an explicit batch_id.
+    """
+    counts: dict[str, int] = {}
+
+    # Phase 1: Characters + relationships (sequential — rels reference chars)
+    counts["characters"] = await entity_repo.upsert_characters(
+        book_id, chapter_number, result.characters.characters, batch_id,
+    )
+    counts["relationships"] = await entity_repo.upsert_relationships(
+        book_id, chapter_number, result.characters.relationships, batch_id,
+    )
+
+    # Phase 2: All independent entity types in parallel
+    (
+        counts["skills"],
+        counts["classes"],
+        counts["titles"],
+        counts["level_changes"],
+        counts["stat_changes"],
+        counts["events"],
+        counts["locations"],
+        counts["items"],
+        counts["creatures"],
+        counts["factions"],
+        counts["concepts"],
+    ) = await asyncio.gather(
+        entity_repo.upsert_skills(
+            book_id, chapter_number, result.systems.skills, batch_id,
+        ),
+        entity_repo.upsert_classes(
+            book_id, chapter_number, result.systems.classes, batch_id,
+        ),
+        entity_repo.upsert_titles(
+            book_id, chapter_number, result.systems.titles, batch_id,
+        ),
+        entity_repo.upsert_level_changes(
+            book_id, chapter_number, result.systems.level_changes, batch_id,
+        ),
+        entity_repo.upsert_stat_changes(
+            book_id, chapter_number, result.systems.stat_changes, batch_id,
+        ),
+        entity_repo.upsert_events(
+            book_id, chapter_number, result.events.events, batch_id,
+        ),
+        entity_repo.upsert_locations(
+            book_id, chapter_number, result.lore.locations, batch_id,
+        ),
+        entity_repo.upsert_items(
+            book_id, chapter_number, result.lore.items, batch_id,
+        ),
+        entity_repo.upsert_creatures(
+            book_id, chapter_number, result.lore.creatures, batch_id,
+        ),
+        entity_repo.upsert_factions(
+            book_id, chapter_number, result.lore.factions, batch_id,
+        ),
+        entity_repo.upsert_concepts(
+            book_id, chapter_number, result.lore.concepts, batch_id,
+        ),
+    )
+
+    # Phase 3: Mentions (depends on entities existing)
+    counts["mentions"] = await entity_repo.store_mentions(
+        book_id, chapter_number, result.grounded_entities,
+    )
+
+    return counts
+
+
+async def build_chapter_graph_v3(
+    driver: AsyncDriver,
+    book_repo: BookRepository,
+    book_id: str,
+    chapter: ChapterData,
+    genre: str = "litrpg",
+    series_name: str = "",
+    regex_matches_json: str = "[]",
+    cost_tracker: CostTracker | None = None,
+    series_entities: list[dict[str, Any]] | None = None,
+    entity_registry: dict | None = None,
+    ontology_version: str = "3.0.0",
+    source_language: str = "fr",
+) -> dict[str, Any]:
+    """V3: Extract and persist entities using the 6-phase pipeline.
+
+    Like build_chapter_graph but with EntityRegistry lifecycle and
+    ontology versioning.
+
+    Args:
+        driver: Neo4j async driver.
+        book_repo: Book repository for status updates.
+        book_id: Book identifier.
+        chapter: Chapter data with text.
+        genre: Book genre.
+        series_name: Series name.
+        regex_matches_json: Pre-extracted regex matches.
+        cost_tracker: Optional cost tracker for ceiling enforcement.
+        series_entities: Known entities from other books in the same series.
+        entity_registry: Serialized EntityRegistry from previous chapters.
+        ontology_version: Ontology version string for this extraction run.
+        source_language: Source language of the text.
+
+    Returns:
+        Dict with processing stats.
+
+    Raises:
+        CostCeilingError: If chapter or book cost ceiling is exceeded.
+    """
+    from app.services.extraction import extract_chapter_v3
+
+    chapter_number = chapter.number
+
+    # 0. Check cost ceilings before spending LLM tokens
+    if cost_tracker is not None:
+        if not cost_tracker.check_book_ceiling(book_id):
+            raise CostCeilingError(
+                f"Book cost ceiling exceeded for {book_id!r}",
+                context={"book_id": book_id, "chapter": chapter_number},
+            )
+        if not cost_tracker.check_chapter_ceiling(book_id, chapter_number):
+            raise CostCeilingError(
+                f"Chapter cost ceiling exceeded for {book_id!r} ch.{chapter_number}",
+                context={"book_id": book_id, "chapter": chapter_number},
+            )
+
+    logger.info(
+        "graph_build_chapter_v3_started",
+        book_id=book_id,
+        chapter=chapter_number,
+        text_length=len(chapter.text),
+        ontology_version=ontology_version,
+    )
+
+    # 1. Extract via V3 pipeline
+    result = await extract_chapter_v3(
+        chapter_text=chapter.text,
+        chapter_number=chapter_number,
+        book_id=book_id,
+        genre=genre,
+        series_name=series_name,
+        regex_matches_json=regex_matches_json,
+        entity_registry=entity_registry,
+        ontology_version=ontology_version,
+        source_language=source_language,
+        series_entities=series_entities,
+    )
+
+    # 2. Apply alias map to normalize names
+    if result.alias_map:
+        _apply_alias_map(result, result.alias_map)
+
+    # 3. Apply entity quality filters
+    filter_extraction_result(result)
+
+    # 4. Persist all entity types
+    entity_repo = EntityRepository(driver)
+    batch_id = str(uuid.uuid4())
+
+    counts = await _persist_extraction_result(
+        entity_repo, book_id, chapter_number, result, batch_id,
+    )
+
+    # 5. Update chapter status
+    await book_repo.update_chapter_status(book_id, chapter_number, "extracted")
+
+    stats: dict[str, Any] = {
+        "chapter_number": chapter_number,
+        "total_entities": result.count_entities(),
+        "alias_map": result.alias_map,
+        "batch_id": batch_id,
+        "ontology_version": ontology_version,
+        "neo4j_counts": counts,
+    }
+
+    logger.info(
+        "graph_build_chapter_v3_completed",
+        book_id=book_id,
+        **{k: v for k, v in stats.items() if k != "alias_map"},
+    )
+
+    return stats
