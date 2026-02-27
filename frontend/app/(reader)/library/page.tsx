@@ -12,27 +12,23 @@ import {
   Network,
   Eye,
   Clock,
-  MessageSquare,
+  Telescope,
 } from "lucide-react"
-import { listBooks, uploadBook, extractBook, deleteBook } from "@/lib/api"
+import { listBooks, uploadBook, deleteBook } from "@/lib/api"
 import type { BookInfo } from "@/lib/api"
 import { cn, statusColor } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { useBookStore } from "@/stores/book-store"
-import { useExtractionProgress } from "@/hooks/use-extraction-progress"
-import { ExtractionProgress } from "@/components/shared/extraction-progress"
 
 export default function LibraryPage() {
   const [books, setBooks] = useState<BookInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [showUpload, setShowUpload] = useState(false)
   const [uploading, setUploading] = useState(false)
-  const [extracting, setExtracting] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const { setSelectedBookId } = useBookStore()
-  const extraction = useExtractionProgress()
 
   const refresh = useCallback(async () => {
     try {
@@ -59,20 +55,6 @@ export default function LibraryPage() {
       setError(err instanceof Error ? err.message : "Upload failed")
     } finally {
       setUploading(false)
-    }
-  }
-
-  async function handleExtract(bookId: string) {
-    setExtracting(bookId)
-    setError(null)
-    try {
-      await extractBook(bookId)
-      extraction.connect(bookId)
-      await refresh()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Extraction failed")
-    } finally {
-      setExtracting(null)
     }
   }
 
@@ -217,29 +199,19 @@ export default function LibraryPage() {
                   <span>{book.genre}</span>
                 </div>
 
-                {/* Extraction progress */}
-                {extracting === book.id && extraction.isConnected && (
-                  <div className="mb-3">
-                    <ExtractionProgress
-                      events={extraction.events}
-                      progress={extraction.progress}
-                      isConnected={extraction.isConnected}
-                      isDone={extraction.isDone}
-                    />
-                  </div>
-                )}
-
                 <div className="flex items-center gap-1.5 border-t border-slate-800 pt-3 -mx-1">
                   {book.status === "completed" && (
                     <Button
                       size="sm"
                       variant="ghost"
                       className="h-7 text-xs text-amber-400 hover:text-amber-300"
-                      onClick={(e) => { e.stopPropagation(); handleExtract(book.id) }}
-                      disabled={extracting === book.id}
+                      asChild
+                      onClick={(e) => e.stopPropagation()}
                     >
-                      {extracting === book.id ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Zap className="h-3 w-3 mr-1" />}
-                      Extract
+                      <Link href={`/pipeline/${book.id}`}>
+                        <Zap className="h-3 w-3 mr-1" />
+                        Extract
+                      </Link>
                     </Button>
                   )}
                   {(book.status === "extracted" || book.status === "embedded") && (
@@ -278,6 +250,18 @@ export default function LibraryPage() {
                         <Link href={`/timeline/${book.id}`}>
                           <Clock className="h-3 w-3 mr-1" />
                           Timeline
+                        </Link>
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 text-xs text-violet-400 hover:text-violet-300"
+                        asChild
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Link href={`/pipeline/${book.id}`}>
+                          <Telescope className="h-3 w-3 mr-1" />
+                          Pipeline
                         </Link>
                       </Button>
                     </>
