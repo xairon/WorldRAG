@@ -92,9 +92,19 @@ class WorkerSettings:
     """
 
     # Import functions lazily to avoid circular imports at module load
-    from app.workers.tasks import process_book_embeddings, process_book_extraction
+    from app.workers.tasks import (
+        process_book_embeddings,
+        process_book_extraction,
+        process_book_extraction_v3,
+        process_book_reprocessing,
+    )
 
-    functions = [process_book_extraction, process_book_embeddings]
+    functions = [
+        process_book_extraction,
+        process_book_embeddings,
+        process_book_extraction_v3,
+        process_book_reprocessing,
+    ]
     on_startup = startup
     on_shutdown = shutdown
     redis_settings = _parse_redis_settings()
