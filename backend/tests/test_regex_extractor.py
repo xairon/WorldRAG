@@ -183,3 +183,83 @@ class TestLayer3Patterns:
         matches = extractor.extract(text, chapter_number=1)
         blessing_matches = [m for m in matches if m.pattern_name == "blessing_received"]
         assert len(blessing_matches) >= 1
+
+
+# -- YAML-driven regex via OntologyLoader ------------------------------------
+
+
+class TestYamlDrivenRegex:
+    """Tests for RegexExtractor.from_ontology() — loading patterns from YAML ontology."""
+
+    def test_loads_from_ontology(self):
+        """Genre + series layers should load >= 25 patterns."""
+        from app.core.ontology_loader import OntologyLoader
+
+        loader = OntologyLoader.from_layers(genre="litrpg", series="primal_hunter")
+        extractor = RegexExtractor.from_ontology(loader)
+        assert len(extractor.patterns) >= 25
+
+    def test_new_skill_evolution_pattern(self):
+        """skill_evolved pattern from litrpg.yaml should match evolution arrows."""
+        from app.core.ontology_loader import OntologyLoader
+
+        loader = OntologyLoader.from_layers(genre="litrpg")
+        extractor = RegexExtractor.from_ontology(loader)
+        text = "[Skill Evolved: Basic Archery \u2192 Advanced Archery - Rare]"
+        matches = extractor.extract(text, chapter_number=1)
+        evolved = [m for m in matches if m.pattern_name == "skill_evolved"]
+        assert len(evolved) >= 1
+
+    def test_xp_gain_pattern(self):
+        """xp_gain pattern should match XP notifications with commas."""
+        from app.core.ontology_loader import OntologyLoader
+
+        loader = OntologyLoader.from_layers(genre="litrpg")
+        extractor = RegexExtractor.from_ontology(loader)
+        text = "+1,500 XP"
+        matches = extractor.extract(text, chapter_number=1)
+        xp = [m for m in matches if m.pattern_name == "xp_gain"]
+        assert len(xp) >= 1
+
+    def test_quest_patterns(self):
+        """Quest received + completed should produce >= 2 matches."""
+        from app.core.ontology_loader import OntologyLoader
+
+        loader = OntologyLoader.from_layers(genre="litrpg")
+        extractor = RegexExtractor.from_ontology(loader)
+        text = "[Quest Received: Defeat the Dungeon Boss]\n[Quest Completed: Defeat the Dungeon Boss]"
+        matches = extractor.extract(text, chapter_number=1)
+        quests = [m for m in matches if "quest" in m.pattern_name.lower()]
+        assert len(quests) >= 2
+
+    def test_item_acquired_pattern(self):
+        """item_acquired pattern should match item notifications with rarity."""
+        from app.core.ontology_loader import OntologyLoader
+
+        loader = OntologyLoader.from_layers(genre="litrpg")
+        extractor = RegexExtractor.from_ontology(loader)
+        text = "[Item Acquired: Sword of Shadows - Legendary]"
+        matches = extractor.extract(text, chapter_number=1)
+        items = [m for m in matches if m.pattern_name == "item_acquired"]
+        assert len(items) >= 1
+
+    def test_death_event_pattern(self):
+        """death_event pattern should match slain notifications."""
+        from app.core.ontology_loader import OntologyLoader
+
+        loader = OntologyLoader.from_layers(genre="litrpg")
+        extractor = RegexExtractor.from_ontology(loader)
+        text = "[Dark Beast has been slain]"
+        matches = extractor.extract(text, chapter_number=1)
+        deaths = [m for m in matches if m.pattern_name == "death_event"]
+        assert len(deaths) >= 1
+
+    def test_backward_compat_default_constructor(self):
+        """Ensure the default constructor still works."""
+        extractor = RegexExtractor()
+        assert len(extractor.patterns) == 0  # Empty default_factory
+
+    def test_backward_compat_default_classmethod(self):
+        """Ensure RegexExtractor.default() still works with hardcoded patterns."""
+        extractor = RegexExtractor.default()
+        assert len(extractor.patterns) >= 5  # Original hardcoded patterns
