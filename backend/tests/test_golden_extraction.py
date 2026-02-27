@@ -15,6 +15,7 @@ All tests here are FAST (no network, no LLM, < 1s each).
 from __future__ import annotations
 
 import json
+from typing import cast
 
 import pytest
 from tests.fixtures.golden_primal_hunter import (
@@ -45,6 +46,7 @@ from tests.fixtures.primal_hunter_chapters import (
     CHAPTER_5_TEXT,
 )
 
+from app.agents.state import ExtractionPipelineState  # noqa: TC001
 from app.schemas.extraction import (
     ChapterExtractionResult,
     CharacterExtractionResult,
@@ -242,7 +244,7 @@ class TestRegexOnPrimalHunter:
 
     @pytest.mark.parametrize("chapter_text,chapter_num", ALL_CHAPTERS)
     def test_no_duplicate_captures(
-        self, extractor: RegexExtractor, chapter_text: str, chapter_num: int
+        self, extractor: RegexExtractor, chapter_text: str, chapter_num: GoldenChapterExpectation
     ):
         """A skill captured by skill_acquired should NOT also appear as blue_box_generic."""
         matches = extractor.extract(chapter_text, chapter_number=chapter_num.chapter_number)
@@ -273,14 +275,17 @@ class TestRouterOnPrimalHunter:
     """Extraction router decisions on realistic chapter text."""
 
     @staticmethod
-    def _make_state(text: str, chapter: int = 1, genre: str = "litrpg") -> dict:
-        return {
-            "chapter_text": text,
-            "book_id": "primal-hunter-test",
-            "chapter_number": chapter,
-            "genre": genre,
-            "regex_matches_json": "",
-        }
+    def _make_state(text: str, chapter: int = 1, genre: str = "litrpg") -> ExtractionPipelineState:
+        return cast(
+            "ExtractionPipelineState",
+            {
+                "chapter_text": text,
+                "book_id": "primal-hunter-test",
+                "chapter_number": chapter,
+                "genre": genre,
+                "regex_matches_json": "",
+            },
+        )
 
     def test_ch1_tutorial_gets_all_passes(self):
         """Chapter 1 has skills + events + characters -> should trigger multiple passes."""
@@ -480,6 +485,7 @@ class TestSchemaRepresentsWikiData:
                 name=c.name,
                 canonical_name=c.canonical_name,
                 aliases=list(c.aliases),
+                description="",
                 species=c.species,
                 role=c.role,
             )
@@ -550,6 +556,7 @@ class TestSchemaRepresentsWikiData:
                 target=r.target,
                 rel_type=r.rel_type,
                 subtype=r.subtype,
+                context="",
             )
             assert er.source == r.source
             assert er.target == r.target
@@ -583,8 +590,18 @@ class TestChapterExtractionResultAssembly:
             chapter_number=1,
             characters=CharacterExtractionResult(
                 characters=[
-                    ExtractedCharacter(name="Jake Thayne", role="protagonist"),
-                    ExtractedCharacter(name="Caleb Thayne", role="ally"),
+                    ExtractedCharacter(
+                        name="Jake Thayne",
+                        canonical_name="Jake Thayne",
+                        description="",
+                        role="protagonist",
+                    ),
+                    ExtractedCharacter(
+                        name="Caleb Thayne",
+                        canonical_name="Caleb Thayne",
+                        description="",
+                        role="ally",
+                    ),
                 ],
                 relationships=[
                     ExtractedRelationship(
@@ -592,13 +609,24 @@ class TestChapterExtractionResultAssembly:
                         target="Caleb Thayne",
                         rel_type="family",
                         subtype="brothers",
+                        context="",
                     ),
                 ],
             ),
             systems=SystemExtractionResult(
                 skills=[
-                    ExtractedSkill(name="Basic Archery", rank="Inferior", owner="Jake Thayne"),
-                    ExtractedSkill(name="Archer's Eye", rank="Common", owner="Jake Thayne"),
+                    ExtractedSkill(
+                        name="Basic Archery",
+                        skill_type="active",
+                        rank="Inferior",
+                        owner="Jake Thayne",
+                    ),
+                    ExtractedSkill(
+                        name="Archer's Eye",
+                        skill_type="active",
+                        rank="Common",
+                        owner="Jake Thayne",
+                    ),
                 ],
                 classes=[
                     ExtractedClass(name="Archer", owner="Jake Thayne"),
@@ -612,6 +640,7 @@ class TestChapterExtractionResultAssembly:
                 events=[
                     ExtractedEvent(
                         name="Tutorial Begins",
+                        description="",
                         event_type="process",
                         significance="critical",
                         participants=["Jake Thayne", "Caleb Thayne"],
@@ -644,18 +673,34 @@ class TestChapterExtractionResultAssembly:
             chapter_number=5,
             characters=CharacterExtractionResult(
                 characters=[
-                    ExtractedCharacter(name=name) for name in CHAPTER_5_EXPECTED.expected_characters
+                    ExtractedCharacter(
+                        name=name,
+                        canonical_name=name,
+                        description="",
+                        role="minor",
+                    )
+                    for name in CHAPTER_5_EXPECTED.expected_characters
                 ],
             ),
             systems=SystemExtractionResult(
-                skills=[ExtractedSkill(name=name) for name in CHAPTER_5_EXPECTED.expected_skills],
-                classes=[ExtractedClass(name=name) for name in CHAPTER_5_EXPECTED.expected_classes],
-                titles=[ExtractedTitle(name=name) for name in CHAPTER_5_EXPECTED.expected_titles],
+                skills=[
+                    ExtractedSkill(name=name, skill_type="active", owner="")
+                    for name in CHAPTER_5_EXPECTED.expected_skills
+                ],
+                classes=[
+                    ExtractedClass(name=name, owner="")
+                    for name in CHAPTER_5_EXPECTED.expected_classes
+                ],
+                titles=[
+                    ExtractedTitle(name=name, owner="")
+                    for name in CHAPTER_5_EXPECTED.expected_titles
+                ],
             ),
             events=EventExtractionResult(),
             lore=LoreExtractionResult(
                 locations=[
-                    ExtractedLocation(name=name) for name in CHAPTER_5_EXPECTED.expected_locations
+                    ExtractedLocation(name=name, location_type="region")
+                    for name in CHAPTER_5_EXPECTED.expected_locations
                 ],
                 factions=[
                     ExtractedFaction(name=name) for name in CHAPTER_5_EXPECTED.expected_factions
@@ -770,3 +815,62 @@ class TestGoldenDataIntegrity:
             | frozenset(loc.name for loc in LOCATIONS)
         )
         assert expected == ALL_ENTITY_NAMES
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 7. V3 SCHEMA COMPATIBILITY — V3 fields on extraction schemas
+# ═══════════════════════════════════════════════════════════════════════
+
+
+class TestV3SchemaCompatibility:
+    """Validate V3-specific fields work on extraction schemas."""
+
+    def test_extracted_character_v3_fields(self):
+        """ExtractedCharacter with V3 fields (status, last_seen_chapter, evolution_of)."""
+        ec = ExtractedCharacter(
+            name="Jake Thayne",
+            canonical_name="Jake Thayne",
+            description="The protagonist and Primal Hunter",
+            role="protagonist",
+            status="alive",
+            last_seen_chapter=1,
+            evolution_of=None,
+        )
+        assert ec.status == "alive"
+        assert ec.last_seen_chapter == 1
+        assert ec.evolution_of is None
+
+    def test_chapter_extraction_result_ontology_version(self):
+        """ChapterExtractionResult with ontology_version='3.0.0' is valid."""
+        result = ChapterExtractionResult(
+            book_id="test-book",
+            chapter_number=1,
+            ontology_version="3.0.0",
+        )
+        assert result.ontology_version == "3.0.0"
+        assert result.book_id == "test-book"
+
+    def test_golden_character_v3_confidence_roundtrip(self):
+        """Golden character with confidence and extraction_layer roundtrips correctly."""
+        from app.schemas.extraction import BaseExtractedEntity
+
+        entity = BaseExtractedEntity(
+            name="Jake Thayne",
+            canonical_name="Jake Thayne",
+            entity_type="Character",
+            confidence=0.95,
+            extraction_text="Jake drew his bow",
+            char_offset_start=0,
+            char_offset_end=17,
+            chapter_number=1,
+            extraction_layer="narrative",
+            extraction_phase=1,
+            ontology_version="3.0.0",
+        )
+        # Roundtrip via dict
+        data = entity.model_dump()
+        restored = BaseExtractedEntity.model_validate(data)
+        assert restored.confidence == 0.95
+        assert restored.extraction_layer == "narrative"
+        assert restored.name == "Jake Thayne"
+        assert restored.ontology_version == "3.0.0"

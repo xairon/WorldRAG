@@ -298,6 +298,7 @@ class ChapterExtractionResult(BaseModel):
     total_entities: int = 0
     total_cost_usd: float = 0.0
     passes_completed: list[str] = Field(default_factory=list)
+    ontology_version: str = ""
 
     def count_entities(self) -> int:
         """Count total extracted entities across all passes."""
