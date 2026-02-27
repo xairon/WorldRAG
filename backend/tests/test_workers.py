@@ -114,6 +114,8 @@ class TestProcessBookExtraction:
             "status": "extracted",
         }
 
+        from app.config import settings
+
         with (
             patch("app.workers.tasks.BookRepository") as mock_repo_cls,
             patch(
@@ -121,6 +123,7 @@ class TestProcessBookExtraction:
                 new_callable=AsyncMock,
                 return_value=fake_result,
             ) as mock_build,
+            patch.object(settings, "use_v3_pipeline", False),
         ):
             instance = mock_repo_cls.return_value
             instance.get_book = AsyncMock(
@@ -149,6 +152,36 @@ class TestProcessBookExtraction:
 
         assert result["chapters_processed"] == 3
         assert result["total_entities"] == 42
+
+    async def test_v3_delegation_when_enabled(self, mock_ctx):
+        """When use_v3_pipeline=True, process_book_extraction delegates to V3."""
+        from app.config import settings
+
+        with (
+            patch(
+                "app.workers.tasks.process_book_extraction_v3",
+                new_callable=AsyncMock,
+                return_value={"pipeline": "v3", "chapters_processed": 2},
+            ) as mock_v3,
+            patch.object(settings, "use_v3_pipeline", True),
+            patch.object(settings, "extraction_language", "fr"),
+        ):
+            result = await process_book_extraction(
+                mock_ctx,
+                "b1",
+                "litrpg",
+                "test-series",
+            )
+
+        mock_v3.assert_called_once_with(
+            mock_ctx,
+            "b1",
+            "litrpg",
+            "test-series",
+            None,
+            "fr",
+        )
+        assert result["pipeline"] == "v3"
 
 
 # ── TestProcessBookEmbeddings ─────────────────────────────────────────────
