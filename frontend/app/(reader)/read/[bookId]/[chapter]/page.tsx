@@ -62,6 +62,47 @@ export default function ReaderPage() {
     load()
   }, [bookId, chapterNum])
 
+  // All hooks MUST be above early returns (Rules of Hooks)
+  const annotations = chapterEntities?.annotations ?? []
+  const paragraphs = chapterParagraphs?.paragraphs ?? []
+
+  const typeCounts = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const a of annotations) {
+      counts[a.entity_type] = (counts[a.entity_type] ?? 0) + 1
+    }
+    return counts
+  }, [annotations])
+
+  const filteredAnnotations = useMemo(() => {
+    if (mode === "clean") return []
+    return annotations.filter((a) => enabledTypes.has(a.entity_type))
+  }, [annotations, enabledTypes, mode])
+
+  const paragraphAnnotations = useMemo(() => {
+    const map = new Map<number, typeof filteredAnnotations>()
+    for (const para of paragraphs) {
+      const paraAnns = filteredAnnotations
+        .filter((a) => a.char_offset_start >= para.char_start && a.char_offset_end <= para.char_end)
+        .map((a) => ({
+          ...a,
+          char_offset_start: a.char_offset_start - para.char_start,
+          char_offset_end: a.char_offset_end - para.char_start,
+        }))
+      map.set(para.index, paraAnns)
+    }
+    return map
+  }, [paragraphs, filteredAnnotations])
+
+  const handleToggleType = (type: string) => {
+    setEnabledTypes((prev) => {
+      const next = new Set(prev)
+      if (next.has(type)) next.delete(type)
+      else next.add(type)
+      return next
+    })
+  }
+
   if (loading) {
     return (
       <div className="max-w-4xl mx-auto space-y-6">
@@ -93,47 +134,7 @@ export default function ReaderPage() {
     )
   }
 
-  const annotations = chapterEntities?.annotations ?? []
-  const paragraphs = chapterParagraphs?.paragraphs ?? []
   const hasParagraphs = paragraphs.length > 0
-
-  const typeCounts = useMemo(() => {
-    const counts: Record<string, number> = {}
-    for (const a of annotations) {
-      counts[a.entity_type] = (counts[a.entity_type] ?? 0) + 1
-    }
-    return counts
-  }, [annotations])
-
-  const filteredAnnotations = useMemo(() => {
-    if (mode === "clean") return []
-    return annotations.filter((a) => enabledTypes.has(a.entity_type))
-  }, [annotations, enabledTypes, mode])
-
-  // Pre-compute paragraph → annotation mapping to avoid O(paragraphs × annotations) per render
-  const paragraphAnnotations = useMemo(() => {
-    const map = new Map<number, typeof filteredAnnotations>()
-    for (const para of paragraphs) {
-      const paraAnns = filteredAnnotations
-        .filter((a) => a.char_offset_start >= para.char_start && a.char_offset_end <= para.char_end)
-        .map((a) => ({
-          ...a,
-          char_offset_start: a.char_offset_start - para.char_start,
-          char_offset_end: a.char_offset_end - para.char_start,
-        }))
-      map.set(para.index, paraAnns)
-    }
-    return map
-  }, [paragraphs, filteredAnnotations])
-
-  const handleToggleType = (type: string) => {
-    setEnabledTypes((prev) => {
-      const next = new Set(prev)
-      if (next.has(type)) next.delete(type)
-      else next.add(type)
-      return next
-    })
-  }
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
