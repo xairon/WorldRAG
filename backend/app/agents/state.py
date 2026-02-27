@@ -97,6 +97,6 @@ class ExtractionPipelineState(TypedDict, total=False):
     extraction_run_id: str
     source_language: str
     phase0_regex: list[dict]
-    phase1_narrative: list[dict]
-    phase2_genre: list[dict]
-    phase3_series: list[dict]
+    phase1_narrative: Annotated[list[dict], operator.add]
+    phase2_genre: Annotated[list[dict], operator.add]
+    phase3_series: Annotated[list[dict], operator.add]
