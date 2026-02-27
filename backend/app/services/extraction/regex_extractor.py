@@ -16,11 +16,15 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import yaml
 
 from app.core.logging import get_logger
 from app.schemas.book import RegexMatch
+
+if TYPE_CHECKING:
+    from app.core.ontology_loader import OntologyLoader
 
 logger = get_logger(__name__)
 
@@ -76,6 +80,46 @@ class RegexExtractor:
                 logger.warning("regex_compile_failed", pattern_name=name, error=str(e))
 
         logger.info("regex_patterns_loaded", count=len(patterns), source=yaml_path)
+        return cls(patterns=patterns)
+
+    @classmethod
+    def from_ontology(cls, ontology: OntologyLoader) -> RegexExtractor:
+        """Create a RegexExtractor from ontology YAML patterns.
+
+        Loads all regex patterns from active ontology layers via OntologyLoader,
+        replacing the need to manually specify YAML paths or use hardcoded defaults.
+
+        Args:
+            ontology: Loaded OntologyLoader instance with regex patterns.
+
+        Returns:
+            RegexExtractor with compiled patterns from all active layers.
+        """
+        patterns: list[RegexPattern] = []
+        for spec in ontology.get_regex_patterns_list():
+            try:
+                compiled = re.compile(spec["pattern"], re.IGNORECASE | re.MULTILINE)
+                patterns.append(
+                    RegexPattern(
+                        name=spec["name"],
+                        pattern=compiled,
+                        entity_type=spec["entity_type"],
+                        captures=spec["captures"],
+                    )
+                )
+            except re.error as e:
+                logger.warning(
+                    "regex_compile_failed",
+                    pattern_name=spec.get("name", "unknown"),
+                    error=type(e).__name__,
+                )
+
+        logger.info(
+            "regex_patterns_loaded",
+            count=len(patterns),
+            source="ontology",
+            layers=ontology.layers_loaded,
+        )
         return cls(patterns=patterns)
 
     @classmethod
