@@ -280,6 +280,25 @@ FOR ()-[r:MENTIONED_IN]-() ON (r.char_start);
 CREATE INDEX rel_mentioned_in_type IF NOT EXISTS
 FOR ()-[r:MENTIONED_IN]-() ON (r.mention_type);
 
+// ── V3: New entity types ─────────────────────────────────────────────
+
+CREATE CONSTRAINT stat_block_unique IF NOT EXISTS
+  FOR (s:StatBlock) REQUIRE (s.character_name, s.chapter) IS UNIQUE;
+
+CREATE CONSTRAINT quest_unique IF NOT EXISTS
+  FOR (q:QuestObjective) REQUIRE q.name IS UNIQUE;
+
+CREATE CONSTRAINT achievement_unique IF NOT EXISTS
+  FOR (a:Achievement) REQUIRE a.name IS UNIQUE;
+
+CREATE CONSTRAINT realm_unique IF NOT EXISTS
+  FOR (r:Realm) REQUIRE r.name IS UNIQUE;
+
+CREATE INDEX stat_block_character IF NOT EXISTS FOR (s:StatBlock) ON (s.character_name);
+CREATE INDEX quest_status IF NOT EXISTS FOR (q:QuestObjective) ON (q.status);
+CREATE INDEX achievement_name IF NOT EXISTS FOR (a:Achievement) ON (a.name);
+CREATE INDEX realm_order IF NOT EXISTS FOR (r:Realm) ON (r.order);
+
 // === VERIFICATION ===
 // Run this to verify all constraints and indexes are created:
 // SHOW CONSTRAINTS;

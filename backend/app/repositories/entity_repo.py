@@ -46,6 +46,7 @@ class EntityRepository(Neo4jRepository):
         chapter_number: int,
         characters: list[ExtractedCharacter],
         batch_id: str = "",
+        ontology_version: str = "",
     ) -> int:
         """Upsert character nodes. MERGE on canonical_name."""
         if not characters:
@@ -64,10 +65,14 @@ class EntityRepository(Neo4jRepository):
             for c in characters
         ]
 
+        version_clause = ""
+        if ontology_version:
+            version_clause = ", ch.ontology_version = $ontology_version"
+
         await self.execute_write(
-            """
+            f"""
             UNWIND $chars AS c
-            MERGE (ch:Character {canonical_name: c.canonical_name})
+            MERGE (ch:Character {{canonical_name: c.canonical_name}})
             ON CREATE SET
                 ch.name = c.name,
                 ch.aliases = c.aliases,
@@ -78,14 +83,16 @@ class EntityRepository(Neo4jRepository):
                 ch.book_id = $book_id,
                 ch.batch_id = $batch_id,
                 ch.created_at = timestamp()
+                {version_clause}
             ON MATCH SET
                 ch.description = CASE
                     WHEN size(c.description) > size(coalesce(ch.description, ''))
                     THEN c.description ELSE ch.description END,
                 ch.aliases = ch.aliases + [a IN c.aliases WHERE NOT a IN ch.aliases],
                 ch.batch_id = $batch_id
+                {version_clause}
             WITH ch, c
-            MATCH (chap:Chapter {book_id: $book_id, number: $chapter})
+            MATCH (chap:Chapter {{book_id: $book_id, number: $chapter}})
             MERGE (ch)-[:MENTIONED_IN]->(chap)
             """,
             {
@@ -93,6 +100,7 @@ class EntityRepository(Neo4jRepository):
                 "book_id": book_id,
                 "chapter": chapter_number,
                 "batch_id": batch_id,
+                "ontology_version": ontology_version,
             },
         )
 
@@ -167,6 +175,7 @@ class EntityRepository(Neo4jRepository):
         chapter_number: int,
         skills: list[ExtractedSkill],
         batch_id: str = "",
+        ontology_version: str = "",
     ) -> int:
         """Upsert skill nodes and link to owner characters."""
         if not skills:
@@ -184,10 +193,14 @@ class EntityRepository(Neo4jRepository):
             for s in skills
         ]
 
+        version_clause = ""
+        if ontology_version:
+            version_clause = ", sk.ontology_version = $ontology_version"
+
         await self.execute_write(
-            """
+            f"""
             UNWIND $skills AS s
-            MERGE (sk:Skill {name: s.name})
+            MERGE (sk:Skill {{name: s.name}})
             ON CREATE SET
                 sk.description = s.description,
                 sk.skill_type = s.skill_type,
@@ -195,6 +208,7 @@ class EntityRepository(Neo4jRepository):
                 sk.book_id = $book_id,
                 sk.batch_id = $batch_id,
                 sk.created_at = timestamp()
+                {version_clause}
             ON MATCH SET
                 sk.description = CASE
                     WHEN size(s.description) > size(coalesce(sk.description, ''))
@@ -202,13 +216,14 @@ class EntityRepository(Neo4jRepository):
                 sk.rank = CASE
                     WHEN s.rank <> '' THEN s.rank ELSE sk.rank END,
                 sk.batch_id = $batch_id
+                {version_clause}
             WITH sk, s
             WHERE s.owner <> ''
-            MATCH (ch:Character {canonical_name: s.owner})
+            MATCH (ch:Character {{canonical_name: s.owner}})
             MERGE (ch)-[r:HAS_SKILL]->(sk)
             ON CREATE SET r.valid_from_chapter = s.chapter
             """,
-            {"skills": data, "book_id": book_id, "batch_id": batch_id},
+            {"skills": data, "book_id": book_id, "batch_id": batch_id, "ontology_version": ontology_version},
         )
 
         # V3: Create immutable StateChange ledger nodes
@@ -365,6 +380,7 @@ class EntityRepository(Neo4jRepository):
         chapter_number: int,
         events: list[ExtractedEvent],
         batch_id: str = "",
+        ontology_version: str = "",
     ) -> int:
         """Upsert event nodes and link to participants/locations."""
         if not events:
@@ -384,11 +400,15 @@ class EntityRepository(Neo4jRepository):
             for e in events
         ]
 
+        version_clause = ""
+        if ontology_version:
+            version_clause = ", ev.ontology_version = $ontology_version"
+
         # Create events and link to chapter
         await self.execute_write(
-            """
+            f"""
             UNWIND $events AS e
-            MERGE (ev:Event {name: e.name, chapter_start: e.chapter})
+            MERGE (ev:Event {{name: e.name, chapter_start: e.chapter}})
             ON CREATE SET
                 ev.description = e.description,
                 ev.event_type = e.event_type,
@@ -397,13 +417,15 @@ class EntityRepository(Neo4jRepository):
                 ev.book_id = $book_id,
                 ev.batch_id = $batch_id,
                 ev.created_at = timestamp()
+                {version_clause}
             ON MATCH SET
                 ev.batch_id = $batch_id
+                {version_clause}
             WITH ev, e
-            MATCH (chap:Chapter {book_id: $book_id, number: e.chapter})
+            MATCH (chap:Chapter {{book_id: $book_id, number: e.chapter}})
             MERGE (ev)-[:FIRST_MENTIONED_IN]->(chap)
             """,
-            {"events": data, "book_id": book_id, "batch_id": batch_id},
+            {"events": data, "book_id": book_id, "batch_id": batch_id, "ontology_version": ontology_version},
         )
 
         # Link participants
@@ -1091,6 +1113,189 @@ class EntityRepository(Neo4jRepository):
             count=len(boxes),
         )
         return len(boxes)
+
+    # ── V3: StatBlocks ────────────────────────────────────────────────────
+
+    async def upsert_stat_blocks(
+        self,
+        book_id: str,
+        chapter_number: int,
+        stat_blocks: list,  # list[ExtractedStatBlock]
+        batch_id: str = "",
+    ) -> int:
+        """Upsert StatBlock nodes — snapshots of character stats at a chapter.
+
+        MERGE on (character_name, chapter) to allow one snapshot per chapter.
+        """
+        if not stat_blocks:
+            return 0
+
+        data = [
+            {
+                "character_name": sb.character_name,
+                "stats": sb.stats,
+                "total": sb.total,
+                "source": sb.source,
+                "chapter": sb.chapter_number,
+            }
+            for sb in stat_blocks
+        ]
+
+        await self.execute_write(
+            """
+            UNWIND $blocks AS sb
+            MERGE (s:StatBlock {character_name: sb.character_name, chapter: sb.chapter})
+            ON CREATE SET
+                s.stats = apoc.convert.toJson(sb.stats),
+                s.total = sb.total,
+                s.source = sb.source,
+                s.book_id = $book_id,
+                s.batch_id = $batch_id,
+                s.created_at = timestamp()
+            ON MATCH SET
+                s.stats = apoc.convert.toJson(sb.stats),
+                s.total = sb.total,
+                s.source = sb.source,
+                s.batch_id = $batch_id
+            WITH s, sb
+            MATCH (ch:Character {canonical_name: sb.character_name})
+            MERGE (ch)-[:HAS_STAT_BLOCK]->(s)
+            """,
+            {
+                "blocks": data,
+                "book_id": book_id,
+                "batch_id": batch_id,
+            },
+        )
+
+        logger.info(
+            "stat_blocks_upserted",
+            book_id=book_id,
+            chapter=chapter_number,
+            count=len(stat_blocks),
+        )
+        return len(stat_blocks)
+
+    # ── V3: QuestObjectives ──────────────────────────────────────────────
+
+    async def upsert_quest_objectives(
+        self,
+        book_id: str,
+        chapter_number: int,
+        quests: list[dict[str, Any]],
+        batch_id: str = "",
+    ) -> int:
+        """Upsert QuestObjective nodes.
+
+        MERGE on name to allow quest progress updates across chapters.
+        Each quest dict should have: name, description, status, giver, chapter.
+        """
+        if not quests:
+            return 0
+
+        await self.execute_write(
+            """
+            UNWIND $quests AS q
+            MERGE (qo:QuestObjective {name: q.name})
+            ON CREATE SET
+                qo.description = q.description,
+                qo.status = q.status,
+                qo.giver = q.giver,
+                qo.chapter_started = q.chapter,
+                qo.book_id = $book_id,
+                qo.batch_id = $batch_id,
+                qo.created_at = timestamp()
+            ON MATCH SET
+                qo.status = q.status,
+                qo.batch_id = $batch_id
+            WITH qo, q
+            WHERE q.giver IS NOT NULL AND q.giver <> ''
+            MATCH (ch:Character {canonical_name: q.giver})
+            MERGE (ch)-[:GIVES_QUEST]->(qo)
+            """,
+            {
+                "quests": quests,
+                "book_id": book_id,
+                "batch_id": batch_id,
+            },
+        )
+
+        logger.info(
+            "quest_objectives_upserted",
+            book_id=book_id,
+            chapter=chapter_number,
+            count=len(quests),
+        )
+        return len(quests)
+
+    # ── V3: Achievements ─────────────────────────────────────────────────
+
+    async def upsert_achievements(
+        self,
+        book_id: str,
+        chapter_number: int,
+        achievements: list[dict[str, Any]],
+        batch_id: str = "",
+    ) -> int:
+        """Upsert Achievement nodes and link to earner characters.
+
+        MERGE on name to avoid duplicates.
+        Each achievement dict should have: name, description, rarity, earner, chapter.
+        """
+        if not achievements:
+            return 0
+
+        await self.execute_write(
+            """
+            UNWIND $achievements AS a
+            MERGE (ach:Achievement {name: a.name})
+            ON CREATE SET
+                ach.description = a.description,
+                ach.rarity = a.rarity,
+                ach.book_id = $book_id,
+                ach.batch_id = $batch_id,
+                ach.created_at = timestamp()
+            ON MATCH SET
+                ach.description = CASE
+                    WHEN size(a.description) > size(coalesce(ach.description, ''))
+                    THEN a.description ELSE ach.description END,
+                ach.batch_id = $batch_id
+            WITH ach, a
+            WHERE a.earner IS NOT NULL AND a.earner <> ''
+            MATCH (ch:Character {canonical_name: a.earner})
+            MERGE (ch)-[r:EARNED]->(ach)
+            ON CREATE SET r.chapter = a.chapter
+            """,
+            {
+                "achievements": achievements,
+                "book_id": book_id,
+                "batch_id": batch_id,
+            },
+        )
+
+        # V3: StateChange ledger for achievements
+        state_change_data = [
+            {
+                "character_name": a["earner"],
+                "category": "achievement",
+                "name": a["name"],
+                "action": "earn",
+            }
+            for a in achievements
+            if a.get("earner")
+        ]
+        if state_change_data:
+            await self._create_state_changes(
+                book_id, chapter_number, state_change_data, batch_id,
+            )
+
+        logger.info(
+            "achievements_upserted",
+            book_id=book_id,
+            chapter=chapter_number,
+            count=len(achievements),
+        )
+        return len(achievements)
 
     # ── GRANTS relations ─────────────────────────────────────────────────
 

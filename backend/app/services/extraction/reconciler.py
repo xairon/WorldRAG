@@ -197,3 +197,73 @@ async def reconcile_chapter_result(
         alias_map=full_alias_map,
         conflicts=conflicts,
     )
+
+
+async def reconcile_with_cross_book(
+    result: ChapterExtractionResult,
+    series_registry: dict | None = None,
+) -> ReconciliationResult:
+    """V3 reconciliation with cross-book entity matching.
+
+    If series_registry is provided, attempts to match new entities
+    against entities from previous books in the series.
+
+    Args:
+        result: Completed extraction result to reconcile.
+        series_registry: Serialized EntityRegistry from previous books.
+
+    Returns:
+        ReconciliationResult with cross-book aliases merged in.
+    """
+    # First, run the existing reconciliation
+    base_result = await reconcile_chapter_result(result)
+
+    if not series_registry:
+        return base_result
+
+    # Cross-book matching: check new entities against series registry
+    from app.services.extraction.entity_registry import EntityRegistry
+
+    registry = EntityRegistry.from_dict(series_registry)
+
+    additional_aliases: dict[str, str] = {}
+    entity_lists: list[list] = [
+        result.characters.characters,
+        result.systems.skills,
+        result.systems.classes,
+        result.systems.titles,
+        result.events.events,
+        result.lore.locations,
+        result.lore.items,
+        result.lore.creatures,
+        result.lore.factions,
+        result.lore.concepts,
+    ]
+    for entity_type_entities in entity_lists:
+        if not entity_type_entities:
+            continue
+        for entity in entity_type_entities:
+            name = getattr(entity, "name", None) or getattr(
+                entity, "canonical_name", None
+            )
+            if not name:
+                continue
+            match = registry.lookup(name)
+            if match and match.canonical_name != name.lower().strip():
+                additional_aliases[name] = match.canonical_name
+
+    # Merge additional aliases into the result
+    merged_aliases = {**base_result.alias_map, **additional_aliases}
+
+    logger.info(
+        "cross_book_reconciliation_completed",
+        base_aliases=len(base_result.alias_map),
+        cross_book_aliases=len(additional_aliases),
+        total_aliases=len(merged_aliases),
+    )
+
+    return ReconciliationResult(
+        merges=base_result.merges,
+        alias_map=merged_aliases,
+        conflicts=base_result.conflicts,
+    )
