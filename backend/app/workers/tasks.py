@@ -41,6 +41,19 @@ async def process_book_extraction(
     On chapter failure: pushes to DLQ (individual chapters).
     On total failure: raises to let arq mark job as failed.
     """
+    from app.config import settings
+
+    if settings.use_v3_pipeline:
+        # Delegate to V3 pipeline
+        return await process_book_extraction_v3(
+            ctx,
+            book_id,
+            genre,
+            series_name,
+            chapters,
+            settings.extraction_language,
+        )
+
     driver = ctx["neo4j_driver"]
     dlq = ctx["dlq"]
     cost_tracker = ctx.get("cost_tracker")

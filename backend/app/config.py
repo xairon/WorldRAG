@@ -88,6 +88,7 @@ class Settings(BaseSettings):
     arq_keep_result: int = 86400  # keep job results for 24h
 
     # --- V3 Extraction Pipeline ---
+    use_v3_pipeline: bool = True  # Toggle V3 pipeline as default
     extraction_language: str = "fr"
     ontology_version: str = "3.0.0"
 
