@@ -211,6 +211,7 @@ async def list_books(
                 total_chapters=b.get("total_chapters", 0),
                 status=b.get("status", "pending"),
                 chapters_processed=b.get("chapters_processed", 0),
+                total_cost_usd=b.get("total_cost_usd", 0.0),
             )
         )
     return books

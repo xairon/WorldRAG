@@ -1,6 +1,6 @@
 "use client"
 
-import { ZoomIn, ZoomOut, Maximize2, RotateCcw } from "lucide-react"
+import { ZoomIn, ZoomOut, Maximize2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"

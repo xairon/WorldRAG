@@ -31,14 +31,20 @@ export function deleteBook(id: string): Promise<{ deleted: boolean }> {
   return apiFetch(`/books/${id}`, { method: "DELETE" })
 }
 
-export interface BookJob {
+export interface BookJobStatus {
   job_id: string
   status: string
-  function: string
-  enqueue_time: string
-  result?: Record<string, unknown>
 }
 
-export function getBookJobs(id: string): Promise<BookJob[]> {
+export interface BookJobs {
+  book_id: string
+  book_status: string
+  jobs: {
+    extraction: BookJobStatus
+    embedding: BookJobStatus
+  }
+}
+
+export function getBookJobs(id: string): Promise<BookJobs> {
   return apiFetch(`/books/${id}/jobs`)
 }

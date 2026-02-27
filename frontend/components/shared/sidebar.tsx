@@ -43,7 +43,7 @@ const NAV_SECTIONS = [
 
 export function Sidebar() {
   const pathname = usePathname()
-  const { sidebarCollapsed, toggleSidebar } = useUIStore()
+  const { mobileSidebarOpen, toggleSidebar } = useUIStore()
 
   return (
     <>
@@ -53,11 +53,11 @@ export function Sidebar() {
         className="fixed top-3 left-3 z-50 md:hidden rounded-lg bg-slate-900 border border-slate-800 p-2"
         aria-label="Toggle sidebar"
       >
-        {sidebarCollapsed ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+        {mobileSidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
       </button>
 
       {/* Mobile overlay */}
-      {sidebarCollapsed && (
+      {mobileSidebarOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/50 md:hidden"
           onClick={toggleSidebar}
@@ -69,7 +69,7 @@ export function Sidebar() {
         className={cn(
           "fixed left-0 top-0 z-40 h-screen w-60 border-r border-slate-800 bg-slate-950/95 backdrop-blur-xl transition-transform",
           "md:translate-x-0",
-          sidebarCollapsed ? "translate-x-0" : "-translate-x-full md:translate-x-0",
+          mobileSidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0",
         )}
       >
         <div className="flex h-14 items-center gap-2 px-5 border-b border-slate-800">

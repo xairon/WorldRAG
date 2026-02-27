@@ -250,11 +250,3 @@ export function SigmaGraph({
   )
 }
 
-// Utility to zoom the camera
-export function useSigmaActions(sigmaRef: React.RefObject<Sigma | null>) {
-  return {
-    zoomIn: () => sigmaRef.current?.getCamera().animatedZoom({ duration: 300 }),
-    zoomOut: () => sigmaRef.current?.getCamera().animatedUnzoom({ duration: 300 }),
-    resetZoom: () => sigmaRef.current?.getCamera().animatedReset({ duration: 300 }),
-  }
-}

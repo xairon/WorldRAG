@@ -116,14 +116,14 @@ function GraphExplorerContent() {
     }
   }
 
-  function handleNodeClick(nodeId: string, name: string, labels: string[]) {
+  const handleNodeClick = useCallback((nodeId: string, name: string, labels: string[]) => {
     const node: GraphNode = {
       id: nodeId,
       name,
       labels,
     }
     setSelectedNode(node)
-  }
+  }, [setSelectedNode])
 
   function handleSearchResultClick(node: GraphNode) {
     setSelectedNode(node)

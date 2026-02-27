@@ -19,7 +19,7 @@ export type {
 
 export { apiFetch } from "./client"
 export { listBooks, getBook, getBookStats, uploadBook, extractBook, deleteBook, getBookJobs } from "./books"
-export type { BookJob } from "./books"
+export type { BookJobs, BookJobStatus } from "./books"
 export { getGraphStats, searchEntities, getSubgraph, getCharacterProfile, getTimeline } from "./graph"
 export { chatQuery, chatStream } from "./chat"
 export type { ChatStreamSourcesEvent, ChatStreamCallbacks, ChatQueryOptions } from "./chat"
