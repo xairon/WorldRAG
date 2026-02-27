@@ -12,9 +12,10 @@ Supported formats:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import re
 from functools import partial
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from app.core.logging import get_logger
 from app.schemas.book import ChapterData, ParagraphData, ParagraphType
@@ -237,6 +238,92 @@ def _build_paragraphs_from_html(html: str) -> list[ParagraphData]:
     return paragraphs
 
 
+# --- ePub metadata extraction ---
+
+# Patterns for non-chapter items (TOC, cover, copyright, etc.)
+_SKIP_FILENAME_PATTERNS = re.compile(
+    r"(?:^|/)(?:toc|nav|cover|copyright|colophon|title(?:page)?|dedication|about|"
+    r"also[-_]by|acknowledgment|appendix|index|glossary|author[-_]note|"
+    r"frontmatter|backmatter|halftitle)(?:\.x?html?)?$",
+    re.IGNORECASE,
+)
+
+_SKIP_TITLE_PATTERNS = re.compile(
+    r"^\s*(?:sommaire|table\s+(?:of\s+contents|des\s+mati[eè]res)|"
+    r"contents|copyright|couverture|cover|d[eé]dicace|remerciements|"
+    r"acknowledgments?|also\s+by|about\s+the\s+author|glossaire|glossary|"
+    r"titre|title\s*page|table\s+of\s+contents)\s*$",
+    re.IGNORECASE,
+)
+
+
+def _is_epub_boilerplate(item_name: str, first_heading: str, text: str) -> bool:
+    """Check if an epub item is boilerplate (TOC, cover, copyright, etc.)."""
+    # Check filename
+    if _SKIP_FILENAME_PATTERNS.search(item_name):
+        return True
+    # Check first heading text
+    if first_heading and _SKIP_TITLE_PATTERNS.match(first_heading):
+        return True
+    # Check if content is mostly links (typical of TOC pages)
+    # Count links vs total paragraphs — TOC pages are 80%+ links
+    if text.count("\n") > 5:
+        lines = text.strip().split("\n")
+        short_lines = sum(1 for ln in lines if len(ln.strip()) < 80)
+        if short_lines > len(lines) * 0.8 and len(lines) > 10:
+            return True
+    return False
+
+
+async def extract_epub_metadata(file_path: Path) -> dict[str, Any]:
+    """Extract OPF/Dublin Core metadata from an epub file.
+
+    Reads the epub's OPF package metadata without parsing full chapter content.
+    Returns a dict with keys: title, author, language, date, description, publisher, subject.
+    Values are strings or None if not present.
+    """
+    from ebooklib import epub
+
+    book = await asyncio.to_thread(epub.read_epub, str(file_path))
+
+    def _first_dc(field: str) -> str | None:
+        """Get first Dublin Core metadata value."""
+        values = book.get_metadata("DC", field)
+        if values:
+            val = values[0]
+            # ebooklib returns tuples: (value, attributes)
+            return val[0] if isinstance(val, tuple) else str(val)
+        return None
+
+    metadata: dict[str, Any] = {
+        "title": _first_dc("title"),
+        "author": _first_dc("creator"),
+        "language": _first_dc("language"),
+        "date": _first_dc("date"),
+        "description": _first_dc("description"),
+        "publisher": _first_dc("publisher"),
+        "subject": _first_dc("subject"),
+    }
+
+    # Try to extract series info from calibre metadata (common for ebooks)
+    opf_meta = book.get_metadata("OPF", "meta")
+    for _val, attrs in opf_meta:
+        if attrs.get("name") == "calibre:series":
+            metadata["series_name"] = attrs.get("content")
+        elif attrs.get("name") == "calibre:series_index":
+            with contextlib.suppress(ValueError, TypeError):
+                metadata["order_in_series"] = int(float(attrs.get("content", "0")))
+
+    logger.info(
+        "epub_metadata_extracted",
+        file=str(file_path),
+        title=metadata.get("title"),
+        author=metadata.get("author"),
+        language=metadata.get("language"),
+    )
+    return metadata
+
+
 # --- ePub parsing ---
 
 
@@ -244,7 +331,8 @@ async def parse_epub(file_path: Path) -> list[ChapterData]:
     """Parse an ePub file into chapters.
 
     Uses ebooklib to read the spine, then BeautifulSoup to extract
-    text from each HTML chapter document.
+    text from each HTML chapter document. Filters out non-chapter items
+    like TOC, cover, copyright, etc.
     """
     import ebooklib
     from bs4 import BeautifulSoup
@@ -255,6 +343,11 @@ async def parse_epub(file_path: Path) -> list[ChapterData]:
     chapter_num = 0
 
     for item in book.get_items_of_type(ebooklib.ITEM_DOCUMENT):
+        # Skip EPUB3 navigation documents
+        item_props = item.get_properties() if hasattr(item, "get_properties") else []
+        if item_props and "nav" in item_props:
+            continue
+
         content = item.get_content().decode("utf-8", errors="replace")
         soup = BeautifulSoup(content, "html.parser")
 
@@ -268,13 +361,21 @@ async def parse_epub(file_path: Path) -> list[ChapterData]:
         if len(text.strip()) < 200:
             continue
 
+        # Extract heading for boilerplate detection
+        heading = soup.find(["h1", "h2", "h3"])
+        heading_text = heading.get_text(strip=True) if heading else ""
+
+        # Skip boilerplate items (TOC, cover, copyright, etc.)
+        item_name = item.get_name() if hasattr(item, "get_name") else ""
+        if _is_epub_boilerplate(item_name, heading_text, text):
+            logger.debug("epub_skip_boilerplate", item=item_name, heading=heading_text)
+            continue
+
         chapter_num += 1
         title = ""
 
-        # Try to extract chapter title from first heading
-        heading = soup.find(["h1", "h2", "h3"])
-        if heading:
-            title = heading.get_text(strip=True)
+        if heading_text:
+            title = heading_text
             # If title looks like "Chapter X: Title", parse the number
             for pattern in CHAPTER_PATTERNS:
                 match = pattern.match(title)

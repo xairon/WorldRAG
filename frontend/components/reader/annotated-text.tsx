@@ -120,8 +120,9 @@ export function AnnotatedText({
     [text, filteredAnnotations],
   )
 
+  // Use span (not div) so it can be placed inside <p> from ParagraphRenderer
   return (
-    <div className={cn("text-sm leading-7 text-slate-300 whitespace-pre-wrap", className)}>
+    <span className={cn(className)}>
       {segments.map((seg, i) =>
         seg.annotation ? (
           <AnnotatedSpan key={i} segment={seg} annotation={seg.annotation} bookId={bookId} chapter={chapter} />
@@ -129,7 +130,7 @@ export function AnnotatedText({
           <span key={i}>{seg.text}</span>
         ),
       )}
-    </div>
+    </span>
   )
 }
 
