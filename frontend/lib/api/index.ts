@@ -27,6 +27,8 @@ export { getChapterText, getChapterEntities, getChapterParagraphs } from "./read
 export type { ChapterText, EntityAnnotation, ChapterEntities, ChapterParagraphs, ParagraphData } from "./reader"
 export { getEntityWiki } from "./entity"
 export type { EntityWiki, EntityConnection, EntityAppearance } from "./entity"
+export { getPipelineConfig } from "./pipeline"
+export type { PipelineConfig, PromptInfo, RegexPatternInfo, OntologyNodeType, OntologyRelType } from "./pipeline"
 export { getCharacterStateAt, getCharacterProgression, compareCharacterState, getCharacterSummary } from "./characters"
 export type {
   CharacterStateSnapshot, CharacterSummary, CharacterComparison, ProgressionTimeline,

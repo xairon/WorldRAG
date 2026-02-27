@@ -33,6 +33,12 @@ const NAV_SECTIONS = [
       { href: "/characters", label: "Characters", icon: Users },
     ],
   },
+  {
+    label: "Pipeline",
+    items: [
+      { href: "/pipeline", label: "Dashboard", icon: Telescope },
+    ],
+  },
 ]
 
 export function Sidebar() {

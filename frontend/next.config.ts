@@ -1,6 +1,14 @@
-import type { NextConfig } from "next";
+import type { NextConfig } from "next"
+
+const BACKEND_URL = process.env.BACKEND_URL ?? "http://backend:8000"
 
 const nextConfig: NextConfig = {
+  output: "standalone",
+  async rewrites() {
+    return [
+      { source: "/api/:path*", destination: `${BACKEND_URL}/api/:path*` },
+    ]
+  },
   async headers() {
     return [
       {
@@ -12,12 +20,12 @@ const nextConfig: NextConfig = {
           {
             key: "Content-Security-Policy",
             value:
-              "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' http://localhost:8000;",
+              "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self';",
           },
         ],
       },
-    ];
+    ]
   },
-};
+}
 
-export default nextConfig;
+export default nextConfig
