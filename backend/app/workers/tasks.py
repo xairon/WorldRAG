@@ -201,9 +201,9 @@ async def process_book_extraction_v3(
         chapter_regex = {k: v for k, v in chapter_regex.items() if k in chapter_set}
 
     # Import here to avoid circular import at module load
-    from app.services.graph_builder import build_chapter_graph_v3, _is_non_content_chapter
-    from app.services.extraction.entity_registry import EntityRegistry
     from app.core.exceptions import CostCeilingError
+    from app.services.extraction.entity_registry import EntityRegistry
+    from app.services.graph_builder import _is_non_content_chapter, build_chapter_graph_v3
 
     # Initialize entity registry
     entity_registry = EntityRegistry()
@@ -272,7 +272,7 @@ async def process_book_extraction_v3(
     cost_ceiling_hit = False
 
     # Process chapters SEQUENTIALLY (narrative order matters for EntityRegistry)
-    for idx, chapter in enumerate(content_chapters):
+    for _idx, chapter in enumerate(content_chapters):
         regex_json = chapter_regex.get(chapter.number, "[]")
         try:
             stats = await build_chapter_graph_v3(
@@ -292,16 +292,21 @@ async def process_book_extraction_v3(
             chapter_stats.append(stats)
 
             # Update registry with new entities from this chapter's alias_map
-            for old_name, new_name in (stats.get("alias_map") or {}).items():
+            for _old_name, new_name in (stats.get("alias_map") or {}).items():
                 entity_registry.add(new_name, "Unknown")
 
             # Save registry after each chapter
             await book_repo.save_entity_registry(
-                book_id, entity_registry.to_dict(), ontology_version,
+                book_id,
+                entity_registry.to_dict(),
+                ontology_version,
             )
 
             await _publish_progress(
-                chapter.number, len(content_chapters), "extracted", stats.get("total_entities", 0),
+                chapter.number,
+                len(content_chapters),
+                "extracted",
+                stats.get("total_entities", 0),
             )
 
         except CostCeilingError:
