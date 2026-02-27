@@ -3,6 +3,9 @@
 # Series-specific entities and relationships unique to The Primal Hunter by Zogarth.
 # This layer extends litrpg.yaml with Primal Hunter-specific concepts.
 
+version: "3.0.0"
+layer: series
+
 extends: litrpg.yaml
 
 series_info:

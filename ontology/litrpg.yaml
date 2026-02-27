@@ -3,6 +3,9 @@
 # Genre-specific entities for progression fantasy and LitRPG systems.
 # Extends Layer 1 Core Narrative with game-like progression mechanics.
 
+version: "3.0.0"
+layer: genre
+
 extends: core.yaml
 
 node_types:
@@ -66,6 +69,40 @@ node_types:
       species: { type: string }
       threat_level: { type: string }  # e.g., "F-grade", "E-grade", etc.
       habitat: { type: string }
+
+  StatBlock:
+    properties:
+      character_name: { type: string, required: true }
+      stats: { type: json }
+      total: { type: integer }
+      source: { type: enum, values: [blue_box, narrative, inferred] }
+      chapter: { type: integer, required: true }
+    constraints:
+      - unique: [character_name, chapter]
+
+  QuestObjective:
+    properties:
+      name: { type: string, required: true }
+      description: { type: string }
+      status: { type: enum, values: [active, completed, failed, abandoned] }
+      chapter_received: { type: integer }
+      chapter_completed: { type: integer }
+    constraints:
+      - unique: [name]
+
+  Achievement:
+    properties:
+      name: { type: string, required: true, unique: true }
+      description: { type: string }
+      effects: { type: string_array }
+      earned_by: { type: string }
+
+  Realm:
+    properties:
+      name: { type: string, required: true, unique: true }
+      grade: { type: string }
+      description: { type: string }
+      order: { type: integer }
 
 relationship_types:
   # === CHARACTER PROGRESSION ===
@@ -154,6 +191,71 @@ regex_patterns:
     pattern: '(?:Evolution|Upgrade|Breakthrough).*?(?:→|->|=>)\s*(.+?)(?:\n|$)'
     entity_type: Evolution
     captures: { target: 1 }
+
+  skill_evolved:
+    pattern: '\[(?:Skill|Ability)\s+(?:Evolved|Upgraded|Enhanced):\s*(.+?)\s*(?:→|->|=>)\s*(.+?)(?:\s*-\s*(.+?))?\]'
+    entity_type: SkillEvolution
+    captures: { old_name: 1, new_name: 2, rank: 3 }
+
+  skill_rank_up:
+    pattern: '\[(.+?)\s+(?:has\s+)?reached\s+(?:rank|level)\s+(.+?)\]'
+    entity_type: SkillRankUp
+    captures: { name: 1, new_rank: 2 }
+
+  class_evolved:
+    pattern: '(?:Class|Classe)\s+(?:Evolved|Advanced|Upgraded):\s*(.+?)\s*(?:→|->|=>)\s*(.+)'
+    entity_type: ClassEvolution
+    captures: { old_class: 1, new_class: 2 }
+
+  stat_block:
+    pattern: '(?:Stats?:?\s*\n)((?:\s*\w+:\s*\d+[\s,]*)+)'
+    entity_type: StatBlock
+    captures: { block_text: 1 }
+
+  xp_gain:
+    pattern: '\+(\d[\d,]*)\s*(?:XP|Experience|Exp)'
+    entity_type: XPGain
+    captures: { amount: 1 }
+
+  quest_received:
+    pattern: '\[(?:Quest|Objective|Mission)\s+(?:Received|Accepted|Updated|Started):\s*(.+?)\]'
+    entity_type: QuestReceived
+    captures: { name: 1 }
+
+  quest_completed:
+    pattern: '\[(?:Quest|Objective|Mission)\s+(?:Completed|Fulfilled|Finished):\s*(.+?)\]'
+    entity_type: QuestCompleted
+    captures: { name: 1 }
+
+  achievement_unlocked:
+    pattern: '\[(?:Achievement|Accomplishment)\s+(?:Unlocked|Earned|Gained):\s*(.+?)\]'
+    entity_type: Achievement
+    captures: { name: 1 }
+
+  realm_breakthrough:
+    pattern: '\[(?:Breakthrough|Evolution|Advancement).*?(\w+-grade)\]'
+    entity_type: RealmBreakthrough
+    captures: { new_grade: 1 }
+
+  item_acquired:
+    pattern: '\[(?:Item\s+)?(?:Acquired|Looted|Received|Found):\s*(.+?)(?:\s*-\s*(.+?))?\]'
+    entity_type: ItemAcquired
+    captures: { name: 1, rarity: 2 }
+
+  death_event:
+    pattern: '\[(.+?)\s+(?:has\s+)?(?:been\s+)?(?:slain|killed|defeated|fell)\]'
+    entity_type: DeathEvent
+    captures: { entity_name: 1 }
+
+  dungeon_entered:
+    pattern: '\[(?:Entering|Entered)\s+(?:Dungeon|Instance|Zone):\s*(.+?)\]'
+    entity_type: DungeonEvent
+    captures: { name: 1 }
+
+  damage_dealt:
+    pattern: '(?:dealt|inflicted)\s+(\d[\d,]*)\s+(?:damage|dégâts|points?\s+de\s+d[eé]gâts)'
+    entity_type: DamageEvent
+    captures: { amount: 1 }
 
   blue_box_generic:
     pattern: '\[([^\[\]]{5,200})\]'
