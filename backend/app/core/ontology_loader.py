@@ -74,6 +74,10 @@ class OntologyLoader:
     regex_patterns: dict[str, dict] = field(default_factory=dict)
     few_shot_examples: dict[str, list] = field(default_factory=dict)
     layers_loaded: list[str] = field(default_factory=list)
+    _layer_versions: dict[str, str] = field(default_factory=dict)
+    _layer_labels: dict[str, str] = field(default_factory=dict)
+    _node_type_origin: dict[str, str] = field(default_factory=dict)
+    _regex_origin: dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def from_layers(
@@ -140,6 +144,12 @@ class OntologyLoader:
         if not data:
             return
 
+        # Track version and layer label from YAML metadata
+        if "version" in data:
+            self._layer_versions[layer_name] = data["version"]
+        if "layer" in data:
+            self._layer_labels[layer_name] = data["layer"]
+
         # Merge node types
         for type_name, type_def in (data.get("node_types") or {}).items():
             props = {}
@@ -168,6 +178,7 @@ class OntologyLoader:
                 self.node_types[type_name].indexes.extend(node_type.indexes)
             else:
                 self.node_types[type_name] = node_type
+                self._node_type_origin[type_name] = layer_name
 
         # Merge relationship types
         for rel_name, rel_def in (data.get("relationship_types") or {}).items():
@@ -194,6 +205,8 @@ class OntologyLoader:
 
         # Regex patterns
         if "regex_patterns" in data:
+            for pattern_name in data["regex_patterns"]:
+                self._regex_origin[pattern_name] = layer_name
             self.regex_patterns.update(data["regex_patterns"])
 
         # Few-shot examples
@@ -272,6 +285,96 @@ class OntologyLoader:
     def get_relationship_type_names(self) -> list[str]:
         """Get all registered relationship type names."""
         return list(self.relationship_types.keys())
+
+    # ── V3: Versioning & Schema Export ────────────────────────────────────
+
+    @property
+    def version(self) -> str:
+        """Combined version string from all loaded layers."""
+        if not self._layer_versions:
+            return "unknown"
+        versions = list(self._layer_versions.values())
+        # Return the highest version (all layers should match in practice)
+        return max(versions)
+
+    @property
+    def active_layer_names(self) -> list[str]:
+        """Ordered list of layer labels (core, genre, series)."""
+        return [
+            self._layer_labels.get(name, name)
+            for name in self.layers_loaded
+        ]
+
+    def get_node_types_for_layer(self, layer_label: str) -> list[str]:
+        """Get node type names originating from a specific layer.
+
+        Args:
+            layer_label: Layer label ('core', 'genre', 'series') or
+                         layer name ('litrpg', 'primal_hunter').
+        """
+        # Resolve label to layer name(s)
+        target_names: set[str] = set()
+        for name, label in self._layer_labels.items():
+            if label == layer_label or name == layer_label:
+                target_names.add(name)
+        if not target_names:
+            target_names.add(layer_label)
+
+        return [
+            type_name
+            for type_name, origin in self._node_type_origin.items()
+            if origin in target_names
+        ]
+
+    def get_all_node_types(self) -> list[str]:
+        """Get all node type names across all layers."""
+        return list(self.node_types.keys())
+
+    def to_json_schema(self, type_names: list[str] | None = None) -> dict[str, Any]:
+        """Export node types as JSON-serializable schema for prompt injection.
+
+        Args:
+            type_names: Specific types to export. None exports all.
+
+        Returns:
+            Dict of {TypeName: {properties: {name: type_info, ...}}}
+        """
+        targets = type_names or list(self.node_types.keys())
+        schema: dict[str, Any] = {}
+        for name in targets:
+            node_type = self.node_types.get(name)
+            if not node_type:
+                continue
+            props: dict[str, Any] = {}
+            for prop_name, prop_def in node_type.properties.items():
+                prop_info: dict[str, Any] = {"type": prop_def.type}
+                if prop_def.required:
+                    prop_info["required"] = True
+                if prop_def.values:
+                    prop_info["values"] = prop_def.values
+                if prop_def.default is not None:
+                    prop_info["default"] = prop_def.default
+                props[prop_name] = prop_info
+            schema[name] = {"properties": props}
+            if node_type.constraints:
+                schema[name]["constraints"] = node_type.constraints
+        return schema
+
+    def get_regex_patterns_list(self) -> list[dict[str, Any]]:
+        """Return regex patterns as a list of dicts with name and layer info.
+
+        Each dict: {name, pattern, entity_type, captures, layer}
+        """
+        result: list[dict[str, Any]] = []
+        for name, spec in self.regex_patterns.items():
+            result.append({
+                "name": name,
+                "pattern": spec.get("pattern", ""),
+                "entity_type": spec.get("entity_type", ""),
+                "captures": spec.get("captures", {}),
+                "layer": self._regex_origin.get(name, "unknown"),
+            })
+        return result
 
 
 # ── Module-level singleton ─────────────────────────────────────────────────
