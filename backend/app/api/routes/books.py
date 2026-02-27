@@ -35,7 +35,7 @@ from app.schemas.pipeline import (  # noqa: TC001 — runtime use by FastAPI
 )
 from app.services.chunking import chunk_chapter
 from app.services.extraction.regex_extractor import RegexExtractor
-from app.services.ingestion import ingest_file
+from app.services.ingestion import extract_epub_metadata, ingest_file
 
 if TYPE_CHECKING:
     from arq.connections import ArqRedis
@@ -91,23 +91,10 @@ async def upload_book(
 
     repo = BookRepository(driver)
 
-    # Use filename as title if not provided
-    book_title = title or Path(file.filename).stem
-
-    # Create book in Neo4j
-    book_id = await repo.create_book(
-        title=book_title,
-        series_name=series_name,
-        order_in_series=order_in_series,
-        author=author,
-        genre=genre,
-    )
-
     tmp_path: Path | None = None
+    book_id: str | None = None
 
     try:
-        await repo.update_book_status(book_id, ProcessingStatus.INGESTING.value)
-
         # Save uploaded file to temp location (async + size enforcement)
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             await asyncio.to_thread(shutil.copyfileobj, file.file, tmp)
@@ -120,6 +107,32 @@ async def upload_book(
             raise ValidationError(
                 f"File too large ({file_size:,} bytes). Max: {MAX_FILE_SIZE:,} bytes."
             )
+
+        # Auto-detect metadata from epub OPF (title, author, series, etc.)
+        epub_meta: dict = {}
+        if suffix == ".epub":
+            epub_meta = await extract_epub_metadata(tmp_path)
+            logger.info(
+                "epub_metadata_detected",
+                metadata={k: v for k, v in epub_meta.items() if v},
+            )
+
+        # Use epub metadata as defaults, user-provided values take priority
+        book_title = title or epub_meta.get("title") or Path(file.filename).stem
+        book_author = author or epub_meta.get("author")
+        book_series = series_name or epub_meta.get("series_name")
+        book_order = order_in_series or epub_meta.get("order_in_series")
+
+        # Create book in Neo4j
+        book_id = await repo.create_book(
+            title=book_title,
+            series_name=book_series,
+            order_in_series=book_order,
+            author=book_author,
+            genre=genre,
+        )
+
+        await repo.update_book_status(book_id, ProcessingStatus.INGESTING.value)
 
         # 1. Parse file into chapters
         chapters = await ingest_file(tmp_path)
@@ -181,7 +194,8 @@ async def upload_book(
         raise
     except Exception as e:
         logger.exception("book_ingestion_failed", book_id=book_id)
-        await repo.update_book_status(book_id, ProcessingStatus.FAILED.value)
+        if book_id:
+            await repo.update_book_status(book_id, ProcessingStatus.FAILED.value)
         raise ExtractionError("Ingestion failed") from e
     finally:
         # Cleanup temp file

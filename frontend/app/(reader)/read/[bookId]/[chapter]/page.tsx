@@ -150,10 +150,10 @@ export default function ReaderPage() {
       </div>
 
       {/* Chapter header */}
-      <div>
-        <div className="flex items-center gap-3 mb-1">
+      <div className="text-center py-4">
+        <div className="flex items-center justify-center gap-3 mb-2">
           <BookOpen className="h-5 w-5 text-indigo-400" />
-          <h1 className="text-2xl font-bold tracking-tight">{chapterText.title}</h1>
+          <h1 className="text-2xl font-bold tracking-tight font-serif">{chapterText.title}</h1>
         </div>
         <p className="text-xs text-slate-500">
           {chapterText.word_count.toLocaleString()} words
@@ -175,28 +175,33 @@ export default function ReaderPage() {
 
       {/* Chapter content */}
       <div className="flex gap-6">
-        {/* Main content */}
-        <div className="flex-1 rounded-xl border border-slate-800 bg-slate-900/30 p-6 md:p-10">
+        {/* Main reading area */}
+        <div className="flex-1 rounded-xl border border-slate-800/60 bg-slate-900/20 px-8 py-10 md:px-14 md:py-12 max-w-3xl mx-auto">
           {hasParagraphs ? (
-            // V2: Paragraph-by-paragraph rendering with type styling
-            <div>
+            <div className="space-y-0">
               {paragraphs.map((para) => (
                 <ParagraphRenderer key={para.index} paragraph={para}>
                   <AnnotatedText
                     text={para.text}
                     annotations={paragraphAnnotations.get(para.index) ?? []}
                     mode={mode}
+                    bookId={bookId}
+                    chapter={chapterNum}
                   />
                 </ParagraphRenderer>
               ))}
             </div>
           ) : (
             // V1 fallback: Monolithic text rendering
-            <AnnotatedText
-              text={chapterText.text}
-              annotations={filteredAnnotations}
-              mode={mode}
-            />
+            <div className="text-[1.05rem] leading-[1.9] text-slate-200 font-serif whitespace-pre-wrap">
+              <AnnotatedText
+                text={chapterText.text}
+                annotations={filteredAnnotations}
+                mode={mode}
+                bookId={bookId}
+                chapter={chapterNum}
+              />
+            </div>
           )}
         </div>
 
