@@ -67,7 +67,7 @@ class Settings(BaseSettings):
     cohere_api_key: str = ""
 
     # --- LangFuse ---
-    langfuse_host: str = "http://localhost:3001"
+    langfuse_host: str = ""
     langfuse_public_key: str = ""
     langfuse_secret_key: str = ""
 
@@ -86,6 +86,10 @@ class Settings(BaseSettings):
     arq_max_jobs: int = 5
     arq_job_timeout: int = 3600  # 1 hour per job (full book extraction)
     arq_keep_result: int = 86400  # keep job results for 24h
+
+    # --- V3 Extraction Pipeline ---
+    extraction_language: str = "fr"
+    ontology_version: str = "3.0.0"
 
     # --- Derived ---
     debug: bool = False
