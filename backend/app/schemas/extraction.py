@@ -16,7 +16,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-
 # ── V3 Base Schema ─────────────────────────────────────────────────────
 
 
@@ -278,6 +277,48 @@ class GroundedEntity(BaseModel):
     confidence: float = Field(1.0, description="Grounding confidence: 1.0 for exact, 0.7 for fuzzy")
 
 
+# ── Layer 3: Series-specific entities (V3) ───────────────────────────────
+
+
+class ExtractedBloodline(BaseModel):
+    """A bloodline extracted from text (Primal Hunter specific)."""
+
+    name: str = Field(..., description="Bloodline name")
+    description: str = ""
+    effects: list[str] = Field(default_factory=list)
+    origin: str = ""
+    owner: str = ""
+    awakened_chapter: int | None = None
+
+
+class ExtractedProfession(BaseModel):
+    """A profession extracted from text."""
+
+    name: str = Field(..., description="Profession name")
+    tier: int | None = None
+    profession_type: str = ""
+    owner: str = ""
+    acquired_chapter: int | None = None
+
+
+class ExtractedChurch(BaseModel):
+    """A primordial church/deity relation."""
+
+    deity_name: str = Field(..., description="Deity or Primordial name")
+    domain: str = ""
+    blessing: str = ""
+    worshipper: str = ""
+    valid_from_chapter: int | None = None
+
+
+class Layer3ExtractionResult(BaseModel):
+    """Result of Layer 3 series-specific extraction."""
+
+    bloodlines: list[ExtractedBloodline] = Field(default_factory=list)
+    professions: list[ExtractedProfession] = Field(default_factory=list)
+    churches: list[ExtractedChurch] = Field(default_factory=list)
+
+
 # ── Unified extraction result ───────────────────────────────────────────
 
 
@@ -290,6 +331,7 @@ class ChapterExtractionResult(BaseModel):
     systems: SystemExtractionResult = Field(default_factory=SystemExtractionResult)
     events: EventExtractionResult = Field(default_factory=EventExtractionResult)
     lore: LoreExtractionResult = Field(default_factory=LoreExtractionResult)
+    layer3: Layer3ExtractionResult = Field(default_factory=Layer3ExtractionResult)
     grounded_entities: list[GroundedEntity] = Field(default_factory=list)
     alias_map: dict[str, str] = Field(
         default_factory=dict,
@@ -316,6 +358,9 @@ class ChapterExtractionResult(BaseModel):
         count += len(self.lore.creatures)
         count += len(self.lore.factions)
         count += len(self.lore.concepts)
+        count += len(self.layer3.bloodlines)
+        count += len(self.layer3.professions)
+        count += len(self.layer3.churches)
         self.total_entities = count
         return count
 
@@ -380,43 +425,3 @@ class ProvenanceResult(BaseModel):
     provenances: list[SkillProvenance] = Field(default_factory=list)
 
 
-# ── Layer 3: Series-specific entities (V3) ───────────────────────────────
-
-
-class ExtractedBloodline(BaseModel):
-    """A bloodline extracted from text (Primal Hunter specific)."""
-
-    name: str = Field(..., description="Bloodline name")
-    description: str = ""
-    effects: list[str] = Field(default_factory=list)
-    origin: str = ""
-    owner: str = ""
-    awakened_chapter: int | None = None
-
-
-class ExtractedProfession(BaseModel):
-    """A profession extracted from text."""
-
-    name: str = Field(..., description="Profession name")
-    tier: int | None = None
-    profession_type: str = ""
-    owner: str = ""
-    acquired_chapter: int | None = None
-
-
-class ExtractedChurch(BaseModel):
-    """A primordial church/deity relation."""
-
-    deity_name: str = Field(..., description="Deity or Primordial name")
-    domain: str = ""
-    blessing: str = ""
-    worshipper: str = ""
-    valid_from_chapter: int | None = None
-
-
-class Layer3ExtractionResult(BaseModel):
-    """Result of Layer 3 series-specific extraction."""
-
-    bloodlines: list[ExtractedBloodline] = Field(default_factory=list)
-    professions: list[ExtractedProfession] = Field(default_factory=list)
-    churches: list[ExtractedChurch] = Field(default_factory=list)
