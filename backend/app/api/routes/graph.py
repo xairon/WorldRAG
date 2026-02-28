@@ -366,12 +366,17 @@ async def get_book_subgraph(
         return {"nodes": [], "edges": []}
 
     row = results[0]
-    # Deduplicate nodes by id
+    # Deduplicate nodes by id, and optionally filter by label
     seen_ids: set[str] = set()
     unique_nodes = []
     for n in row.get("nodes", []):
         nid = n.get("id")
         if nid and nid not in seen_ids:
+            # If label filter active, only include nodes matching that label
+            if label and label in ALLOWED_LABELS:
+                node_labels = n.get("labels", [])
+                if label not in node_labels:
+                    continue
             seen_ids.add(nid)
             unique_nodes.append(n)
 
