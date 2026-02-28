@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from app.api.auth import require_admin
 from app.api.dependencies import get_arq_pool, get_cost_tracker, get_dlq
@@ -56,10 +56,13 @@ async def get_book_costs(
 
 @router.get("/dlq", dependencies=[Depends(require_admin)])
 async def list_dlq(
+    book_id: str | None = Query(None, description="Filter by book ID"),
     dlq: DeadLetterQueue = Depends(get_dlq),
 ) -> dict:
-    """List all entries in the Dead Letter Queue."""
+    """List all entries in the Dead Letter Queue, optionally filtered by book."""
     entries = await dlq.list_all()
+    if book_id:
+        entries = [e for e in entries if e.book_id == book_id]
     return {
         "count": len(entries),
         "entries": [
