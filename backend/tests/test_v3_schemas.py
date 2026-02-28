@@ -1,5 +1,7 @@
 """Tests for V3 extraction schemas."""
 
+from typing import Literal
+
 import pytest
 from pydantic import ValidationError
 
@@ -74,7 +76,7 @@ class TestBaseExtractedEntity:
                 char_offset_start=0,
                 char_offset_end=1,
                 chapter_number=1,
-                extraction_layer="invalid",
+                extraction_layer="invalid",  # type: ignore[arg-type]
                 extraction_phase=1,
                 ontology_version="3.0.0",
             )
@@ -115,7 +117,6 @@ class TestExtractedCharacterV3:
             aliases=["the hunter"],
             role="protagonist",
             description="An archer",
-            context="",
         )
         assert char.status == "alive"
         assert char.last_seen_chapter is None
@@ -124,12 +125,15 @@ class TestExtractedCharacterV3:
     def test_status_values(self):
         from app.schemas.extraction import ExtractedCharacter
 
-        for status in ["alive", "dead", "unknown", "transformed"]:
+        statuses: list[Literal["alive", "dead", "unknown", "transformed"]] = [
+            "alive", "dead", "unknown", "transformed",
+        ]
+        for status in statuses:
             char = ExtractedCharacter(
                 name="Test",
                 canonical_name="test",
                 role="minor",
-                context="",
+                description="Test character",
                 status=status,
             )
             assert char.status == status

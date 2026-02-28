@@ -24,6 +24,8 @@ Usage:
 
 from __future__ import annotations
 
+import json
+import uuid
 from typing import Any
 
 from langgraph.graph import END, START, StateGraph
@@ -617,9 +619,6 @@ async def extract_chapter(
 # Phase 4: reconciliation (3-tier dedup + cross-book)
 # Phase 5: grounding + mention detection + registry update
 # ════════════════════════════════════════════════════════════════════════
-
-import json
-import uuid
 
 # ── Phase 0: Regex extraction node ────────────────────────────────────
 
