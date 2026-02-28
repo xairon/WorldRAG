@@ -15,12 +15,13 @@ export type {
   SourceChunk,
   RelatedEntity,
   ChatResponse,
+  DLQEntry,
 } from "./types"
 
 export { apiFetch } from "./client"
-export { listBooks, getBook, getBookStats, uploadBook, extractBook, deleteBook, getBookJobs } from "./books"
+export { listBooks, getBook, getBookStats, uploadBook, extractBook, deleteBook, getBookJobs, getDLQ, retryDLQChapter, retryAllDLQ } from "./books"
 export type { BookJobs, BookJobStatus } from "./books"
-export { getGraphStats, searchEntities, getSubgraph, getCharacterProfile, getTimeline } from "./graph"
+export { getGraphStats, searchEntities, getSubgraph, getCharacterProfile, getTimeline, listEntities } from "./graph"
 export { chatQuery, chatStream } from "./chat"
 export type { ChatStreamSourcesEvent, ChatStreamCallbacks, ChatQueryOptions } from "./chat"
 export { getChapterText, getChapterEntities, getChapterParagraphs } from "./reader"

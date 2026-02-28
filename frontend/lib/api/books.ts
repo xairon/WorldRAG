@@ -1,5 +1,5 @@
 import { apiFetch } from "./client"
-import type { BookInfo, BookDetail, IngestionResult, ExtractionResult } from "./types"
+import type { BookInfo, BookDetail, IngestionResult, ExtractionResult, DLQEntry } from "./types"
 
 export function listBooks(): Promise<BookInfo[]> {
   return apiFetch("/books")
@@ -47,4 +47,19 @@ export interface BookJobs {
 
 export function getBookJobs(id: string): Promise<BookJobs> {
   return apiFetch(`/books/${id}/jobs`)
+}
+
+// ── DLQ (Dead Letter Queue) ─────────────────────────────────────────────────
+
+export function getDLQ(bookId?: string): Promise<{ count: number; entries: DLQEntry[] }> {
+  const q = bookId ? `?book_id=${bookId}` : ""
+  return apiFetch(`/admin/dlq${q}`)
+}
+
+export function retryDLQChapter(bookId: string, chapter: number): Promise<unknown> {
+  return apiFetch(`/admin/dlq/retry/${bookId}/${chapter}`, { method: "POST" })
+}
+
+export function retryAllDLQ(): Promise<unknown> {
+  return apiFetch(`/admin/dlq/retry-all`, { method: "POST" })
 }

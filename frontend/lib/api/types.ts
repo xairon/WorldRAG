@@ -125,3 +125,14 @@ export interface ChatResponse {
   chunks_retrieved: number
   chunks_after_rerank: number
 }
+
+// ── Admin / DLQ ────────────────────────────────────────────────────────────
+
+export interface DLQEntry {
+  book_id: string
+  chapter: number
+  error_type: string
+  error_message: string
+  timestamp: string
+  attempt_count: number
+}
