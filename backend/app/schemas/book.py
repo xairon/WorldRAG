@@ -78,6 +78,7 @@ class ChapterData(BaseModel):
     number: int = Field(..., ge=1)
     title: str = ""
     text: str
+    xhtml: str = ""  # full chapter body HTML from epub (preserves structure)
     paragraphs: list[ParagraphData] = Field(default_factory=list)
     word_count: int = 0
     start_offset: int = 0  # character offset in original file

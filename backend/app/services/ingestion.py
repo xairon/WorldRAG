@@ -327,18 +327,33 @@ async def extract_epub_metadata(file_path: Path) -> dict[str, Any]:
 # --- ePub parsing ---
 
 
-async def parse_epub(file_path: Path) -> list[ChapterData]:
-    """Parse an ePub file into chapters.
+async def parse_epub(file_path: Path) -> tuple[list[ChapterData], str]:
+    """Parse an ePub file into chapters, preserving original XHTML.
 
     Uses ebooklib to read the spine, then BeautifulSoup to extract
     text from each HTML chapter document. Filters out non-chapter items
     like TOC, cover, copyright, etc.
+
+    Returns:
+        Tuple of (chapters, epub_css) where epub_css is all stylesheets concatenated.
     """
     import ebooklib
     from bs4 import BeautifulSoup
     from ebooklib import epub
 
     book = await asyncio.to_thread(epub.read_epub, str(file_path))
+
+    # Extract all CSS from epub stylesheets
+    css_parts: list[str] = []
+    for item in book.get_items_of_type(ebooklib.ITEM_STYLE):
+        try:
+            css_text = item.get_content().decode("utf-8", errors="replace")
+            if css_text.strip():
+                css_parts.append(css_text)
+        except Exception:
+            continue
+    epub_css = "\n\n".join(css_parts)
+
     chapters: list[ChapterData] = []
     chapter_num = 0
 
@@ -371,6 +386,14 @@ async def parse_epub(file_path: Path) -> list[ChapterData]:
             logger.debug("epub_skip_boilerplate", item=item_name, heading=heading_text)
             continue
 
+        # Extract full body inner HTML (preserves all structural elements)
+        body = soup.find("body")
+        if body:
+            chapter_xhtml = "".join(str(child) for child in body.children)
+        else:
+            # Fallback: use everything (minus <html>/<head> wrappers)
+            chapter_xhtml = content
+
         chapter_num += 1
         title = ""
 
@@ -392,12 +415,13 @@ async def parse_epub(file_path: Path) -> list[ChapterData]:
                 number=chapter_num,
                 title=title,
                 text=text,
+                xhtml=chapter_xhtml,
                 paragraphs=paragraphs,
             )
         )
 
-    logger.info("epub_parsed", file=str(file_path), chapters=len(chapters))
-    return chapters
+    logger.info("epub_parsed", file=str(file_path), chapters=len(chapters), css_bytes=len(epub_css))
+    return chapters, epub_css
 
 
 # --- PDF parsing ---
@@ -526,7 +550,7 @@ PARSERS = {
 }
 
 
-async def ingest_file(file_path: Path) -> list[ChapterData]:
+async def ingest_file(file_path: Path) -> tuple[list[ChapterData], str]:
     """Parse a book file into chapters.
 
     Dispatches to the appropriate parser based on file extension.
@@ -535,20 +559,25 @@ async def ingest_file(file_path: Path) -> list[ChapterData]:
         file_path: Path to the book file (ePub, PDF, or TXT).
 
     Returns:
-        List of ChapterData objects.
+        Tuple of (chapters, epub_css). epub_css is empty for non-epub formats.
 
     Raises:
         ValueError: If file format is not supported.
     """
     suffix = file_path.suffix.lower()
-    parser = PARSERS.get(suffix)
 
-    if parser is None:
+    if suffix not in PARSERS:
         supported = ", ".join(PARSERS.keys())
         raise ValueError(f"Unsupported file format: {suffix}. Supported: {supported}")
 
     logger.info("ingestion_started", file=str(file_path), format=suffix)
-    chapters = await parser(file_path)
+
+    epub_css = ""
+    if suffix == ".epub":
+        chapters, epub_css = await parse_epub(file_path)
+    else:
+        parser = PARSERS[suffix]
+        chapters = await parser(file_path)
 
     # Ensure chapter numbers are sequential if they're all 0 or duplicated
     seen_nums = {c.number for c in chapters}
@@ -562,4 +591,4 @@ async def ingest_file(file_path: Path) -> list[ChapterData]:
         chapters=len(chapters),
         total_words=sum(c.word_count for c in chapters),
     )
-    return chapters
+    return chapters, epub_css

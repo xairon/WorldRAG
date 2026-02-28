@@ -150,6 +150,45 @@ async def get_chapter_paragraphs(
     )
 
 
+class ChapterXHTMLResponse(BaseModel):
+    """Chapter XHTML content for epub-quality rendering."""
+
+    book_id: str
+    chapter_number: int
+    title: str
+    xhtml: str
+    css: str
+    word_count: int
+
+
+@router.get(
+    "/books/{book_id}/chapters/{chapter_number}/xhtml",
+    dependencies=[Depends(require_auth)],
+)
+async def get_chapter_xhtml(
+    book_id: str,
+    chapter_number: int,
+    driver: AsyncDriver = Depends(get_neo4j),
+) -> ChapterXHTMLResponse:
+    """Get original epub XHTML for a chapter (preserves full formatting)."""
+    repo = BookRepository(driver)
+
+    data = await repo.get_chapter_xhtml(book_id, chapter_number)
+    if not data:
+        raise HTTPException(status_code=404, detail="Chapter XHTML not available")
+
+    css = await repo.get_book_epub_css(book_id)
+
+    return ChapterXHTMLResponse(
+        book_id=book_id,
+        chapter_number=chapter_number,
+        title=data.get("title", f"Chapter {chapter_number}"),
+        xhtml=data["xhtml"],
+        css=css,
+        word_count=data.get("word_count", 0),
+    )
+
+
 @router.get(
     "/books/{book_id}/chapters/{chapter_number}/entities",
     dependencies=[Depends(require_auth)],

@@ -1,0 +1,16 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "frontend",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["node_modules/next/dist/bin/next", "dev"],
+      "cwd": "frontend",
+      "port": 3500,
+      "autoPort": true,
+      "env": {
+        "BACKEND_URL": "http://localhost:8000"
+      }
+    }
+  ]
+}

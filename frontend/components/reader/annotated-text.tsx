@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo } from "react"
-import { cn, labelColor, labelBadgeClass } from "@/lib/utils"
+import { cn, labelColor } from "@/lib/utils"
 import {
   HoverCard,
   HoverCardContent,
@@ -10,15 +10,18 @@ import {
 import { EntityBadge } from "@/components/shared/entity-badge"
 import { CharacterHoverContent } from "@/components/reader/character-hover-content"
 import type { EntityAnnotation } from "@/lib/api/reader"
+import type { ReaderTheme } from "@/hooks/use-reader-settings"
+import { THEME_STYLES } from "@/hooks/use-reader-settings"
 
 interface AnnotatedTextProps {
   text: string
   annotations: EntityAnnotation[]
   mode: "annotated" | "clean" | "focus"
-  focusType?: string // only show this entity type when mode === "focus"
+  focusType?: string
   bookId?: string
   chapter?: number
   className?: string
+  theme?: ReaderTheme
 }
 
 interface TextSegment {
@@ -35,7 +38,6 @@ function buildSegments(text: string, annotations: EntityAnnotation[]): TextSegme
     return [{ text }]
   }
 
-  // Filter valid annotations and sort by start offset
   const valid = annotations
     .filter(
       (a) =>
@@ -45,41 +47,32 @@ function buildSegments(text: string, annotations: EntityAnnotation[]): TextSegme
     )
     .sort((a, b) => a.char_offset_start - b.char_offset_start)
 
-  // Remove overlaps: keep the longest span when overlapping
   const resolved: EntityAnnotation[] = []
   for (const ann of valid) {
     const last = resolved[resolved.length - 1]
     if (last && ann.char_offset_start < last.char_offset_end) {
-      // Overlap: keep the longer one
       if (ann.char_offset_end - ann.char_offset_start > last.char_offset_end - last.char_offset_start) {
         resolved[resolved.length - 1] = ann
       }
-      // else keep last
     } else {
       resolved.push(ann)
     }
   }
 
-  // Build segments
   const segments: TextSegment[] = []
   let cursor = 0
 
   for (const ann of resolved) {
-    // Plain text before this annotation
     if (ann.char_offset_start > cursor) {
       segments.push({ text: text.slice(cursor, ann.char_offset_start) })
     }
-
-    // Annotated segment
     segments.push({
       text: text.slice(ann.char_offset_start, ann.char_offset_end),
       annotation: ann,
     })
-
     cursor = ann.char_offset_end
   }
 
-  // Remaining text
   if (cursor < text.length) {
     segments.push({ text: text.slice(cursor) })
   }
@@ -93,7 +86,7 @@ function getUnderlineStyle(mentionType: string | undefined): string {
       return "dashed"
     case "pronoun":
       return "dotted"
-    default: // langextract, direct_name
+    default:
       return "solid"
   }
 }
@@ -106,6 +99,7 @@ export function AnnotatedText({
   bookId,
   chapter,
   className,
+  theme = "night",
 }: AnnotatedTextProps) {
   const filteredAnnotations = useMemo(() => {
     if (mode === "clean") return []
@@ -120,12 +114,18 @@ export function AnnotatedText({
     [text, filteredAnnotations],
   )
 
-  // Use span (not div) so it can be placed inside <p> from ParagraphRenderer
   return (
     <span className={cn(className)}>
       {segments.map((seg, i) =>
         seg.annotation ? (
-          <AnnotatedSpan key={i} segment={seg} annotation={seg.annotation} bookId={bookId} chapter={chapter} />
+          <AnnotatedSpan
+            key={i}
+            segment={seg}
+            annotation={seg.annotation}
+            bookId={bookId}
+            chapter={chapter}
+            theme={theme}
+          />
         ) : (
           <span key={i}>{seg.text}</span>
         ),
@@ -139,24 +139,26 @@ function AnnotatedSpan({
   annotation,
   bookId,
   chapter,
+  theme = "night",
 }: {
   segment: TextSegment
   annotation: EntityAnnotation
   bookId?: string
   chapter?: number
+  theme?: ReaderTheme
 }) {
   const color = labelColor(annotation.entity_type)
   const isCharacter = annotation.entity_type === "Character"
+  const t = THEME_STYLES[theme]
 
   return (
     <HoverCard openDelay={200} closeDelay={100}>
       <HoverCardTrigger asChild>
         <span
-          className="cursor-pointer rounded-sm px-0.5 -mx-0.5 transition-colors hover:brightness-125"
+          className="cursor-pointer rounded-sm px-0.5 -mx-0.5 transition-all duration-150"
           style={{
-            backgroundColor: `${color}15`,
-            borderBottom: `2px ${getUnderlineStyle(annotation.mention_type)} ${color}40`,
-            color: color,
+            backgroundColor: `${color}${t.annotationBgOpacity}`,
+            borderBottom: `2px ${getUnderlineStyle(annotation.mention_type)} ${color}${t.annotationBorderOpacity}`,
           }}
         >
           {segment.text}
