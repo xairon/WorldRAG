@@ -228,16 +228,4 @@ FEW_SHOT_EXAMPLES = [
             ),
         ],
     ),
-    # --- Exemple 3 : Negative example (pronoms generiques => pas d'entite) ---
-    lx.data.ExampleData(
-        text=(
-            "Le guerrier recula, esquivant le coup. Son adversaire "
-            "etait rapide, mais il avait l'avantage du terrain. "
-            "Un cri retentit derriere eux. Quelqu'un approchait."
-        ),
-        extractions=[
-            # Aucune extraction : pas de personnage nomme, que des
-            # references generiques (le guerrier, son adversaire, quelqu'un).
-        ],
-    ),
 ]

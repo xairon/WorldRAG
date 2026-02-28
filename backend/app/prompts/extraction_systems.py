@@ -177,17 +177,4 @@ FEW_SHOT_EXAMPLES = [
             ),
         ],
     ),
-    # --- Exemple 3 : Negative example (descriptions generiques) ---
-    lx.data.ExampleData(
-        text=(
-            "Il utilisa sa competence de combat pour esquiver l'attaque. "
-            "Sa maitrise du maniement d'armes lui avait sauve la vie. "
-            "Le niveau de son adversaire semblait bien plus eleve."
-        ),
-        extractions=[
-            # Aucune extraction : "competence de combat" et "maniement d'armes"
-            # sont des descriptions generiques, pas des noms propres de competences.
-            # "Le niveau de son adversaire" est vague (pas de valeur concrete).
-        ],
-    ),
 ]

@@ -171,17 +171,4 @@ FEW_SHOT_EXAMPLES = [
             ),
         ],
     ),
-    # --- Exemple 3 : Negative example (generiques => pas d'entite) ---
-    lx.data.ExampleData(
-        text=(
-            "Il ramassa une epee rouilee par terre et la rangea dans son sac. "
-            "La foret etait sombre et humide. Un batiment en ruine "
-            "se dressait au loin, mais rien n'indiquait son nom."
-        ),
-        extractions=[
-            # Aucune extraction : "une epee rouillee", "la foret",
-            # "un batiment en ruine" sont des references generiques
-            # sans noms propres.
-        ],
-    ),
 ]
