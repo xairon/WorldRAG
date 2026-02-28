@@ -267,14 +267,44 @@ class BookRepository(Neo4jRepository):
             {"book_id": book_id},
         )
 
-    async def update_chapter_status(self, book_id: str, chapter_number: int, status: str) -> None:
-        """Update chapter processing status."""
+    async def update_chapter_status(
+        self,
+        book_id: str,
+        chapter_number: int,
+        status: str,
+        entity_count: int | None = None,
+    ) -> None:
+        """Update chapter processing status and optionally entity count."""
+        if entity_count is not None:
+            await self.execute_write(
+                """
+                MATCH (c:Chapter {book_id: $book_id, number: $number})
+                SET c.status = $status, c.entity_count = $entity_count
+                """,
+                {
+                    "book_id": book_id,
+                    "number": chapter_number,
+                    "status": status,
+                    "entity_count": entity_count,
+                },
+            )
+        else:
+            await self.execute_write(
+                """
+                MATCH (c:Chapter {book_id: $book_id, number: $number})
+                SET c.status = $status
+                """,
+                {"book_id": book_id, "number": chapter_number, "status": status},
+            )
+
+    async def update_book_chapters_processed(self, book_id: str, count: int) -> None:
+        """Update the chapters_processed counter on a Book node."""
         await self.execute_write(
             """
-            MATCH (c:Chapter {book_id: $book_id, number: $number})
-            SET c.status = $status
+            MATCH (b:Book {id: $book_id})
+            SET b.chapters_processed = $count
             """,
-            {"book_id": book_id, "number": chapter_number, "status": status},
+            {"book_id": book_id, "count": count},
         )
 
     # --- Paragraph operations ---

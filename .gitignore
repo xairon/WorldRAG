@@ -53,3 +53,17 @@ logs/
 # Claude Code (keep settings.json and rules, ignore local state)
 .claude/settings.local.json
 .claude/*.jsonl
+
+# Playwright MCP artifacts
+.playwright-mcp/
+
+# Test screenshots
+*.png
+!frontend/**/*.png
+
+# Book files (uploaded via UI, not committed)
+*.epub
+*.pdf
+
+# Windows artifacts
+nul
