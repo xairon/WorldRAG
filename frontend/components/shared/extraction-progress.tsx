@@ -184,21 +184,26 @@ export function ExtractionDashboard({
       {entityStats && entityStats.total_nodes > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {Object.entries(entityStats.nodes)
-            .filter(([, count]) => count > 0)
+            .filter(([label, count]) => count > 0 && label in ENTITY_ICONS)
             .sort(([, a], [, b]) => b - a)
-            .map(([label, count]) => (
-              <Badge
-                key={label}
-                variant="outline"
-                className="text-xs px-2 py-0.5"
-                style={{
-                  borderColor: LABEL_COLORS[label] ?? "#475569",
-                  color: LABEL_COLORS[label] ?? "#94a3b8",
-                }}
-              >
-                {ENTITY_ICONS[label] || ""} {count} {label}{count > 1 ? "s" : ""}
-              </Badge>
-            ))}
+            .map(([label, count]) => {
+              const plural = count > 1
+                ? label === "Class" ? "es" : "s"
+                : ""
+              return (
+                <Badge
+                  key={label}
+                  variant="outline"
+                  className="text-xs px-2 py-0.5"
+                  style={{
+                    borderColor: LABEL_COLORS[label] ?? "#475569",
+                    color: LABEL_COLORS[label] ?? "#94a3b8",
+                  }}
+                >
+                  {ENTITY_ICONS[label]} {count} {label}{plural}
+                </Badge>
+              )
+            })}
         </div>
       )}
 
