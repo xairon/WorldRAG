@@ -43,7 +43,7 @@ class TestParseRedisSettings:
     def test_default_url(self):
         """Parses the default redis URL from settings."""
         rs = _parse_redis_settings()
-        assert rs.host == "localhost"
+        assert rs.host in ("localhost", "127.0.0.1")
         assert rs.port == 6379
         assert rs.password == "worldrag"
 

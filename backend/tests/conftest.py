@@ -41,12 +41,12 @@ def mock_neo4j_session():
     session.run = AsyncMock(return_value=result)
 
     # Transaction mock for execute_batch
+    # begin_transaction is awaited in base.py, so must be AsyncMock
     tx = AsyncMock()
     tx.run = AsyncMock()
     tx.commit = AsyncMock()
-    session.begin_transaction = MagicMock()
-    session.begin_transaction.return_value.__aenter__ = AsyncMock(return_value=tx)
-    session.begin_transaction.return_value.__aexit__ = AsyncMock(return_value=False)
+    tx.close = AsyncMock()
+    session.begin_transaction = AsyncMock(return_value=tx)
 
     return session
 
