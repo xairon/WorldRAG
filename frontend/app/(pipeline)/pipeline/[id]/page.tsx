@@ -166,6 +166,7 @@ export default function PipelineBookPage() {
               </h2>
             </div>
             <ExtractionProgress
+              bookId={bookId}
               events={extraction.events}
               progress={extraction.progress}
               isConnected={extraction.isConnected}

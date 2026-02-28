@@ -154,6 +154,7 @@ export default function BookDetailPage() {
               <h2 className="text-sm font-medium text-slate-400">Extraction in Progress</h2>
             </div>
             <ExtractionProgress
+              bookId={bookId}
               events={extraction.events}
               progress={extraction.progress}
               isConnected={extraction.isConnected}

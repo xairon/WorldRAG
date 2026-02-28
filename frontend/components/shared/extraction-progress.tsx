@@ -1,10 +1,27 @@
 "use client"
 
-import { Loader2, CheckCircle2, XCircle } from "lucide-react"
+import { useState, useEffect, useCallback } from "react"
+import {
+  Loader2,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  AlertTriangle,
+  RefreshCw,
+  ChevronDown,
+  ChevronUp,
+} from "lucide-react"
 import { cn } from "@/lib/utils"
+import { LABEL_COLORS } from "@/lib/utils"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import type { ExtractionEvent } from "@/hooks/use-extraction-progress"
+import type { ChapterInfo, GraphStats, DLQEntry } from "@/lib/api/types"
+import { getGraphStats } from "@/lib/api/graph"
+import { getBook, getDLQ, retryDLQChapter, retryAllDLQ } from "@/lib/api/books"
 
-interface ExtractionProgressProps {
+interface ExtractionDashboardProps {
+  bookId: string
   events: ExtractionEvent[]
   progress: number
   isConnected: boolean
@@ -13,76 +30,286 @@ interface ExtractionProgressProps {
   totalChapters?: number
 }
 
-export function ExtractionProgress({
+const STATUS_ICON: Record<string, React.ReactNode> = {
+  pending: <Clock className="h-3.5 w-3.5 text-slate-500" />,
+  extracting: <Loader2 className="h-3.5 w-3.5 animate-spin text-indigo-400" />,
+  extracted: <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />,
+  failed: <XCircle className="h-3.5 w-3.5 text-red-400" />,
+}
+
+const ENTITY_ICONS: Record<string, string> = {
+  Character: "\ud83d\udc64",
+  Skill: "\u2694\ufe0f",
+  Class: "\ud83d\udee1\ufe0f",
+  Title: "\ud83d\udc51",
+  Event: "\ud83c\udfaf",
+  Location: "\ud83c\udff0",
+  Item: "\ud83d\udce6",
+  Creature: "\ud83d\udc32",
+  Faction: "\u2694",
+  Concept: "\ud83d\udca1",
+}
+
+export function ExtractionDashboard({
+  bookId,
   events,
   progress,
   isConnected,
   isDone,
   isStarted = false,
   totalChapters = 0,
-}: ExtractionProgressProps) {
+}: ExtractionDashboardProps) {
+  const [entityStats, setEntityStats] = useState<GraphStats | null>(null)
+  const [chapters, setChapters] = useState<ChapterInfo[]>([])
+  const [dlqEntries, setDLQEntries] = useState<DLQEntry[]>([])
+  const [showChapters, setShowChapters] = useState(false)
+  const [retrying, setRetrying] = useState<number | null>(null)
+
   const latestEvent = events.length > 0 ? events[events.length - 1] : null
   const totalEntities = events.reduce((sum, e) => sum + e.entities_found, 0)
   const failedChapters = events.filter((e) => e.status === "failed").length
-
   const showWaiting = isConnected && !isStarted && events.length === 0
 
-  return (
-    <div className="space-y-2">
-      {/* Progress bar */}
-      <div className="flex items-center gap-3">
-        {isConnected ? (
-          <Loader2 className="h-4 w-4 animate-spin text-indigo-400 shrink-0" />
-        ) : isDone ? (
-          <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
-        ) : null}
+  // Poll for entity stats + chapter statuses during extraction
+  const refreshData = useCallback(async () => {
+    try {
+      const [stats, bookDetail, dlq] = await Promise.all([
+        getGraphStats(bookId),
+        getBook(bookId),
+        getDLQ(bookId).catch(() => ({ count: 0, entries: [] })),
+      ])
+      setEntityStats(stats)
+      setChapters(bookDetail.chapters)
+      setDLQEntries(dlq.entries)
+    } catch {
+      // silently ignore polling errors
+    }
+  }, [bookId])
 
-        <div className="flex-1 h-2 rounded-full bg-slate-800 overflow-hidden">
-          {showWaiting ? (
-            <div className="h-full w-full bg-indigo-500/30 animate-pulse rounded-full" />
-          ) : (
-            <div
-              className={cn(
-                "h-full rounded-full transition-all duration-500",
-                isDone
-                  ? failedChapters > 0
-                    ? "bg-amber-500"
-                    : "bg-emerald-500"
-                  : "bg-indigo-500",
-              )}
-              style={{ width: `${progress}%` }}
-            />
-          )}
+  useEffect(() => {
+    refreshData()
+    if (isConnected && !isDone) {
+      const interval = setInterval(refreshData, 8000)
+      return () => clearInterval(interval)
+    }
+  }, [isConnected, isDone, refreshData])
+
+  // Refresh once when done
+  useEffect(() => {
+    if (isDone) {
+      refreshData()
+    }
+  }, [isDone, refreshData])
+
+  const handleRetry = async (chapter: number) => {
+    setRetrying(chapter)
+    try {
+      await retryDLQChapter(bookId, chapter)
+      await refreshData()
+    } finally {
+      setRetrying(null)
+    }
+  }
+
+  const handleRetryAll = async () => {
+    setRetrying(-1)
+    try {
+      await retryAllDLQ()
+      await refreshData()
+    } finally {
+      setRetrying(null)
+    }
+  }
+
+  const doneChapters = chapters.filter((c) => c.status === "extracted").length
+  const progressFromChapters = chapters.length > 0
+    ? Math.round((doneChapters / chapters.length) * 100)
+    : progress
+
+  return (
+    <div className="space-y-4">
+      {/* ── Progress Bar ── */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-3">
+          {isConnected ? (
+            <Loader2 className="h-4 w-4 animate-spin text-indigo-400 shrink-0" />
+          ) : isDone ? (
+            <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+          ) : null}
+
+          <div className="flex-1 h-2.5 rounded-full bg-slate-800 overflow-hidden">
+            {showWaiting ? (
+              <div className="h-full w-full bg-indigo-500/30 animate-pulse rounded-full" />
+            ) : (
+              <div
+                className={cn(
+                  "h-full rounded-full transition-all duration-700",
+                  isDone
+                    ? failedChapters > 0 || dlqEntries.length > 0
+                      ? "bg-amber-500"
+                      : "bg-emerald-500"
+                    : "bg-indigo-500",
+                )}
+                style={{ width: `${progressFromChapters}%` }}
+              />
+            )}
+          </div>
+
+          <span className="text-sm font-mono text-slate-300 tabular-nums shrink-0 min-w-[4rem] text-right">
+            {showWaiting ? "..." : `${progressFromChapters}%`}
+          </span>
         </div>
 
-        <span className="text-xs text-slate-400 tabular-nums shrink-0">
-          {showWaiting ? "..." : `${progress}%`}
-        </span>
+        <div className="flex items-center gap-4 text-xs text-slate-500">
+          {showWaiting ? (
+            <span>Preparing extraction pipeline...</span>
+          ) : (
+            <>
+              <span className="font-medium text-slate-400">
+                {doneChapters || latestEvent?.chapters_done || 0} / {chapters.length || totalChapters} chapters
+              </span>
+              {totalEntities > 0 && <span>{totalEntities} entities extracted</span>}
+              {failedChapters > 0 && (
+                <span className="flex items-center gap-1 text-red-400">
+                  <XCircle className="h-3 w-3" />
+                  {failedChapters} failed
+                </span>
+              )}
+            </>
+          )}
+        </div>
       </div>
 
-      {/* Stats */}
-      {showWaiting ? (
-        <div className="text-xs text-slate-500">
-          Preparing extraction pipeline...
+      {/* ── Entity Counts by Type ── */}
+      {entityStats && entityStats.total_nodes > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {Object.entries(entityStats.nodes)
+            .filter(([, count]) => count > 0)
+            .sort(([, a], [, b]) => b - a)
+            .map(([label, count]) => (
+              <Badge
+                key={label}
+                variant="outline"
+                className="text-xs px-2 py-0.5"
+                style={{
+                  borderColor: LABEL_COLORS[label] ?? "#475569",
+                  color: LABEL_COLORS[label] ?? "#94a3b8",
+                }}
+              >
+                {ENTITY_ICONS[label] || ""} {count} {label}{count > 1 ? "s" : ""}
+              </Badge>
+            ))}
         </div>
-      ) : isStarted && !latestEvent ? (
-        <div className="text-xs text-slate-500">
-          Processing chapter 1/{totalChapters}...
-        </div>
-      ) : latestEvent ? (
-        <div className="flex items-center gap-4 text-xs text-slate-500">
-          <span>
-            {latestEvent.chapters_done}/{latestEvent.total} chapters
-          </span>
-          <span>{totalEntities} entities</span>
-          {failedChapters > 0 && (
-            <span className="flex items-center gap-1 text-red-400">
-              <XCircle className="h-3 w-3" />
-              {failedChapters} failed
-            </span>
+      )}
+
+      {/* ── Chapter Table (collapsible) ── */}
+      {chapters.length > 0 && (
+        <div>
+          <button
+            onClick={() => setShowChapters((p) => !p)}
+            className="flex items-center gap-2 text-xs text-slate-400 hover:text-slate-200 transition-colors mb-2"
+          >
+            {showChapters ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            Chapter Details
+          </button>
+
+          {showChapters && (
+            <div className="rounded-lg border border-slate-800 overflow-hidden max-h-[300px] overflow-y-auto">
+              <table className="w-full text-xs">
+                <thead className="sticky top-0 bg-slate-900 z-10">
+                  <tr className="text-slate-500 uppercase tracking-wider">
+                    <th className="text-left px-3 py-2 font-medium w-10">#</th>
+                    <th className="text-left px-3 py-2 font-medium">Title</th>
+                    <th className="text-center px-3 py-2 font-medium w-16">Status</th>
+                    <th className="text-center px-3 py-2 font-medium w-20">Entities</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/50">
+                  {chapters.map((ch) => (
+                    <tr
+                      key={ch.number}
+                      className={cn(
+                        "transition-colors",
+                        ch.status === "extracted"
+                          ? "text-slate-400"
+                          : ch.status === "failed"
+                            ? "text-red-400/80 bg-red-500/5"
+                            : "text-slate-500",
+                      )}
+                    >
+                      <td className="px-3 py-1.5 font-mono">{ch.number}</td>
+                      <td className="px-3 py-1.5 truncate max-w-[200px]">{ch.title || `Chapter ${ch.number}`}</td>
+                      <td className="px-3 py-1.5 text-center">
+                        {STATUS_ICON[ch.status] || STATUS_ICON.pending}
+                      </td>
+                      <td className="px-3 py-1.5 text-center font-mono">
+                        {ch.entity_count > 0 ? ch.entity_count : "\u2014"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
-      ) : null}
+      )}
+
+      {/* ── DLQ Section ── */}
+      {dlqEntries.length > 0 && (
+        <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-red-400" />
+              <span className="text-xs font-medium text-red-400">
+                {dlqEntries.length} Failed Chapter{dlqEntries.length > 1 ? "s" : ""}
+              </span>
+            </div>
+            {dlqEntries.length > 1 && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-6 text-xs text-red-400 hover:text-red-300"
+                onClick={handleRetryAll}
+                disabled={retrying !== null}
+              >
+                {retrying === -1 ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <RefreshCw className="h-3 w-3 mr-1" />}
+                Retry All
+              </Button>
+            )}
+          </div>
+          <div className="space-y-1.5">
+            {dlqEntries.map((entry) => (
+              <div
+                key={`${entry.book_id}-${entry.chapter}`}
+                className="flex items-center justify-between text-xs"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="font-mono text-red-400/80 shrink-0">Ch. {entry.chapter}</span>
+                  <span className="text-slate-500 truncate">
+                    {entry.error_type}: {entry.error_message}
+                  </span>
+                </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-5 px-2 text-xs text-slate-400 hover:text-white shrink-0"
+                  onClick={() => handleRetry(entry.chapter)}
+                  disabled={retrying !== null}
+                >
+                  {retrying === entry.chapter ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-3 w-3" />
+                  )}
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
+
+// Re-export with old name for backward compatibility
+export { ExtractionDashboard as ExtractionProgress }
