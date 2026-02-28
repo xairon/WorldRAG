@@ -149,9 +149,11 @@ export default function EntityWikiPage() {
               </h2>
             </div>
             <div className="flex flex-wrap gap-1.5">
-              {wiki.appearances.map((app) => (
+              {wiki.appearances
+                .filter((app, i, arr) => arr.findIndex((a) => a.chapter === app.chapter) === i)
+                .map((app, i) => (
                 <Badge
-                  key={app.chapter}
+                  key={`ch-${app.chapter}-${i}`}
                   variant="outline"
                   className="text-xs border-slate-700 text-slate-400"
                 >

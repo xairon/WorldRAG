@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Users, Loader2 } from "lucide-react"
-import { listBooks, getSubgraph } from "@/lib/api"
+import { listBooks } from "@/lib/api"
+import { listEntities } from "@/lib/api/graph"
 import type { BookInfo, GraphNode } from "@/lib/api/types"
 import { LABEL_COLORS } from "@/lib/utils"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -27,8 +28,8 @@ export default function CharactersPage() {
       return
     }
     setLoading(true)
-    getSubgraph(bookId, "Character")
-      .then((data) => setCharacters(data.nodes))
+    listEntities(bookId, "Character", 200)
+      .then((data) => setCharacters(data.entities))
       .catch(() => setCharacters([]))
       .finally(() => setLoading(false))
   }, [bookId])
