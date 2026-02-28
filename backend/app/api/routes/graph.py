@@ -395,32 +395,32 @@ async def list_entities(
 
     repo = Neo4jRepository(driver)
 
-    # Count total
-    count_result = await repo.execute_read(
-        """
-        MATCH (n)
-        WHERE n.book_id = $book_id AND $label IN labels(n)
-        RETURN count(n) AS total
-        """,
-        {"book_id": book_id, "label": label},
+    # Count + fetch in parallel
+    count_result, results = await asyncio.gather(
+        repo.execute_read(
+            """
+            MATCH (n)
+            WHERE n.book_id = $book_id AND $label IN labels(n)
+            RETURN count(n) AS total
+            """,
+            {"book_id": book_id, "label": label},
+        ),
+        repo.execute_read(
+            """
+            MATCH (n)
+            WHERE n.book_id = $book_id AND $label IN labels(n)
+            RETURN elementId(n) AS id,
+                   labels(n) AS labels,
+                   n.name AS name,
+                   n.canonical_name AS canonical_name,
+                   n.description AS description
+            ORDER BY n.name
+            SKIP $offset LIMIT $limit
+            """,
+            {"book_id": book_id, "label": label, "offset": offset, "limit": limit},
+        ),
     )
     total = count_result[0]["total"] if count_result else 0
-
-    # Fetch page
-    results = await repo.execute_read(
-        """
-        MATCH (n)
-        WHERE n.book_id = $book_id AND $label IN labels(n)
-        RETURN elementId(n) AS id,
-               labels(n) AS labels,
-               n.name AS name,
-               n.canonical_name AS canonical_name,
-               n.description AS description
-        ORDER BY n.name
-        SKIP $offset LIMIT $limit
-        """,
-        {"book_id": book_id, "label": label, "offset": offset, "limit": limit},
-    )
 
     return {
         "entities": [dict(r) for r in results],
