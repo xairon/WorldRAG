@@ -43,7 +43,7 @@ async def test_query_no_chunks_returns_helpful_message(
 ):
     """When no chunks match, return a helpful message."""
     chat_service.embedder = mock_embedder
-    chat_service.reranker = mock_reranker
+    chat_service._reranker = mock_reranker
     mock_neo4j_session.run.return_value.data = AsyncMock(return_value=[])
 
     result = await chat_service.query("Who is Jake?", book_id="book-1")
@@ -63,7 +63,7 @@ async def test_query_rerank_filters_all(
 ):
     """When reranker filters everything out, return appropriate message."""
     chat_service.embedder = mock_embedder
-    chat_service.reranker = mock_reranker
+    chat_service._reranker = mock_reranker
 
     # Vector search returns chunks
     chunks = [
@@ -94,7 +94,7 @@ async def test_query_rerank_filters_all(
 async def test_query_full_pipeline(chat_service, mock_embedder, mock_reranker, mock_neo4j_session):
     """Full pipeline: vector search → rerank → entities → LLM generates answer."""
     chat_service.embedder = mock_embedder
-    chat_service.reranker = mock_reranker
+    chat_service._reranker = mock_reranker
 
     chunks = [
         {
@@ -147,18 +147,14 @@ async def test_query_full_pipeline(chat_service, mock_embedder, mock_reranker, m
         ]
     )
 
-    # Mock LLM generation
-    mock_completion = MagicMock()
-    mock_completion.choices = [MagicMock()]
-    mock_completion.choices[
-        0
-    ].message.content = "Jake is a skilled hunter who uses Arcane Powershot."
+    # Mock LLM generation (LangChain ainvoke returns object with .content)
+    mock_llm_response = MagicMock()
+    mock_llm_response.content = "Jake is a skilled hunter who uses Arcane Powershot."
 
-    with patch("app.services.chat_service.get_openai_client") as mock_client_fn:
-        client = AsyncMock()
-        client.chat.completions.create = AsyncMock(return_value=mock_completion)
-        mock_client_fn.return_value = client
+    mock_llm = AsyncMock()
+    mock_llm.ainvoke = AsyncMock(return_value=mock_llm_response)
 
+    with patch("app.services.chat_service.get_langchain_llm", return_value=mock_llm):
         result = await chat_service.query(
             "Who is Jake?",
             book_id="book-1",
@@ -185,7 +181,7 @@ async def test_query_no_sources_when_disabled(
 ):
     """When include_sources=False, response has no source chunks."""
     chat_service.embedder = mock_embedder
-    chat_service.reranker = mock_reranker
+    chat_service._reranker = mock_reranker
 
     chunks = [
         {
@@ -216,15 +212,13 @@ async def test_query_no_sources_when_disabled(
         ]
     )
 
-    mock_completion = MagicMock()
-    mock_completion.choices = [MagicMock()]
-    mock_completion.choices[0].message.content = "Jake is a hunter."
+    mock_llm_response = MagicMock()
+    mock_llm_response.content = "Jake is a hunter."
 
-    with patch("app.services.chat_service.get_openai_client") as mock_client_fn:
-        client = AsyncMock()
-        client.chat.completions.create = AsyncMock(return_value=mock_completion)
-        mock_client_fn.return_value = client
+    mock_llm = AsyncMock()
+    mock_llm.ainvoke = AsyncMock(return_value=mock_llm_response)
 
+    with patch("app.services.chat_service.get_langchain_llm", return_value=mock_llm):
         result = await chat_service.query(
             "Who is Jake?",
             book_id="book-1",

@@ -76,7 +76,7 @@ class TestEmbedBookChunks:
         chunks = _make_chunks(1)
         fake_emb = _fake_embeddings(1)
 
-        with patch("app.services.embedding_pipeline.VoyageEmbedder") as mock_embedder_cls:
+        with patch("app.services.embedding_pipeline.LocalEmbedder") as mock_embedder_cls:
             instance = mock_embedder_cls.return_value
             instance.embed_texts = AsyncMock(return_value=fake_emb)
 
@@ -90,14 +90,15 @@ class TestEmbedBookChunks:
         assert result.embedded == 1
         assert result.failed == 0
         assert result.total_tokens > 0
-        assert result.cost_usd > 0
+        # Local embeddings are free ($0 cost)
+        assert result.cost_usd == 0.0
         instance.embed_texts.assert_called_once()
 
     async def test_cost_tracked_per_batch(self, mock_driver, mock_cost_tracker):
         chunks = _make_chunks(3)
         fake_emb = _fake_embeddings(3)
 
-        with patch("app.services.embedding_pipeline.VoyageEmbedder") as mock_embedder_cls:
+        with patch("app.services.embedding_pipeline.LocalEmbedder") as mock_embedder_cls:
             instance = mock_embedder_cls.return_value
             instance.embed_texts = AsyncMock(return_value=fake_emb)
 
@@ -111,8 +112,8 @@ class TestEmbedBookChunks:
         # Should have recorded cost once (one batch)
         mock_cost_tracker.record.assert_called_once()
         call_kwargs = mock_cost_tracker.record.call_args.kwargs
-        assert call_kwargs["model"] == "voyage-3.5"
-        assert call_kwargs["provider"] == "voyage"
+        assert call_kwargs["model"] == settings.embedding_model
+        assert call_kwargs["provider"] == "local"
         assert call_kwargs["operation"] == "embedding"
         assert call_kwargs["book_id"] == "book1"
         assert call_kwargs["output_tokens"] == 0
@@ -132,7 +133,7 @@ class TestEmbedBookChunks:
                 raise ConnectionError("Voyage API down")
             return _fake_embeddings(len(texts))
 
-        with patch("app.services.embedding_pipeline.VoyageEmbedder") as mock_embedder_cls:
+        with patch("app.services.embedding_pipeline.LocalEmbedder") as mock_embedder_cls:
             instance = mock_embedder_cls.return_value
             instance.embed_texts = AsyncMock(side_effect=side_effect)
 
@@ -147,7 +148,7 @@ class TestEmbedBookChunks:
         n = EMBEDDING_BATCH_SIZE + 1  # 129 = 2 batches
         chunks = _make_chunks(n)
 
-        with patch("app.services.embedding_pipeline.VoyageEmbedder") as mock_embedder_cls:
+        with patch("app.services.embedding_pipeline.LocalEmbedder") as mock_embedder_cls:
             instance = mock_embedder_cls.return_value
             instance.embed_texts = AsyncMock(
                 side_effect=lambda texts, **kw: _fake_embeddings(len(texts)),
@@ -160,10 +161,10 @@ class TestEmbedBookChunks:
         # embed_texts called twice: 128 + 1
         assert instance.embed_texts.call_count == 2
 
-    async def test_cost_usd_computed(self, mock_driver):
+    async def test_tokens_computed(self, mock_driver):
         chunks = _make_chunks(5)
 
-        with patch("app.services.embedding_pipeline.VoyageEmbedder") as mock_embedder_cls:
+        with patch("app.services.embedding_pipeline.LocalEmbedder") as mock_embedder_cls:
             instance = mock_embedder_cls.return_value
             instance.embed_texts = AsyncMock(
                 side_effect=lambda texts, **kw: _fake_embeddings(len(texts)),
@@ -171,7 +172,8 @@ class TestEmbedBookChunks:
 
             result = await embed_book_chunks(mock_driver, "book1", chunks, None)
 
-        assert result.cost_usd > 0
+        # Local embeddings are free ($0 cost) but tokens are still counted
+        assert result.cost_usd == 0.0
         assert result.total_tokens > 0
 
 
