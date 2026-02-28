@@ -64,7 +64,8 @@ FEW_SHOT_EXAMPLES = [
                 "source_type": "item",
                 "source_name": "Nanoblade",
                 "confidence": 0.95,
-                "context": "L'enchantement de la lame lui conferait une nouvelle technique de combat.",
+                "context": "L'enchantement de la lame lui conferait "
+                "une nouvelle technique de combat.",
             },
         ],
     },

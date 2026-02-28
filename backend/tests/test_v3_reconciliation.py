@@ -129,7 +129,12 @@ class TestCrossBookReconciliation:
             chapter_number=5,
             characters=CharacterExtractionResult(
                 characters=[
-                    ExtractedCharacter(name="Jake", canonical_name="Jake"),
+                    ExtractedCharacter(
+                        name="Jake",
+                        canonical_name="Jake",
+                        description="A hunter",
+                        role="protagonist",
+                    ),
                 ]
             ),
         )
@@ -158,7 +163,12 @@ class TestCrossBookReconciliation:
             chapter_number=5,
             characters=CharacterExtractionResult(
                 characters=[
-                    ExtractedCharacter(name="NewCharacter", canonical_name="NewCharacter"),
+                    ExtractedCharacter(
+                        name="NewCharacter",
+                        canonical_name="NewCharacter",
+                        description="Unknown",
+                        role="minor",
+                    ),
                 ]
             ),
         )

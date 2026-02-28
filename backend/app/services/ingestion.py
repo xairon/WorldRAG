@@ -388,11 +388,7 @@ async def parse_epub(file_path: Path) -> tuple[list[ChapterData], str]:
 
         # Extract full body inner HTML (preserves all structural elements)
         body = soup.find("body")
-        if body:
-            chapter_xhtml = "".join(str(child) for child in body.children)
-        else:
-            # Fallback: use everything (minus <html>/<head> wrappers)
-            chapter_xhtml = content
+        chapter_xhtml = "".join(str(child) for child in body.children) if body else content
 
         chapter_num += 1
         title = ""
