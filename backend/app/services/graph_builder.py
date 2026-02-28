@@ -173,11 +173,13 @@ async def build_chapter_graph(
                 exc_info=True,
             )
 
-    # 6. Update chapter status
+    # 6. Update chapter status + entity count
+    total_entity_count = sum(counts.values()) if counts else 0
     await book_repo.update_chapter_status(
         book_id,
         chapter_number,
         "extracted",
+        entity_count=total_entity_count,
     )
 
     stats = {
@@ -349,7 +351,7 @@ async def build_book_graph(
                     metadata={"genre": genre, "series_name": series_name},
                 )
 
-    # Update final status
+    # Update final status + chapters_processed
     if cost_ceiling_hit:
         final_status = "cost_ceiling_hit"
     elif failed_chapters:
@@ -357,6 +359,7 @@ async def build_book_graph(
     else:
         final_status = "extracted"
     await book_repo.update_book_status(book_id, final_status)
+    await book_repo.update_book_chapters_processed(book_id, len(chapter_stats))
 
     result = {
         "book_id": book_id,
@@ -715,8 +718,11 @@ async def build_chapter_graph_v3(
         batch_id,
     )
 
-    # 5. Update chapter status
-    await book_repo.update_chapter_status(book_id, chapter_number, "extracted")
+    # 5. Update chapter status + entity count
+    total_entity_count = sum(counts.values()) if counts else 0
+    await book_repo.update_chapter_status(
+        book_id, chapter_number, "extracted", entity_count=total_entity_count,
+    )
 
     # Build entity summary for EntityRegistry update by caller
     extracted_entities: list[dict[str, Any]] = []

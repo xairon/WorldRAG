@@ -347,7 +347,7 @@ async def process_book_extraction_v3(
                 )
             await _publish_progress(chapter.number, len(content_chapters), "failed", 0)
 
-    # Update final status
+    # Update final status + chapters_processed
     if cost_ceiling_hit:
         final_status = "cost_ceiling_hit"
     elif failed_chapters:
@@ -355,6 +355,7 @@ async def process_book_extraction_v3(
     else:
         final_status = "extracted"
     await book_repo.update_book_status(book_id, final_status)
+    await book_repo.update_book_chapters_processed(book_id, len(chapter_stats))
 
     result = {
         "book_id": book_id,
