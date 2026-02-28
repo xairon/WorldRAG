@@ -128,8 +128,9 @@ class TestParseTxt:
         content = "Just a single chapter with enough text to not be empty. " * 10
         test_file = tmp_path / "book.txt"
         test_file.write_text(content, encoding="utf-8")
-        chapters = await ingest_file(test_file)
+        chapters, epub_css = await ingest_file(test_file)
         assert len(chapters) >= 1
+        assert epub_css == ""  # no CSS for txt files
 
     async def test_ingest_file_renumbers_duplicates(self, tmp_path):
         """Duplicate chapter numbers get renumbered sequentially."""
@@ -138,7 +139,7 @@ class TestParseTxt:
         text = f"Chapter 1: First\n\n{padding}\n\nChapter 1: Also First\n\n{padding}"
         test_file = tmp_path / "book.txt"
         test_file.write_text(text, encoding="utf-8")
-        chapters = await ingest_file(test_file)
+        chapters, _css = await ingest_file(test_file)
         # Should be renumbered to 1, 2
         if len(chapters) >= 2:
             numbers = [c.number for c in chapters]

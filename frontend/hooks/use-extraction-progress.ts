@@ -15,6 +15,8 @@ interface UseExtractionProgressReturn {
   events: ExtractionEvent[]
   isConnected: boolean
   isDone: boolean
+  isStarted: boolean
+  totalChapters: number
   latestEvent: ExtractionEvent | null
   progress: number // 0-100
   connect: (bookId: string) => void
@@ -25,6 +27,8 @@ export function useExtractionProgress(): UseExtractionProgressReturn {
   const [events, setEvents] = useState<ExtractionEvent[]>([])
   const [isConnected, setIsConnected] = useState(false)
   const [isDone, setIsDone] = useState(false)
+  const [isStarted, setIsStarted] = useState(false)
+  const [totalChapters, setTotalChapters] = useState(0)
   const controllerRef = useRef<AbortController | null>(null)
 
   const disconnect = useCallback(() => {
@@ -37,6 +41,8 @@ export function useExtractionProgress(): UseExtractionProgressReturn {
     disconnect()
     setEvents([])
     setIsDone(false)
+    setIsStarted(false)
+    setTotalChapters(0)
     setIsConnected(true)
 
     const controller = new AbortController()
@@ -77,7 +83,11 @@ export function useExtractionProgress(): UseExtractionProgressReturn {
               }
               try {
                 const data = JSON.parse(rawData)
-                if (currentEvent === "progress") {
+                if (currentEvent === "started") {
+                  setIsStarted(true)
+                  setTotalChapters(data.total ?? 0)
+                } else if (currentEvent === "progress") {
+                  setIsStarted(true)
                   setEvents((prev) => [...prev, data as ExtractionEvent])
                 } else if (currentEvent === "done") {
                   setIsDone(true)
@@ -109,5 +119,5 @@ export function useExtractionProgress(): UseExtractionProgressReturn {
     ? Math.round((latestEvent.chapters_done / latestEvent.total) * 100)
     : 0
 
-  return { events, isConnected, isDone, latestEvent, progress, connect, disconnect }
+  return { events, isConnected, isDone, isStarted, totalChapters, latestEvent, progress, connect, disconnect }
 }

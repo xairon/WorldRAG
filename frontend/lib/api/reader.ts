@@ -54,3 +54,16 @@ export interface ChapterParagraphs {
 export function getChapterParagraphs(bookId: string, chapter: number): Promise<ChapterParagraphs> {
   return apiFetch(`/reader/books/${bookId}/chapters/${chapter}/paragraphs`)
 }
+
+export interface ChapterXHTML {
+  book_id: string
+  chapter_number: number
+  title: string
+  xhtml: string
+  css: string
+  word_count: number
+}
+
+export function getChapterXHTML(bookId: string, chapter: number): Promise<ChapterXHTML> {
+  return apiFetch(`/reader/books/${bookId}/chapters/${chapter}/xhtml`)
+}

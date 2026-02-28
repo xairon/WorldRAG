@@ -174,6 +174,7 @@ class BookRepository(Neo4jRepository):
                 "word_count": ch.word_count,
                 "summary": "",
                 "batch_id": batch_id,
+                "xhtml": ch.xhtml,
             }
             for ch in chapters
         ]
@@ -190,7 +191,8 @@ class BookRepository(Neo4jRepository):
                 c.status = 'pending',
                 c.batch_id = ch.batch_id,
                 c.regex_matches = 0,
-                c.entity_count = 0
+                c.entity_count = 0,
+                c.xhtml = ch.xhtml
             MERGE (b)-[:HAS_CHAPTER {position: ch.number}]->(c)
             """,
             {"book_id": book_id, "chapters": chapter_data},
@@ -208,6 +210,50 @@ class BookRepository(Neo4jRepository):
         if result:
             return dict(result[0]["c"])
         return None
+
+    async def get_chapter_xhtml(self, book_id: str, chapter_number: int) -> dict[str, Any] | None:
+        """Get chapter XHTML content for epub rendering."""
+        result = await self.execute_read(
+            """
+            MATCH (c:Chapter {book_id: $book_id, number: $number})
+            RETURN c.xhtml AS xhtml, c.title AS title, c.word_count AS word_count
+            """,
+            {"book_id": book_id, "number": chapter_number},
+        )
+        if result and result[0].get("xhtml"):
+            return dict(result[0])
+        return None
+
+    async def get_book_epub_css(self, book_id: str) -> str:
+        """Get the epub CSS stored on the book node."""
+        result = await self.execute_read(
+            "MATCH (b:Book {id: $id}) RETURN b.epub_css AS css",
+            {"id": book_id},
+        )
+        if result:
+            return result[0].get("css") or ""
+        return ""
+
+    async def set_book_epub_css(self, book_id: str, css: str) -> None:
+        """Store epub CSS on the book node."""
+        await self.execute_write(
+            "MATCH (b:Book {id: $id}) SET b.epub_css = $css",
+            {"id": book_id, "css": css},
+        )
+
+    async def backfill_chapter_xhtml(
+        self, book_id: str, chapter_number: int, xhtml: str
+    ) -> bool:
+        """Backfill XHTML for an existing chapter. Returns True if updated."""
+        result = await self.execute_write(
+            """
+            MATCH (c:Chapter {book_id: $book_id, number: $number})
+            SET c.xhtml = $xhtml
+            RETURN c.number AS number
+            """,
+            {"book_id": book_id, "number": chapter_number, "xhtml": xhtml},
+        )
+        return bool(result)
 
     async def list_chapters(self, book_id: str) -> list[dict[str, Any]]:
         """List all chapters for a book."""

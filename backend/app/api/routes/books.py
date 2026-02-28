@@ -8,12 +8,13 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import shutil
 import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, Depends, Query, UploadFile
+from fastapi import APIRouter, Depends, Query, Request, UploadFile
 
 from app.api.auth import require_auth
 from app.api.dependencies import get_arq_pool, get_neo4j
@@ -135,7 +136,7 @@ async def upload_book(
         await repo.update_book_status(book_id, ProcessingStatus.INGESTING.value)
 
         # 1. Parse file into chapters
-        chapters = await ingest_file(tmp_path)
+        chapters, epub_css = await ingest_file(tmp_path)
 
         if not chapters:
             raise ValidationError("No chapters found in file")
@@ -143,6 +144,10 @@ async def upload_book(
         # Store chapters in Neo4j
         await repo.create_chapters(book_id, chapters)
         await repo.update_book_chapter_count(book_id, len(chapters))
+
+        # Store epub CSS on book node (for reader rendering)
+        if epub_css:
+            await repo.set_book_epub_css(book_id, epub_css)
 
         # Store paragraphs for each chapter
         for chapter in chapters:
@@ -314,6 +319,7 @@ async def get_book_stats(
 )
 async def extract_book(
     book_id: str,
+    request: Request,
     body: ExtractionRequest | None = None,
     driver: AsyncDriver = Depends(get_neo4j),
     arq_pool: ArqRedis = Depends(get_arq_pool),
@@ -372,6 +378,27 @@ async def extract_book(
     if job is None:
         raise ConflictError("Job already enqueued or could not be created.")
 
+    # Set status to "extracting" immediately for instant frontend feedback
+    # (worker will also set it, but this prevents a stale "completed" status
+    # if the worker takes time to pick up the job)
+    await repo.update_book_status(book_id, "extracting")
+
+    # Publish initial progress event so SSE stream has something to show
+    try:
+        await request.app.state.redis.publish(
+            f"worldrag:progress:{book_id}",
+            json.dumps(
+                {
+                    "chapter": 0,
+                    "total": len(chapters),
+                    "status": "started",
+                    "entities_found": 0,
+                }
+            ),
+        )
+    except Exception:
+        logger.warning("initial_progress_publish_failed", book_id=book_id, exc_info=True)
+
     logger.info(
         "book_extraction_enqueued",
         book_id=book_id,
@@ -394,6 +421,7 @@ async def extract_book(
 )
 async def extract_book_v3(
     book_id: str,
+    request: Request,
     body: ExtractionRequestV3 | None = None,
     driver: AsyncDriver = Depends(get_neo4j),
     arq_pool: ArqRedis = Depends(get_arq_pool),
@@ -443,6 +471,26 @@ async def extract_book_v3(
 
     if job is None:
         raise ConflictError("Job already enqueued or could not be created.")
+
+    # Set status to "extracting" immediately for instant frontend feedback
+    await repo.update_book_status(book_id, "extracting")
+
+    # Publish initial progress event so SSE stream has something to show
+    try:
+        await request.app.state.redis.publish(
+            f"worldrag:progress:{book_id}",
+            json.dumps(
+                {
+                    "chapter": 0,
+                    "total": len(chapters),
+                    "status": "started",
+                    "entities_found": 0,
+                    "pipeline": "v3",
+                }
+            ),
+        )
+    except Exception:
+        logger.warning("initial_progress_publish_failed", book_id=book_id, exc_info=True)
 
     logger.info(
         "book_extraction_v3_enqueued",
@@ -558,6 +606,91 @@ async def get_book_jobs(
             },
         },
     }
+
+
+@router.post(
+    "/{book_id}/backfill-xhtml",
+    dependencies=[Depends(require_auth)],
+)
+async def backfill_xhtml(
+    book_id: str,
+    file: UploadFile,
+    driver: AsyncDriver = Depends(get_neo4j),
+) -> dict:
+    """Backfill XHTML from an epub for an existing book.
+
+    Re-parses the epub and updates Chapter nodes with the original XHTML.
+    Also stores the epub CSS on the Book node.
+    """
+    from app.services.ingestion import parse_epub
+
+    repo = BookRepository(driver)
+    book = await repo.get_book(book_id)
+    if not book:
+        raise NotFoundError("Book not found")
+
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix != ".epub":
+        raise ValidationError("Only epub files are supported for XHTML backfill")
+
+    tmp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".epub") as tmp:
+            await asyncio.to_thread(shutil.copyfileobj, file.file, tmp)
+            tmp_path = Path(tmp.name)
+
+        chapters, epub_css = await parse_epub(tmp_path)
+
+        # Store CSS on book node
+        if epub_css:
+            await repo.set_book_epub_css(book_id, epub_css)
+
+        # Build title→chapter_number map from existing DB chapters
+        db_chapters = await repo.list_chapters(book_id)
+        title_to_number: dict[str, int] = {}
+        for row in db_chapters:
+            c = dict(row["c"])
+            db_title = (c.get("title") or "").strip().lower()
+            db_num = c.get("number")
+            if db_title and db_num is not None:
+                title_to_number[db_title] = int(db_num)
+
+        # Update each chapter with XHTML, matching by title (not number)
+        # because epub heading numbers may differ from DB chapter numbers
+        updated = 0
+        for ch in chapters:
+            if not ch.xhtml:
+                continue
+            parsed_title = (ch.title or "").strip().lower()
+            target_num = title_to_number.get(parsed_title)
+            if target_num is not None:
+                ok = await repo.backfill_chapter_xhtml(book_id, target_num, ch.xhtml)
+                if ok:
+                    updated += 1
+            else:
+                logger.debug(
+                    "backfill_no_title_match",
+                    parsed_title=ch.title,
+                    parsed_number=ch.number,
+                )
+
+        logger.info(
+            "xhtml_backfill_completed",
+            book_id=book_id,
+            chapters_updated=updated,
+            css_bytes=len(epub_css),
+        )
+
+        return {
+            "book_id": book_id,
+            "chapters_updated": updated,
+            "chapters_parsed": len(chapters),
+            "css_stored": bool(epub_css),
+        }
+    finally:
+        if tmp_path is not None:
+            with contextlib.suppress(OSError):
+                tmp_path.unlink(missing_ok=True)
 
 
 @router.delete("/{book_id}", dependencies=[Depends(require_auth)])

@@ -170,6 +170,8 @@ export default function PipelineBookPage() {
               progress={extraction.progress}
               isConnected={extraction.isConnected}
               isDone={extraction.isDone}
+              isStarted={extraction.isStarted}
+              totalChapters={extraction.totalChapters}
             />
           </CardContent>
         </Card>

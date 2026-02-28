@@ -56,6 +56,21 @@ async def stream_extraction_progress(
                 if msg and msg["type"] == "message":
                     data = json.loads(msg["data"])
                     total_chapters = data.get("total", total_chapters)
+                    status = data.get("status", "")
+
+                    # "started" event = initial signal, don't count as chapter
+                    if status == "started":
+                        yield {
+                            "event": "started",
+                            "data": json.dumps(
+                                {
+                                    **data,
+                                    "chapters_done": 0,
+                                }
+                            ),
+                        }
+                        continue
+
                     chapters_done += 1
 
                     yield {

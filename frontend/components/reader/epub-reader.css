@@ -1,0 +1,431 @@
+/*
+ * Epub Reader — Three-Layer CSS Architecture
+ *
+ * Layer 1: Epub original CSS (injected dynamically, scoped under .epub-content)
+ * Layer 2: Theme overrides (CSS custom properties driven by reader theme)
+ * Layer 3: LitRPG enhancements (blue boxes, drop caps, scene breaks)
+ */
+
+/* ============================================================
+   Layer 2 — Theme Overrides
+   Force epub colors to match reader theme
+   ============================================================ */
+
+.epub-content {
+  /* Typography */
+  text-align: justify;
+  hyphens: auto;
+  -webkit-hyphens: auto;
+  word-break: break-word;
+  overflow-wrap: break-word;
+
+  /* Force theme colors on ALL elements */
+  color: var(--reader-text);
+}
+
+/* :where() zeroes out specificity so LitRPG enhancement rules can override */
+.epub-content :where(*:not(mark.entity-highlight)) {
+  color: inherit !important;
+  background-color: transparent !important;
+  border-color: inherit !important;
+}
+
+/* Reset epub margins/padding that fight our layout */
+.epub-content > div,
+.epub-content > section {
+  margin: 0;
+  padding: 0;
+}
+
+/* Paragraph styling */
+.epub-content p {
+  text-indent: 1.5em;
+  margin: 0.15em 0;
+  text-align: justify;
+}
+
+/* First paragraph after a heading or break — no indent */
+.epub-content h1 + p,
+.epub-content h2 + p,
+.epub-content h3 + p,
+.epub-content hr + p,
+.epub-content .sep + p,
+.epub-content p:first-child {
+  text-indent: 0;
+}
+
+/* Headings */
+.epub-content h1,
+.epub-content h2,
+.epub-content h3 {
+  color: var(--reader-heading) !important;
+  text-align: center;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  margin-top: 2em;
+  margin-bottom: 1em;
+  line-height: 1.3;
+}
+
+/* Links — inherit theme color */
+.epub-content a {
+  text-decoration: none;
+}
+
+/* Images */
+.epub-content img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 1em auto;
+}
+
+/* ============================================================
+   Layer 3 — LitRPG Enhancements
+   ============================================================ */
+
+/* --- Hide epub chapter heading (reader header already shows it) --- */
+.epub-content > section > h1:first-of-type,
+.epub-content > section > .chap_debut,
+.epub-content > h1:first-of-type {
+  display: none !important;
+}
+
+/* Hide epub pagebreak markers */
+.epub-content [epub\:type="pagebreak"],
+.epub-content span[role="doc-pagebreak"] {
+  display: none !important;
+}
+
+/* Remove top margin from first content section */
+.epub-content > section:first-child {
+  margin-top: 0;
+  padding-top: 0;
+}
+
+/* --- Drop Caps --- */
+.epub-content .let {
+  font-size: 270% !important;
+  float: left;
+  line-height: 0.8;
+  margin-right: 0.05em;
+  margin-top: 0.05em;
+  color: var(--reader-heading) !important;
+  font-weight: 600;
+}
+
+/* Alternative: CSS initial-letter for browsers that support it */
+@supports (initial-letter: 3) {
+  .epub-content .let {
+    float: none;
+    initial-letter: 3;
+    margin-right: 0;
+    margin-top: 0;
+  }
+}
+
+/* --- Small Caps (epub uses <small> for opening text) --- */
+.epub-content small {
+  font-variant: small-caps !important;
+  font-size: 100% !important;
+  letter-spacing: 0.05em;
+  font-weight: 500;
+}
+
+/* --- Blue Boxes / System Messages --- */
+/* epub wraps stat blocks in <div class="lettre"> */
+.epub-content .lettre {
+  position: relative;
+  margin: 1.5em auto !important;
+  max-width: 480px;
+  padding: 1em 1.25em !important;
+  border-radius: 8px;
+  border: 1px solid var(--reader-bluebox-border) !important;
+  background: var(--reader-bluebox-bg) !important;
+  box-shadow: 0 0 20px var(--reader-bluebox-glow);
+  text-align: center;
+}
+
+.epub-content .lettre * {
+  color: var(--reader-bluebox-text) !important;
+  font-family: "SF Mono", "Fira Code", "Cascadia Code", ui-monospace, monospace !important;
+  font-size: 0.85em;
+  line-height: 1.6;
+}
+
+.epub-content .lettre p {
+  text-indent: 0;
+  text-align: center;
+  margin: 0.2em 0;
+}
+
+.epub-content .lettre b,
+.epub-content .lettre strong {
+  color: var(--reader-bluebox-text) !important;
+  font-weight: 700;
+  display: block;
+  margin-bottom: 0.3em;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  font-size: 0.9em;
+}
+
+/* Corner decorations for blue boxes */
+.epub-content .lettre::before,
+.epub-content .lettre::after {
+  content: "";
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  opacity: 0.6;
+}
+
+.epub-content .lettre::before {
+  top: 0;
+  left: 0;
+  border-top: 2px solid var(--reader-bluebox-corner);
+  border-left: 2px solid var(--reader-bluebox-corner);
+  border-top-left-radius: 8px;
+}
+
+.epub-content .lettre::after {
+  bottom: 0;
+  right: 0;
+  border-bottom: 2px solid var(--reader-bluebox-corner);
+  border-right: 2px solid var(--reader-bluebox-corner);
+  border-bottom-right-radius: 8px;
+}
+
+/* Additional corner decorations */
+.epub-content .lettre > .corner-tr,
+.epub-content .lettre > .corner-bl {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  opacity: 0.6;
+}
+
+/* --- System Notifications / Inline Messages --- */
+/* epub wraps system notifications in <div class="cita"> */
+/* (item descriptions, skill unlocks, XP gains, title awards) */
+.epub-content .cita {
+  position: relative;
+  margin: 1.2em 2em !important;
+  padding: 0.7em 1em !important;
+  border-radius: 6px;
+  border-left: 3px solid var(--reader-bluebox-border) !important;
+  background: var(--reader-bluebox-bg) !important;
+  text-align: left;
+}
+
+.epub-content .cita * {
+  color: var(--reader-bluebox-text) !important;
+  font-family: "SF Mono", "Fira Code", "Cascadia Code", ui-monospace, monospace !important;
+  font-size: 0.82em;
+  line-height: 1.6;
+}
+
+.epub-content .cita p {
+  text-indent: 0;
+  text-align: left;
+  margin: 0.15em 0;
+}
+
+.epub-content .cita b,
+.epub-content .cita strong {
+  color: var(--reader-bluebox-text) !important;
+  font-weight: 700;
+}
+
+.epub-content .cita i,
+.epub-content .cita em {
+  font-style: italic;
+}
+
+/* --- System Message Type Labels --- */
+/* Small uppercase label before each classified system message */
+.epub-content .cita[data-system-type]::before {
+  display: block;
+  font-family: "Inter", system-ui, sans-serif;
+  font-size: 0.6em;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 0.4em;
+  opacity: 0.8;
+}
+
+/* Level-up (DING!) — golden/amber */
+.epub-content .cita[data-system-type="level-up"] {
+  border-left-color: #f59e0b !important;
+}
+.epub-content .cita[data-system-type="level-up"]::before {
+  content: "\25B2  LEVEL UP";
+  color: #f59e0b !important;
+}
+
+/* XP kill — red */
+.epub-content .cita[data-system-type="xp-kill"] {
+  border-left-color: #ef4444 !important;
+}
+.epub-content .cita[data-system-type="xp-kill"]::before {
+  content: "\2620  KILL";
+  color: #ef4444 !important;
+}
+
+/* Title award — purple */
+.epub-content .cita[data-system-type="title-award"] {
+  border-left-color: #a855f7 !important;
+}
+.epub-content .cita[data-system-type="title-award"]::before {
+  content: "\265B  TITRE";
+  color: #a855f7 !important;
+}
+
+/* Skill acquired — blue */
+.epub-content .cita[data-system-type="skill-acquired"] {
+  border-left-color: #3b82f6 !important;
+}
+.epub-content .cita[data-system-type="skill-acquired"]::before {
+  content: "\2726  COMPETENCE";
+  color: #3b82f6 !important;
+}
+
+/* Skill available — lighter blue */
+.epub-content .cita[data-system-type="skill-available"] {
+  border-left-color: #60a5fa !important;
+}
+.epub-content .cita[data-system-type="skill-available"]::before {
+  content: "\2726  COMPETENCES";
+  color: #60a5fa !important;
+}
+
+/* Item description — emerald */
+.epub-content .cita[data-system-type="item-desc"] {
+  border-left-color: #10b981 !important;
+}
+.epub-content .cita[data-system-type="item-desc"]::before {
+  content: "\25C6  ITEM";
+  color: #10b981 !important;
+}
+
+/* Bloodline — orange/amber */
+.epub-content .cita[data-system-type="bloodline"] {
+  border-left-color: #f97316 !important;
+}
+.epub-content .cita[data-system-type="bloodline"]::before {
+  content: "\2741  LIGNEE";
+  color: #f97316 !important;
+}
+
+/* Evolution — gold */
+.epub-content .cita[data-system-type="evolution"] {
+  border-left-color: #eab308 !important;
+}
+.epub-content .cita[data-system-type="evolution"]::before {
+  content: "\2728  EVOLUTION";
+  color: #eab308 !important;
+}
+
+/* Profession — teal */
+.epub-content .cita[data-system-type="profession"] {
+  border-left-color: #14b8a6 !important;
+}
+.epub-content .cita[data-system-type="profession"]::before {
+  content: "\2692  PROFESSION";
+  color: #14b8a6 !important;
+}
+
+/* Quest / Dungeon — yellow */
+.epub-content .cita[data-system-type="quest"] {
+  border-left-color: #facc15 !important;
+}
+.epub-content .cita[data-system-type="quest"]::before {
+  content: "\2690  QUETE";
+  color: #facc15 !important;
+}
+
+/* System speech — cyan (default) */
+.epub-content .cita[data-system-type="system-speech"],
+.epub-content .cita[data-system-type="system-generic"] {
+  border-left-color: var(--reader-bluebox-border) !important;
+}
+.epub-content .cita[data-system-type="system-speech"]::before {
+  content: "\25C8  SYSTEME";
+  color: var(--reader-bluebox-border) !important;
+}
+/* No label for generic system messages */
+
+/* --- Scene Breaks --- */
+/* epub uses <p class="sep">***</p> */
+.epub-content .sep {
+  text-align: center !important;
+  text-indent: 0 !important;
+  margin: 2em 0 !important;
+  font-size: 0 !important;
+  /* Hide the *** text, replace with decorative element */
+}
+
+.epub-content .sep::after {
+  content: "\2725  \2725  \2725";
+  font-size: var(--reader-font-size, 18px);
+  color: var(--reader-scene-break) !important;
+  letter-spacing: 0.4em;
+  opacity: 0.7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.epub-content .sep::before {
+  content: "";
+  display: block;
+  height: 0;
+}
+
+/* --- Justified text class from epub --- */
+.epub-content .txt_courant_justif {
+  text-align: justify;
+  text-indent: 5%;
+  line-height: var(--reader-line-height, 1.9);
+}
+
+/* --- Selection highlight --- */
+.epub-content ::selection {
+  background: var(--reader-select-bg);
+}
+
+/* ============================================================
+   Annotation Highlights
+   ============================================================ */
+
+.epub-content mark.entity-highlight {
+  background-color: transparent;
+  cursor: pointer;
+  border-radius: 2px;
+  padding: 0 2px;
+  margin: 0 -2px;
+  transition: all 0.15s ease;
+  /* Color set via inline style from JS */
+}
+
+.epub-content mark.entity-highlight:hover {
+  filter: brightness(1.2);
+}
+
+/* ============================================================
+   Responsive
+   ============================================================ */
+
+@media (max-width: 640px) {
+  .epub-content .lettre {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    max-width: 100%;
+  }
+
+  .epub-content .let {
+    font-size: 220% !important;
+  }
+}
