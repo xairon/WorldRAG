@@ -6,6 +6,7 @@ import Link from "next/link"
 import {
   ArrowLeft,
   Loader2,
+  CheckCircle2,
   Zap,
   BookOpen,
   FileCode,
@@ -173,6 +174,26 @@ export default function PipelineBookPage() {
               isDone={extraction.isDone}
               isStarted={extraction.isStarted}
               totalChapters={extraction.totalChapters}
+            />
+          </CardContent>
+        </Card>
+      )}
+
+      {!extracting && book.status === "extracted" && (
+        <Card>
+          <CardContent className="pt-5 pb-4">
+            <div className="flex items-center gap-2 mb-3">
+              <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+              <h2 className="text-sm font-medium text-slate-400">Extraction Complete</h2>
+            </div>
+            <ExtractionProgress
+              bookId={bookId}
+              events={[]}
+              progress={100}
+              isConnected={false}
+              isDone={true}
+              isStarted={true}
+              totalChapters={book.total_chapters}
             />
           </CardContent>
         </Card>
