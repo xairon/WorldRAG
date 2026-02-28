@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api.auth import require_auth
 from app.api.dependencies import get_neo4j
@@ -376,6 +376,58 @@ async def get_book_subgraph(
             unique_nodes.append(n)
 
     return {"nodes": unique_nodes, "edges": row.get("edges", [])}
+
+
+# ── Entity listing (paginated) ─────────────────────────────────────────────
+
+
+@router.get("/entities", dependencies=[Depends(require_auth)])
+async def list_entities(
+    book_id: str = Query(..., description="Book ID"),
+    label: str = Query(..., description="Entity label (Character, Skill, etc.)"),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    driver: AsyncDriver = Depends(get_neo4j),
+) -> dict:
+    """List entities of a specific type for a book, with pagination."""
+    if label not in ALLOWED_LABELS:
+        raise HTTPException(status_code=400, detail=f"Invalid label: {label}")
+
+    repo = Neo4jRepository(driver)
+
+    # Count total
+    count_result = await repo.execute_read(
+        """
+        MATCH (n)
+        WHERE n.book_id = $book_id AND $label IN labels(n)
+        RETURN count(n) AS total
+        """,
+        {"book_id": book_id, "label": label},
+    )
+    total = count_result[0]["total"] if count_result else 0
+
+    # Fetch page
+    results = await repo.execute_read(
+        """
+        MATCH (n)
+        WHERE n.book_id = $book_id AND $label IN labels(n)
+        RETURN elementId(n) AS id,
+               labels(n) AS labels,
+               n.name AS name,
+               n.canonical_name AS canonical_name,
+               n.description AS description
+        ORDER BY n.name
+        SKIP $offset LIMIT $limit
+        """,
+        {"book_id": book_id, "label": label, "offset": offset, "limit": limit},
+    )
+
+    return {
+        "entities": [dict(r) for r in results],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
 
 
 # ── Character detail (profile) ─────────────────────────────────────────────
