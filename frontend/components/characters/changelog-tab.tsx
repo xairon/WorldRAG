@@ -18,14 +18,14 @@ const CATEGORY_STYLES: Record<string, string> = {
 }
 
 function categoryClass(category: string): string {
-  return CATEGORY_STYLES[category.toLowerCase()] ?? "border-slate-700 bg-slate-500/10 text-slate-400"
+  return CATEGORY_STYLES[category.toLowerCase()] ?? "border-[var(--glass-border)] bg-accent text-muted-foreground"
 }
 
 export function ChangelogTab({ changes }: ChangelogTabProps) {
   if (changes.length === 0) {
     return (
-      <div className="rounded-xl border border-slate-800 bg-slate-900/30 p-8 text-center">
-        <p className="text-sm text-slate-500">No changes in this chapter.</p>
+      <div className="rounded-xl glass border-dashed p-8 text-center">
+        <p className="text-sm text-muted-foreground">No changes in this chapter.</p>
       </div>
     )
   }
@@ -35,13 +35,13 @@ export function ChangelogTab({ changes }: ChangelogTabProps) {
       {changes.map((change, i) => (
         <div
           key={`${change.category}-${change.name}-${i}`}
-          className="rounded-xl bg-slate-900/50 border border-slate-800 px-4 py-3 flex items-start gap-3"
+          className="rounded-xl glass px-4 py-3 flex items-start gap-3"
         >
           {/* Timeline dot */}
           <div className="flex flex-col items-center pt-1.5">
-            <div className="h-2 w-2 rounded-full bg-slate-600" />
+            <div className="h-2 w-2 rounded-full bg-muted-foreground" />
             {i < changes.length - 1 && (
-              <div className="w-px flex-1 bg-slate-800 mt-1" />
+              <div className="w-px flex-1 bg-[var(--border)] mt-1" />
             )}
           </div>
 
@@ -54,8 +54,8 @@ export function ChangelogTab({ changes }: ChangelogTabProps) {
               >
                 {change.category}
               </Badge>
-              <span className="text-sm text-slate-300">
-                <span className="text-slate-500">{change.action}</span>{" "}
+              <span className="text-sm text-foreground">
+                <span className="text-muted-foreground">{change.action}</span>{" "}
                 <span className="font-medium">{change.name}</span>
               </span>
               {change.value_delta !== null && change.value_delta !== 0 && (
@@ -68,7 +68,7 @@ export function ChangelogTab({ changes }: ChangelogTabProps) {
                   {change.value_delta > 0 ? "+" : ""}
                   {change.value_delta}
                   {change.value_after !== null && (
-                    <span className="text-slate-600 ml-1">
+                    <span className="text-muted-foreground/60 ml-1">
                       ({change.value_after})
                     </span>
                   )}
@@ -76,7 +76,7 @@ export function ChangelogTab({ changes }: ChangelogTabProps) {
               )}
             </div>
             {change.detail && (
-              <p className="text-xs text-slate-500 line-clamp-2">{change.detail}</p>
+              <p className="text-xs text-muted-foreground line-clamp-2">{change.detail}</p>
             )}
           </div>
         </div>

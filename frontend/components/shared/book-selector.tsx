@@ -38,12 +38,12 @@ export function BookSelector() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button className="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-900/50 px-3 py-1.5 text-sm hover:bg-slate-800/50 transition-colors max-w-[220px]">
-          <BookOpen className="h-4 w-4 text-indigo-400 shrink-0" />
-          <span className="truncate text-slate-300">
+        <button className="flex items-center gap-2 rounded-lg glass px-3 py-1.5 text-sm glass-hover transition-colors max-w-[220px]">
+          <BookOpen className="h-4 w-4 text-primary shrink-0" />
+          <span className="truncate text-foreground">
             {book ? book.title : "Select book..."}
           </span>
-          <ChevronDown className="h-3 w-3 text-slate-500 shrink-0" />
+          <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-64">
@@ -51,7 +51,7 @@ export function BookSelector() {
           onClick={() => setSelectedBookId(null)}
           className={cn(!selectedBookId && "bg-accent")}
         >
-          <span className="text-slate-500">No book selected</span>
+          <span className="text-muted-foreground">No book selected</span>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         {books.map((b) => (
@@ -73,7 +73,7 @@ export function BookSelector() {
         ))}
         {books.length === 0 && (
           <DropdownMenuItem disabled>
-            <span className="text-slate-500">No books uploaded</span>
+            <span className="text-muted-foreground">No books uploaded</span>
           </DropdownMenuItem>
         )}
       </DropdownMenuContent>

@@ -21,26 +21,26 @@ export function SchemaViewer({ schema }: SchemaViewerProps) {
       <div className="space-y-6">
         {/* Constraints */}
         <div>
-          <h3 className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-3">
+          <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
             Uniqueness Constraints ({schema.constraints.length})
           </h3>
-          <div className="rounded-lg border border-slate-800 overflow-hidden">
+          <div className="rounded-lg border border-[var(--glass-border)] overflow-hidden">
             <table className="w-full text-xs">
               <thead>
-                <tr className="bg-slate-900/80 text-slate-500 text-[10px] uppercase">
+                <tr className="bg-background text-muted-foreground text-[10px] uppercase">
                   <th className="text-left px-3 py-2 font-medium">Name</th>
                   <th className="text-left px-3 py-2 font-medium">Label</th>
                   <th className="text-left px-3 py-2 font-medium">Properties</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60">
+              <tbody className="divide-y divide-[var(--glass-border)]">
                 {schema.constraints.map((c) => (
-                  <tr key={c.name} className="hover:bg-slate-900/40">
-                    <td className="px-3 py-2 font-mono text-slate-300">{c.name}</td>
-                    <td className="px-3 py-2 text-indigo-400">{c.label}</td>
-                    <td className="px-3 py-2 text-slate-400">
+                  <tr key={c.name} className="hover:bg-accent">
+                    <td className="px-3 py-2 font-mono text-foreground">{c.name}</td>
+                    <td className="px-3 py-2 text-primary">{c.label}</td>
+                    <td className="px-3 py-2 text-muted-foreground">
                       {c.properties.map((p) => (
-                        <code key={p} className="mr-2 text-[10px] bg-slate-900/60 rounded px-1 py-0.5">
+                        <code key={p} className="mr-2 text-[10px] bg-background rounded px-1 py-0.5">
                           {p}
                         </code>
                       ))}
@@ -54,35 +54,35 @@ export function SchemaViewer({ schema }: SchemaViewerProps) {
 
         {/* Indexes */}
         <div>
-          <h3 className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-3">
+          <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
             Indexes ({schema.indexes.length})
           </h3>
-          <div className="rounded-lg border border-slate-800 overflow-hidden">
+          <div className="rounded-lg border border-[var(--glass-border)] overflow-hidden">
             <table className="w-full text-xs">
               <thead>
-                <tr className="bg-slate-900/80 text-slate-500 text-[10px] uppercase">
+                <tr className="bg-background text-muted-foreground text-[10px] uppercase">
                   <th className="text-left px-3 py-2 font-medium">Name</th>
                   <th className="text-left px-3 py-2 font-medium">Type</th>
                   <th className="text-left px-3 py-2 font-medium">Label</th>
                   <th className="text-left px-3 py-2 font-medium">Properties</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60">
+              <tbody className="divide-y divide-[var(--glass-border)]">
                 {schema.indexes.map((idx) => (
-                  <tr key={idx.name} className="hover:bg-slate-900/40">
-                    <td className="px-3 py-2 font-mono text-slate-300">{idx.name}</td>
+                  <tr key={idx.name} className="hover:bg-accent">
+                    <td className="px-3 py-2 font-mono text-foreground">{idx.name}</td>
                     <td className="px-3 py-2">
                       <Badge
                         variant="outline"
-                        className={TYPE_COLORS[idx.index_type] ?? "text-slate-400"}
+                        className={TYPE_COLORS[idx.index_type] ?? "text-muted-foreground"}
                       >
                         {idx.index_type}
                       </Badge>
                     </td>
-                    <td className="px-3 py-2 text-indigo-400">{idx.label}</td>
-                    <td className="px-3 py-2 text-slate-400">
+                    <td className="px-3 py-2 text-primary">{idx.label}</td>
+                    <td className="px-3 py-2 text-muted-foreground">
                       {idx.properties.map((p) => (
-                        <code key={p} className="mr-2 text-[10px] bg-slate-900/60 rounded px-1 py-0.5">
+                        <code key={p} className="mr-2 text-[10px] bg-background rounded px-1 py-0.5">
                           {p}
                         </code>
                       ))}

@@ -27,7 +27,7 @@ export function ModelViewer({ models }: ModelViewerProps) {
   }, [models])
 
   if (models.length === 0) {
-    return <p className="text-sm text-slate-500">No extraction models loaded.</p>
+    return <p className="text-sm text-muted-foreground">No extraction models loaded.</p>
   }
 
   return (
@@ -37,7 +37,7 @@ export function ModelViewer({ models }: ModelViewerProps) {
           <AccordionItem
             key={passName}
             value={passName}
-            className="border border-slate-800 rounded-lg px-4"
+            className="border border-[var(--glass-border)] rounded-lg px-4"
           >
             <AccordionTrigger className="text-sm font-medium hover:no-underline">
               <div className="flex items-center gap-2">
@@ -51,11 +51,11 @@ export function ModelViewer({ models }: ModelViewerProps) {
               <div className="space-y-4 pb-2">
                 {items.map((model) => (
                   <div key={model.name}>
-                    <h4 className="text-xs font-mono text-indigo-400 mb-2">{model.name}</h4>
-                    <div className="rounded-md border border-slate-800/60 overflow-hidden">
+                    <h4 className="text-xs font-mono text-primary mb-2">{model.name}</h4>
+                    <div className="rounded-md border border-[var(--glass-border)]/60 overflow-hidden">
                       <table className="w-full text-[11px]">
                         <thead>
-                          <tr className="bg-slate-900/60 text-slate-500 text-[10px] uppercase">
+                          <tr className="bg-background text-muted-foreground text-[10px] uppercase">
                             <th className="text-left px-3 py-1.5 font-medium">Field</th>
                             <th className="text-left px-3 py-1.5 font-medium">Type</th>
                             <th className="text-center px-3 py-1.5 font-medium">Req</th>
@@ -63,10 +63,10 @@ export function ModelViewer({ models }: ModelViewerProps) {
                             <th className="text-left px-3 py-1.5 font-medium">Description</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-800/40">
+                        <tbody className="divide-y divide-[var(--glass-border)]">
                           {model.fields.map((f) => (
                             <tr key={f.name}>
-                              <td className="px-3 py-1.5 font-mono text-slate-300">{f.name}</td>
+                              <td className="px-3 py-1.5 font-mono text-foreground">{f.name}</td>
                               <td className="px-3 py-1.5 text-amber-300/80 font-mono">{f.type}</td>
                               <td className="px-3 py-1.5 text-center">
                                 {f.required ? (
@@ -75,10 +75,10 @@ export function ModelViewer({ models }: ModelViewerProps) {
                                   ""
                                 )}
                               </td>
-                              <td className="px-3 py-1.5 text-slate-500">
+                              <td className="px-3 py-1.5 text-muted-foreground">
                                 {f.default ?? ""}
                               </td>
-                              <td className="px-3 py-1.5 text-slate-500 max-w-[200px] truncate">
+                              <td className="px-3 py-1.5 text-muted-foreground max-w-[200px] truncate">
                                 {f.description}
                               </td>
                             </tr>

@@ -47,7 +47,7 @@ export default function PipelinePage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-[60vh]">
-        <div className="animate-pulse text-slate-500">
+        <div className="animate-pulse text-muted-foreground">
           Loading pipeline config...
         </div>
       </div>
@@ -61,7 +61,7 @@ export default function PipelinePage() {
         <h1 className="text-2xl font-bold tracking-tight">
           Pipeline Dashboard
         </h1>
-        <p className="text-sm text-slate-500 mt-1">
+        <p className="text-sm text-muted-foreground mt-1">
           Inspect extraction configuration, prompts, ontology, and data models.
           Select a book to run extraction.
         </p>
@@ -70,7 +70,7 @@ export default function PipelinePage() {
       {/* Book cards for extraction access */}
       {books.length > 0 && (
         <div>
-          <h2 className="text-sm font-medium text-slate-400 mb-3">
+          <h2 className="text-sm font-medium text-muted-foreground mb-3">
             Books — select to extract
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -78,20 +78,20 @@ export default function PipelinePage() {
               <Link
                 key={b.id}
                 href={`/pipeline/${b.id}`}
-                className="group rounded-lg border border-slate-800 bg-slate-900/30 p-4 hover:border-indigo-500/40 hover:bg-slate-900/60 transition-all"
+                className="group glass rounded-lg p-4 hover:border-primary/40 hover:bg-accent transition-all"
               >
                 <div className="flex items-start justify-between">
                   <div className="min-w-0">
-                    <h3 className="text-sm font-medium truncate group-hover:text-indigo-300 transition-colors">
+                    <h3 className="text-sm font-medium truncate group-hover:text-primary transition-colors">
                       {b.title}
                     </h3>
                     <div className="flex items-center gap-2 mt-1">
                       {b.author && (
-                        <span className="text-xs text-slate-500 truncate">
+                        <span className="text-xs text-muted-foreground truncate">
                           {b.author}
                         </span>
                       )}
-                      <span className="text-xs text-slate-600">
+                      <span className="text-xs text-muted-foreground/60">
                         {b.total_chapters} ch
                       </span>
                     </div>
@@ -105,7 +105,7 @@ export default function PipelinePage() {
                     >
                       {b.status}
                     </span>
-                    <ArrowRight className="h-3.5 w-3.5 text-slate-600 group-hover:text-indigo-400 transition-colors" />
+                    <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/60 group-hover:text-primary transition-colors" />
                   </div>
                 </div>
               </Link>
@@ -240,7 +240,7 @@ export default function PipelinePage() {
 function LoadingPlaceholder() {
   return (
     <div className="flex items-center justify-center h-40">
-      <div className="animate-pulse text-slate-500 text-sm">
+      <div className="animate-pulse text-muted-foreground text-sm">
         Loading pipeline config...
       </div>
     </div>

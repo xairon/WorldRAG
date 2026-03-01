@@ -10,8 +10,8 @@ interface TitleListProps {
 export function TitleList({ titles }: TitleListProps) {
   if (titles.length === 0) {
     return (
-      <div className="rounded-xl border border-slate-800 bg-slate-900/30 p-8 text-center">
-        <p className="text-sm text-slate-500">No titles acquired yet.</p>
+      <div className="rounded-xl glass border-dashed p-8 text-center">
+        <p className="text-sm text-muted-foreground">No titles acquired yet.</p>
       </div>
     )
   }
@@ -25,15 +25,15 @@ export function TitleList({ titles }: TitleListProps) {
       {sorted.map((title) => (
         <div
           key={title.name}
-          className="rounded-xl bg-slate-900/50 border border-slate-800 px-4 py-3"
+          className="rounded-xl glass px-4 py-3"
         >
           <div className="flex items-start justify-between gap-3">
             <div className="flex flex-col gap-1 min-w-0">
-              <span className="text-sm font-medium text-slate-200">
+              <span className="text-sm font-medium text-foreground">
                 {title.name}
               </span>
               {title.description && (
-                <p className="text-xs text-slate-500 line-clamp-2">
+                <p className="text-xs text-muted-foreground line-clamp-2">
                   {title.description}
                 </p>
               )}
@@ -52,7 +52,7 @@ export function TitleList({ titles }: TitleListProps) {
               )}
             </div>
             {title.acquired_chapter !== null && (
-              <span className="text-[10px] text-slate-600 font-mono whitespace-nowrap mt-0.5">
+              <span className="text-[10px] text-muted-foreground/60 font-mono whitespace-nowrap mt-0.5">
                 Ch. {title.acquired_chapter}
               </span>
             )}

@@ -13,15 +13,15 @@ export function CharacterHeader({ snapshot }: CharacterHeaderProps) {
   const activeClass = classes.find((c) => c.is_active)
 
   return (
-    <div className="rounded-xl bg-slate-900/50 border border-slate-800 p-6">
+    <div className="rounded-xl glass p-6">
       <div className="flex flex-col gap-3">
         {/* Name + Aliases */}
         <div>
-          <h1 className="text-2xl font-bold text-slate-100 tracking-tight">
+          <h1 className="text-2xl font-bold font-display text-foreground tracking-tight">
             {character_name}
           </h1>
           {aliases.length > 0 && (
-            <p className="text-xs text-slate-500 mt-1">
+            <p className="text-xs text-muted-foreground mt-1">
               aka {aliases.join(", ")}
             </p>
           )}
@@ -32,7 +32,7 @@ export function CharacterHeader({ snapshot }: CharacterHeaderProps) {
           {role && (
             <Badge
               variant="outline"
-              className="border-indigo-500/25 bg-indigo-500/10 text-indigo-400 text-xs"
+              className="border-primary/25 bg-primary/10 text-primary text-xs"
             >
               {role}
             </Badge>
@@ -40,7 +40,7 @@ export function CharacterHeader({ snapshot }: CharacterHeaderProps) {
           {species && (
             <Badge
               variant="outline"
-              className="border-slate-700 text-slate-400 text-xs"
+              className="border-[var(--glass-border)] text-muted-foreground text-xs"
             >
               {species}
             </Badge>
@@ -76,7 +76,7 @@ export function CharacterHeader({ snapshot }: CharacterHeaderProps) {
 
         {/* Description */}
         {description && (
-          <p className="text-sm text-slate-400 leading-relaxed line-clamp-2 max-w-2xl">
+          <p className="text-sm text-muted-foreground leading-relaxed line-clamp-2 max-w-2xl">
             {description}
           </p>
         )}

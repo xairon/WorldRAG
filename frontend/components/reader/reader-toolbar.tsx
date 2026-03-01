@@ -1,7 +1,9 @@
 "use client"
 
+import { useRef, useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { motion } from "motion/react"
 import {
   ChevronLeft,
   ChevronRight,
@@ -13,6 +15,7 @@ import {
   Sun,
   Moon,
   Sunset,
+  Monitor,
   AlignJustify,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -56,6 +59,36 @@ export function ReaderToolbar({
   const router = useRouter()
   const t = THEME_STYLES[settings.theme]
 
+  // Auto-hide on scroll down
+  const lastScrollY = useRef(0)
+  const [visible, setVisible] = useState(true)
+  const [scrollProgress, setScrollProgress] = useState(0)
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollY = window.scrollY
+      const delta = scrollY - lastScrollY.current
+
+      if (delta > 50) {
+        setVisible(false)
+      } else if (delta < 0) {
+        setVisible(true)
+      }
+
+      lastScrollY.current = scrollY
+
+      // Reading progress
+      const docHeight = document.documentElement.scrollHeight - window.innerHeight
+      if (docHeight > 0) {
+        const progress = (scrollY / docHeight) * 100
+        setScrollProgress(Math.min(100, Math.max(0, progress)))
+      }
+    }
+
+    window.addEventListener("scroll", handleScroll, { passive: true })
+    return () => window.removeEventListener("scroll", handleScroll)
+  }, [])
+
   const prevChapter = chapters
     .filter((c) => c.number < currentChapter)
     .sort((a, b) => b.number - a.number)[0]
@@ -69,16 +102,29 @@ export function ReaderToolbar({
     white: <Sun className="h-3.5 w-3.5" />,
     sepia: <Sunset className="h-3.5 w-3.5" />,
     night: <Moon className="h-3.5 w-3.5" />,
+    black: <Monitor className="h-3.5 w-3.5" />,
+    twilight: <Moon className="h-3.5 w-3.5" />,
   }
 
   return (
-    <div
+    <motion.div
       className="sticky top-0 z-30 backdrop-blur-md border-b"
       style={{
-        backgroundColor: `${t.bg}ee`,
+        backgroundColor: `${t.bg}cc`,
         borderColor: t.border,
       }}
+      animate={{ y: visible ? 0 : -48 }}
+      transition={{ type: "spring", stiffness: 300, damping: 30 }}
     >
+      {/* Reading progress bar */}
+      <div
+        className="absolute top-0 left-0 h-0.5"
+        style={{
+          width: `${scrollProgress}%`,
+          background: t.speaker,
+          transition: "width 100ms linear",
+        }}
+      />
       <div className="max-w-[780px] mx-auto flex items-center justify-between px-4 h-11">
         {/* Left: Navigation */}
         <div className="flex items-center gap-1">
@@ -134,7 +180,7 @@ export function ReaderToolbar({
             variant="ghost"
             size="icon"
             className="h-7 w-7"
-            style={{ color: settings.annotations ? "#6366f1" : t.textMuted }}
+            style={{ color: settings.annotations ? t.speaker : t.textMuted }}
             onClick={() => onUpdate({ annotations: !settings.annotations })}
             title={settings.annotations ? "Hide annotations" : "Show annotations"}
           >
@@ -155,7 +201,7 @@ export function ReaderToolbar({
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-56 p-3" align="end">
-                <p className="text-xs font-medium mb-2 text-slate-400">Entity types</p>
+                <p className="text-xs font-medium mb-2 text-muted-foreground">Entity types</p>
                 <div className="flex flex-wrap gap-1.5">
                   {Object.entries(LABEL_COLORS).map(([label, color]) => {
                     const count = typeCounts[label] ?? 0
@@ -202,7 +248,7 @@ export function ReaderToolbar({
             <PopoverContent className="w-52 p-3 space-y-4" align="end">
               {/* Font size */}
               <div>
-                <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Size</p>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-2">Size</p>
                 <div className="flex items-center justify-between">
                   <Button
                     variant="outline"
@@ -228,7 +274,7 @@ export function ReaderToolbar({
 
               {/* Font family */}
               <div>
-                <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Font</p>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-2">Font</p>
                 <div className="flex gap-1.5">
                   {(["serif", "sans"] as const).map((f) => (
                     <button
@@ -237,8 +283,8 @@ export function ReaderToolbar({
                       className={cn(
                         "flex-1 py-1.5 rounded-md text-xs transition-colors",
                         settings.fontFamily === f
-                          ? "bg-indigo-500/20 text-indigo-400 border border-indigo-500/30"
-                          : "bg-slate-800 text-slate-400 border border-transparent hover:bg-slate-700",
+                          ? "bg-primary/20 text-primary border border-primary/30"
+                          : "bg-accent text-muted-foreground border border-transparent hover:bg-accent",
                       )}
                       style={{
                         fontFamily:
@@ -255,10 +301,10 @@ export function ReaderToolbar({
 
               {/* Line height */}
               <div>
-                <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Spacing</p>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-2">Spacing</p>
                 <button
                   onClick={onCycleLineHeight}
-                  className="flex items-center gap-2 w-full py-1.5 px-2 rounded-md bg-slate-800 text-slate-400 text-xs hover:bg-slate-700 transition-colors"
+                  className="flex items-center gap-2 w-full py-1.5 px-2 rounded-md bg-accent text-muted-foreground text-xs hover:bg-accent transition-colors"
                 >
                   <AlignJustify className="h-3 w-3" />
                   <span>{settings.lineHeight.toFixed(1)}x</span>
@@ -281,12 +327,14 @@ export function ReaderToolbar({
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-44 p-2" align="end">
-              {(["white", "sepia", "night"] as const).map((th) => {
+              {(["white", "sepia", "night", "black", "twilight"] as const).map((th) => {
                 const ts = THEME_STYLES[th]
                 const labels: Record<ReaderTheme, string> = {
                   white: "Light",
                   sepia: "Sepia",
                   night: "Night",
+                  black: "OLED Black",
+                  twilight: "Twilight",
                 }
                 return (
                   <button
@@ -295,8 +343,8 @@ export function ReaderToolbar({
                     className={cn(
                       "flex items-center gap-3 w-full px-3 py-2 rounded-md text-xs transition-colors",
                       settings.theme === th
-                        ? "bg-indigo-500/15 text-indigo-400"
-                        : "text-slate-400 hover:bg-slate-800",
+                        ? "bg-primary/15 text-primary"
+                        : "text-muted-foreground hover:bg-accent",
                     )}
                   >
                     <span
@@ -315,6 +363,6 @@ export function ReaderToolbar({
           </Popover>
         </div>
       </div>
-    </div>
+    </motion.div>
   )
 }

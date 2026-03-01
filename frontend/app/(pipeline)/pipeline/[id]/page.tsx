@@ -107,7 +107,7 @@ export default function PipelineBookPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-[60vh]">
-        <div className="animate-pulse text-slate-500">Loading pipeline...</div>
+        <div className="animate-pulse text-muted-foreground">Loading pipeline...</div>
       </div>
     )
   }
@@ -116,7 +116,7 @@ export default function PipelineBookPage() {
     return (
       <div className="text-center py-20">
         <p className="text-red-400 mb-4">{error ?? "Book not found"}</p>
-        <Link href="/library" className="text-indigo-400 hover:underline">
+        <Link href="/library" className="text-primary hover:underline">
           Back to library
         </Link>
       </div>
@@ -132,14 +132,14 @@ export default function PipelineBookPage() {
         <div>
           <Link
             href={`/library/${bookId}`}
-            className="text-sm text-slate-500 hover:text-slate-300 flex items-center gap-1 mb-2"
+            className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 mb-2"
           >
             <ArrowLeft className="h-3 w-3" /> Back to book
           </Link>
           <h1 className="text-2xl font-bold tracking-tight">
             Pipeline — {book.title}
           </h1>
-          <div className="flex items-center gap-3 mt-2 text-sm text-slate-400">
+          <div className="flex items-center gap-3 mt-2 text-sm text-muted-foreground">
             {book.author && <span>by {book.author}</span>}
             <span
               className={cn(
@@ -149,7 +149,7 @@ export default function PipelineBookPage() {
             >
               {book.status}
             </span>
-            <span className="text-slate-600">
+            <span className="text-muted-foreground/60">
               {book.total_chapters} chapters
             </span>
           </div>
@@ -161,8 +161,8 @@ export default function PipelineBookPage() {
         <Card>
           <CardContent className="pt-5 pb-4">
             <div className="flex items-center gap-2 mb-3">
-              <Loader2 className="h-4 w-4 animate-spin text-indigo-400" />
-              <h2 className="text-sm font-medium text-slate-400">
+              <Loader2 className="h-4 w-4 animate-spin text-primary" />
+              <h2 className="text-sm font-medium text-muted-foreground">
                 Extraction in Progress
               </h2>
             </div>
@@ -184,7 +184,7 @@ export default function PipelineBookPage() {
           <CardContent className="pt-5 pb-4">
             <div className="flex items-center gap-2 mb-3">
               <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-              <h2 className="text-sm font-medium text-slate-400">Extraction Complete</h2>
+              <h2 className="text-sm font-medium text-muted-foreground">Extraction Complete</h2>
             </div>
             <ExtractionProgress
               bookId={bookId}
@@ -243,7 +243,7 @@ export default function PipelineBookPage() {
           <Card>
             <CardContent className="pt-5">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-sm font-medium text-slate-400">
+                <h2 className="text-sm font-medium text-muted-foreground">
                   Select chapters for extraction
                 </h2>
                 <Button
@@ -357,7 +357,7 @@ export default function PipelineBookPage() {
 function LoadingPlaceholder() {
   return (
     <div className="flex items-center justify-center h-40">
-      <div className="animate-pulse text-slate-500 text-sm">
+      <div className="animate-pulse text-muted-foreground text-sm">
         Loading pipeline config...
       </div>
     </div>

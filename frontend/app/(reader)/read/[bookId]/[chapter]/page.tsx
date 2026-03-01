@@ -176,7 +176,7 @@ export default function ReaderPage() {
   const font =
     settings.fontFamily === "serif"
       ? '"Literata", "Georgia", "Cambria", "Times New Roman", serif'
-      : '"Inter", system-ui, -apple-system, sans-serif'
+      : '"DM Sans", system-ui, -apple-system, sans-serif'
 
   return (
     <div
@@ -201,7 +201,7 @@ export default function ReaderPage() {
       )}
 
       {/* Reading area */}
-      <div className="max-w-[680px] mx-auto px-6 md:px-10">
+      <div key={chapterNum} className="max-w-[680px] mx-auto px-6 md:px-10">
         {/* Chapter header */}
         <div className="pt-12 pb-8 text-center">
           {/* Book title breadcrumb */}

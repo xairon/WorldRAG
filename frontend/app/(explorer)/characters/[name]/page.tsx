@@ -2,6 +2,7 @@
 
 import { useCallback } from "react"
 import { useParams, useSearchParams, useRouter } from "next/navigation"
+import { motion } from "motion/react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
@@ -14,6 +15,16 @@ import { ClassTimeline } from "@/components/characters/class-timeline"
 import { EquipmentList } from "@/components/characters/equipment-list"
 import { TitleList } from "@/components/characters/title-list"
 import { ChangelogTab } from "@/components/characters/changelog-tab"
+
+const container = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.04 } },
+}
+
+const item = {
+  hidden: { opacity: 0, y: 12 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.25, 0.4, 0.25, 1] as const } },
+}
 
 export default function CharacterSheetPage() {
   const params = useParams()
@@ -48,7 +59,7 @@ export default function CharacterSheetPage() {
           <p className="text-amber-400 text-sm">
             Missing required parameters. Navigate to a character from the graph or search.
           </p>
-          <p className="text-slate-500 text-xs mt-2">
+          <p className="text-muted-foreground text-xs mt-2">
             Required: name (path), book_id, chapter (query params)
           </p>
         </div>
@@ -87,98 +98,109 @@ export default function CharacterSheetPage() {
 
   return (
     <ScrollArea className="h-[calc(100vh-5rem)]">
-      <div className="space-y-6 pb-12">
+      <motion.div
+        className="space-y-6 pb-12"
+        variants={container}
+        initial="hidden"
+        animate="show"
+      >
         {/* Chapter Slider */}
-        <ChapterSlider
-          chapter={snapshot.as_of_chapter}
-          totalChapters={snapshot.total_chapters_in_book}
-          onChange={handleChapterChange}
-        />
+        <motion.div variants={item}>
+          <ChapterSlider
+            chapter={snapshot.as_of_chapter}
+            totalChapters={snapshot.total_chapters_in_book}
+            onChange={handleChapterChange}
+          />
+        </motion.div>
 
         {/* Character Header */}
-        <CharacterHeader snapshot={snapshot} />
+        <motion.div variants={item}>
+          <CharacterHeader snapshot={snapshot} />
+        </motion.div>
 
         {/* Tabs */}
-        <Tabs defaultValue="stats">
-          <TabsList className="bg-slate-900/50 border border-slate-800 rounded-lg">
-            <TabsTrigger value="stats" className="text-xs">
-              Stats
-              {snapshot.stats.length > 0 && (
-                <span className="ml-1 text-slate-600 font-mono">
-                  {snapshot.stats.length}
-                </span>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="skills" className="text-xs">
-              Skills
-              {snapshot.skills.length > 0 && (
-                <span className="ml-1 text-slate-600 font-mono">
-                  {snapshot.skills.length}
-                </span>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="classes" className="text-xs">
-              Classes
-              {snapshot.classes.length > 0 && (
-                <span className="ml-1 text-slate-600 font-mono">
-                  {snapshot.classes.length}
-                </span>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="equipment" className="text-xs">
-              Equipment
-              {snapshot.items.length > 0 && (
-                <span className="ml-1 text-slate-600 font-mono">
-                  {snapshot.items.length}
-                </span>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="titles" className="text-xs">
-              Titles
-              {snapshot.titles.length > 0 && (
-                <span className="ml-1 text-slate-600 font-mono">
-                  {snapshot.titles.length}
-                </span>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="changelog" className="text-xs">
-              Changelog
-              {snapshot.chapter_changes.length > 0 && (
-                <span className="ml-1 text-slate-600 font-mono">
-                  {snapshot.chapter_changes.length}
-                </span>
-              )}
-            </TabsTrigger>
-          </TabsList>
+        <motion.div variants={item}>
+          <Tabs defaultValue="stats">
+            <TabsList className="glass rounded-lg">
+              <TabsTrigger value="stats" className="text-xs">
+                Stats
+                {snapshot.stats.length > 0 && (
+                  <span className="ml-1 text-muted-foreground/60 font-mono">
+                    {snapshot.stats.length}
+                  </span>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="skills" className="text-xs">
+                Skills
+                {snapshot.skills.length > 0 && (
+                  <span className="ml-1 text-muted-foreground/60 font-mono">
+                    {snapshot.skills.length}
+                  </span>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="classes" className="text-xs">
+                Classes
+                {snapshot.classes.length > 0 && (
+                  <span className="ml-1 text-muted-foreground/60 font-mono">
+                    {snapshot.classes.length}
+                  </span>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="equipment" className="text-xs">
+                Equipment
+                {snapshot.items.length > 0 && (
+                  <span className="ml-1 text-muted-foreground/60 font-mono">
+                    {snapshot.items.length}
+                  </span>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="titles" className="text-xs">
+                Titles
+                {snapshot.titles.length > 0 && (
+                  <span className="ml-1 text-muted-foreground/60 font-mono">
+                    {snapshot.titles.length}
+                  </span>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="changelog" className="text-xs">
+                Changelog
+                {snapshot.chapter_changes.length > 0 && (
+                  <span className="ml-1 text-muted-foreground/60 font-mono">
+                    {snapshot.chapter_changes.length}
+                  </span>
+                )}
+              </TabsTrigger>
+            </TabsList>
 
-          <TabsContent value="stats" className="mt-4">
-            <StatGrid
-              stats={snapshot.stats}
-              chapterChanges={snapshot.chapter_changes}
-            />
-          </TabsContent>
+            <TabsContent value="stats" className="mt-4">
+              <StatGrid
+                stats={snapshot.stats}
+                chapterChanges={snapshot.chapter_changes}
+              />
+            </TabsContent>
 
-          <TabsContent value="skills" className="mt-4">
-            <SkillList skills={snapshot.skills} />
-          </TabsContent>
+            <TabsContent value="skills" className="mt-4">
+              <SkillList skills={snapshot.skills} />
+            </TabsContent>
 
-          <TabsContent value="classes" className="mt-4">
-            <ClassTimeline classes={snapshot.classes} />
-          </TabsContent>
+            <TabsContent value="classes" className="mt-4">
+              <ClassTimeline classes={snapshot.classes} />
+            </TabsContent>
 
-          <TabsContent value="equipment" className="mt-4">
-            <EquipmentList items={snapshot.items} />
-          </TabsContent>
+            <TabsContent value="equipment" className="mt-4">
+              <EquipmentList items={snapshot.items} />
+            </TabsContent>
 
-          <TabsContent value="titles" className="mt-4">
-            <TitleList titles={snapshot.titles} />
-          </TabsContent>
+            <TabsContent value="titles" className="mt-4">
+              <TitleList titles={snapshot.titles} />
+            </TabsContent>
 
-          <TabsContent value="changelog" className="mt-4">
-            <ChangelogTab changes={snapshot.chapter_changes} />
-          </TabsContent>
-        </Tabs>
-      </div>
+            <TabsContent value="changelog" className="mt-4">
+              <ChangelogTab changes={snapshot.chapter_changes} />
+            </TabsContent>
+          </Tabs>
+        </motion.div>
+      </motion.div>
     </ScrollArea>
   )
 }
