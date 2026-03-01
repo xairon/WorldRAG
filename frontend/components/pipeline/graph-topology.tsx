@@ -37,7 +37,7 @@ export function GraphTopology({ graph }: GraphTopologyProps) {
         {Object.entries(NODE_COLORS).map(([type, cls]) => (
           <div key={type} className="flex items-center gap-2">
             <div className={cn("w-3 h-3 rounded border", cls)} />
-            <span className="text-[10px] text-slate-400 uppercase tracking-wider">
+            <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
               {NODE_TYPE_LABELS[type]}
             </span>
           </div>
@@ -47,7 +47,7 @@ export function GraphTopology({ graph }: GraphTopologyProps) {
       {/* Flow diagram */}
       <div className="flex flex-col items-center gap-4">
         {/* START */}
-        <div className="px-4 py-1.5 rounded-full border border-slate-600 bg-slate-800/50 text-xs text-slate-400">
+        <div className="px-4 py-1.5 rounded-full border border-[var(--glass-border)] bg-accent text-xs text-muted-foreground">
           START
         </div>
         <Arrow />
@@ -81,27 +81,27 @@ export function GraphTopology({ graph }: GraphTopologyProps) {
         <Arrow />
 
         {/* END */}
-        <div className="px-4 py-1.5 rounded-full border border-slate-600 bg-slate-800/50 text-xs text-slate-400">
+        <div className="px-4 py-1.5 rounded-full border border-[var(--glass-border)] bg-accent text-xs text-muted-foreground">
           END
         </div>
       </div>
 
       {/* Edge list */}
       <div>
-        <h3 className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">
+        <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
           Edges ({graph.edges.length})
         </h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
           {graph.edges.map((e, i) => (
             <div
               key={i}
-              className="flex items-center gap-2 text-[11px] px-3 py-1.5 rounded bg-slate-900/40"
+              className="flex items-center gap-2 text-[11px] px-3 py-1.5 rounded bg-background"
             >
-              <span className="font-mono text-slate-300">{e.source}</span>
-              <span className="text-slate-600">&rarr;</span>
-              <span className="font-mono text-slate-300">{e.target}</span>
+              <span className="font-mono text-foreground">{e.source}</span>
+              <span className="text-muted-foreground/60">&rarr;</span>
+              <span className="font-mono text-foreground">{e.target}</span>
               {e.label && (
-                <span className="text-slate-500 ml-auto">{e.label}</span>
+                <span className="text-muted-foreground ml-auto">{e.label}</span>
               )}
             </div>
           ))}
@@ -112,7 +112,7 @@ export function GraphTopology({ graph }: GraphTopologyProps) {
 }
 
 function NodeCard({ node }: { node: { name: string; description: string; node_type: string } }) {
-  const color = NODE_COLORS[node.node_type] ?? "border-slate-600 bg-slate-800/50 text-slate-300"
+  const color = NODE_COLORS[node.node_type] ?? "border-[var(--glass-border)] bg-accent text-foreground"
   return (
     <div className={cn("rounded-lg border px-4 py-2.5 min-w-[160px] text-center", color)}>
       <div className="text-xs font-medium">{node.name}</div>
@@ -124,9 +124,9 @@ function NodeCard({ node }: { node: { name: string; description: string; node_ty
 function Arrow({ label }: { label?: string }) {
   return (
     <div className="flex flex-col items-center gap-0.5">
-      <div className="w-px h-4 bg-slate-700" />
-      {label && <span className="text-[9px] text-slate-600">{label}</span>}
-      <div className="text-slate-600 text-xs">&darr;</div>
+      <div className="w-px h-4 bg-[var(--glass-border)]" />
+      {label && <span className="text-[9px] text-muted-foreground/60">{label}</span>}
+      <div className="text-muted-foreground/60 text-xs">&darr;</div>
     </div>
   )
 }

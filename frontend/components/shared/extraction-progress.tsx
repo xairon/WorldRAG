@@ -31,8 +31,8 @@ interface ExtractionDashboardProps {
 }
 
 const STATUS_ICON: Record<string, React.ReactNode> = {
-  pending: <Clock className="h-3.5 w-3.5 text-slate-500" />,
-  extracting: <Loader2 className="h-3.5 w-3.5 animate-spin text-indigo-400" />,
+  pending: <Clock className="h-3.5 w-3.5 text-muted-foreground" />,
+  extracting: <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />,
   extracted: <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />,
   failed: <XCircle className="h-3.5 w-3.5 text-red-400" />,
 }
@@ -132,14 +132,14 @@ export function ExtractionDashboard({
       <div className="space-y-2">
         <div className="flex items-center gap-3">
           {isConnected ? (
-            <Loader2 className="h-4 w-4 animate-spin text-indigo-400 shrink-0" />
+            <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
           ) : isDone ? (
             <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
           ) : null}
 
-          <div className="flex-1 h-2.5 rounded-full bg-slate-800 overflow-hidden">
+          <div className="flex-1 h-2.5 rounded-full bg-accent overflow-hidden">
             {showWaiting ? (
-              <div className="h-full w-full bg-indigo-500/30 animate-pulse rounded-full" />
+              <div className="h-full w-full bg-primary/30 animate-pulse rounded-full" />
             ) : (
               <div
                 className={cn(
@@ -148,24 +148,24 @@ export function ExtractionDashboard({
                     ? failedChapters > 0 || dlqEntries.length > 0
                       ? "bg-amber-500"
                       : "bg-emerald-500"
-                    : "bg-indigo-500",
+                    : "bg-primary",
                 )}
                 style={{ width: `${progressFromChapters}%` }}
               />
             )}
           </div>
 
-          <span className="text-sm font-mono text-slate-300 tabular-nums shrink-0 min-w-[4rem] text-right">
+          <span className="text-sm font-mono text-foreground tabular-nums shrink-0 min-w-[4rem] text-right">
             {showWaiting ? "..." : `${progressFromChapters}%`}
           </span>
         </div>
 
-        <div className="flex items-center gap-4 text-xs text-slate-500">
+        <div className="flex items-center gap-4 text-xs text-muted-foreground">
           {showWaiting ? (
             <span>Preparing extraction pipeline...</span>
           ) : (
             <>
-              <span className="font-medium text-slate-400">
+              <span className="font-medium text-muted-foreground">
                 {doneChapters || latestEvent?.chapters_done || 0} / {chapters.length || totalChapters} chapters
               </span>
               {totalEntities > 0 && <span>{totalEntities} entities extracted</span>}
@@ -212,34 +212,34 @@ export function ExtractionDashboard({
         <div>
           <button
             onClick={() => setShowChapters((p) => !p)}
-            className="flex items-center gap-2 text-xs text-slate-400 hover:text-slate-200 transition-colors mb-2"
+            className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors mb-2"
           >
             {showChapters ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
             Chapter Details
           </button>
 
           {showChapters && (
-            <div className="rounded-lg border border-slate-800 overflow-hidden max-h-[300px] overflow-y-auto">
+            <div className="rounded-lg border border-[var(--glass-border)] overflow-hidden max-h-[300px] overflow-y-auto">
               <table className="w-full text-xs">
-                <thead className="sticky top-0 bg-slate-900 z-10">
-                  <tr className="text-slate-500 uppercase tracking-wider">
+                <thead className="sticky top-0 bg-background z-10">
+                  <tr className="text-muted-foreground uppercase tracking-wider">
                     <th className="text-left px-3 py-2 font-medium w-10">#</th>
                     <th className="text-left px-3 py-2 font-medium">Title</th>
                     <th className="text-center px-3 py-2 font-medium w-16">Status</th>
                     <th className="text-center px-3 py-2 font-medium w-20">Entities</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/50">
+                <tbody className="divide-y divide-[var(--glass-border)]">
                   {chapters.map((ch) => (
                     <tr
                       key={ch.number}
                       className={cn(
                         "transition-colors",
                         ch.status === "extracted"
-                          ? "text-slate-400"
+                          ? "text-muted-foreground"
                           : ch.status === "failed"
                             ? "text-red-400/80 bg-red-500/5"
-                            : "text-slate-500",
+                            : "text-muted-foreground",
                       )}
                     >
                       <td className="px-3 py-1.5 font-mono">{ch.number}</td>
@@ -290,14 +290,14 @@ export function ExtractionDashboard({
               >
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="font-mono text-red-400/80 shrink-0">Ch. {entry.chapter}</span>
-                  <span className="text-slate-500 truncate">
+                  <span className="text-muted-foreground truncate">
                     {entry.error_type}: {entry.error_message}
                   </span>
                 </div>
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="h-5 px-2 text-xs text-slate-400 hover:text-white shrink-0"
+                  className="h-5 px-2 text-xs text-muted-foreground hover:text-foreground shrink-0"
                   onClick={() => handleRetry(entry.chapter)}
                   disabled={retrying !== null}
                 >

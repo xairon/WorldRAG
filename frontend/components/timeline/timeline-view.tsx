@@ -22,8 +22,8 @@ function groupByChapter(events: TimelineEvent[]): Map<number, TimelineEvent[]> {
 export function TimelineView({ events, bookId }: TimelineViewProps) {
   if (events.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-slate-700 bg-slate-900/30 p-12 text-center">
-        <p className="text-slate-500">No events found with these filters.</p>
+      <div className="glass rounded-xl border-dashed p-12 text-center">
+        <p className="text-muted-foreground">No events found with these filters.</p>
       </div>
     )
   }
@@ -33,19 +33,19 @@ export function TimelineView({ events, bookId }: TimelineViewProps) {
   return (
     <div className="relative space-y-8">
       {/* Vertical line */}
-      <div className="absolute left-[19px] top-0 bottom-0 w-px bg-slate-800" />
+      <div className="absolute left-[19px] top-0 bottom-0 w-px bg-[var(--glass-border)]" />
 
       {Array.from(chapters.entries()).map(([chapter, chapterEvents]) => (
         <div key={chapter} className="relative">
           {/* Chapter marker */}
           <div className="flex items-center gap-3 mb-3">
-            <div className="relative z-10 flex h-10 w-10 items-center justify-center rounded-full bg-slate-800 border border-slate-700 text-xs font-bold text-indigo-400">
+            <div className="relative z-10 flex h-10 w-10 items-center justify-center rounded-full bg-accent border border-[var(--glass-border)] text-xs font-bold text-primary">
               {chapter}
             </div>
-            <span className="text-sm font-medium text-slate-400">
+            <span className="text-sm font-medium text-muted-foreground">
               Chapter {chapter}
             </span>
-            <span className="text-xs text-slate-600">
+            <span className="text-xs text-muted-foreground/60">
               {chapterEvents.length} event{chapterEvents.length > 1 ? "s" : ""}
             </span>
           </div>

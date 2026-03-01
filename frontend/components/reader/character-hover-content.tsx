@@ -38,7 +38,7 @@ export function CharacterHoverContent({
   if (error || !data) {
     return (
       <div>
-        <p className="text-sm font-semibold text-slate-200">{characterName}</p>
+        <p className="text-sm font-semibold text-foreground">{characterName}</p>
       </div>
     )
   }
@@ -52,7 +52,7 @@ export function CharacterHoverContent({
   return (
     <div className="space-y-2">
       {/* Character name */}
-      <p className="text-sm font-semibold text-slate-200">
+      <p className="text-sm font-semibold text-foreground">
         {data.canonical_name || data.name}
       </p>
 
@@ -61,14 +61,14 @@ export function CharacterHoverContent({
         {data.level != null && (
           <Badge
             variant="outline"
-            className="bg-indigo-500/10 text-indigo-400 border-indigo-500/20 text-[11px] px-1.5 py-0"
+            className="bg-primary/10 text-primary border-primary/20 text-[11px] px-1.5 py-0"
           >
             Lv. {data.level}
             {data.realm ? ` \u00b7 ${data.realm}` : ""}
           </Badge>
         )}
         {data.active_class && (
-          <span className="text-xs text-slate-400">{data.active_class}</span>
+          <span className="text-xs text-muted-foreground">{data.active_class}</span>
         )}
       </div>
 
@@ -78,7 +78,7 @@ export function CharacterHoverContent({
           {data.top_skills.slice(0, 3).map((skill) => (
             <span
               key={skill}
-              className="inline-flex items-center rounded-full bg-slate-800 text-slate-400 text-[10px] px-1.5 py-0.5 border border-slate-700"
+              className="inline-flex items-center rounded-full bg-accent text-muted-foreground text-[10px] px-1.5 py-0.5 border border-[var(--glass-border)]"
             >
               {skill}
             </span>
@@ -88,7 +88,7 @@ export function CharacterHoverContent({
 
       {/* Description */}
       {data.description && (
-        <p className="text-xs text-slate-500 leading-relaxed line-clamp-2">
+        <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
           {data.description}
         </p>
       )}
@@ -96,7 +96,7 @@ export function CharacterHoverContent({
       {/* Full character sheet link */}
       <Link
         href={profileHref}
-        className="block text-[11px] text-indigo-400 hover:text-indigo-300 transition-colors"
+        className="block text-[11px] text-primary hover:text-primary transition-colors"
       >
         Full Character Sheet &rarr;
       </Link>

@@ -185,12 +185,12 @@ function AnnotatedSpan({
               />
             </div>
             {annotation.mention_type && annotation.mention_type !== "langextract" && (
-              <span className="text-[10px] text-slate-500 uppercase tracking-wider">
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
                 {annotation.mention_type.replace("_", " ")}
               </span>
             )}
             {annotation.extraction_text && (
-              <p className="text-xs text-slate-500 leading-relaxed line-clamp-3">
+              <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3">
                 {annotation.extraction_text}
               </p>
             )}
