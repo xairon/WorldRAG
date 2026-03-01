@@ -46,28 +46,12 @@ docker compose down
 
 ## Code Conventions
 
-### Python (backend/)
-- Python 3.12+, async/await everywhere
-- Pydantic v2 for all data models (BaseModel, not dataclass)
-- Type hints mandatory (pyright standard mode)
-- Absolute imports: `from app.core.logging import get_logger`
-- All DB operations via repositories (app/repositories/)
-- All LLM calls wrapped with LangFuse tracing
-- structlog for logging (never print())
-- Error handling: tenacity for retries, circuit breaker for providers
-- Never log `error=str(e)` in exception handlers — use `exc_info=True` or `type(e).__name__`
+Detailed conventions are in `.claude/rules/` (path-scoped, auto-loaded). Key points:
 
-### TypeScript (frontend/)
-- TypeScript strict mode
-- Next.js 16 App Router (not Pages)
-- Tailwind CSS + shadcn/ui components
-- Server Components by default, 'use client' only when needed
-
-### Neo4j / Cypher
-- MERGE with uniqueness constraints (never CREATE for entities)
-- All temporal relations carry valid_from_chapter / valid_to_chapter
-- batch_id UUID on every write (for rollback)
-- Parameterized queries only ($param, never string interpolation)
+- **Python**: async everywhere, Pydantic v2, structlog (never print), absolute imports, tenacity retries
+- **TypeScript**: strict mode, App Router, Server Components by default, shadcn/ui + Tailwind
+- **Neo4j**: MERGE not CREATE, parameterized queries ($param), batch_id on all writes, temporal valid_from/to_chapter
+- **Logging**: Never `error=str(e)` — use `exc_info=True` or `type(e).__name__`
 
 ## Project Structure
 
@@ -83,7 +67,7 @@ WorldRAG/
 │   ├── agents/           # LangGraph graphs (extraction done; reader, chat TODO)
 │   ├── prompts/          # LLM prompt templates
 │   └── workers/          # arq task queue (extraction + embedding tasks)
-├── frontend/             # Next.js frontend (app/, lib/, components/)
+├── frontend/             # Next.js frontend (app/, lib/, components/, hooks/, stores/)
 ├── ontology/             # YAML ontology definitions (core, genre, series)
 ├── scripts/              # Neo4j init, migrations, seed data
 └── docker-compose.yml    # Infrastructure (Neo4j, Redis, PostgreSQL, LangFuse)
@@ -107,6 +91,7 @@ Loaded at runtime by `OntologyLoader` (app/core/ontology_loader.py) with enum va
 - **Cost optimization**: Gemini 2.5 Flash for extraction, GPT-4o-mini for reconciliation
 - **Async workers**: POST /books/{id}/extract enqueues arq job, auto-chains embedding on completion
 - **Fulltext search**: entity_fulltext Neo4j index with Lucene escaping + CONTAINS fallback
+- **Graph visualization**: Sigma.js + graphology (ForceAtlas2 layout) — not D3
 
 ## Pipeline Flow
 
@@ -136,34 +121,8 @@ Embed (arq worker — async)
   → [Status: embedded]
 ```
 
-## Implementation Status
+## What's Done vs TODO
 
-### ✅ Complete
-- Extraction pipeline (LangGraph, 4 parallel passes)
-- Regex extractor (Passe 0 — blue boxes, level-ups, skills, titles)
-- Entity persistence (11 types: Character, Skill, Class, Title, Event, Location, Item, Creature, Faction, Concept + relationships)
-- 3-tier deduplication (exact → fuzzy → LLM-as-Judge)
-- Full reconciler (all 10 entity types: Characters, Skills, Classes, Titles, Events, Locations, Items, Creatures, Factions, Concepts)
-- Gemini provider (providers.py: get_gemini_client, instructor.from_gemini, LangChain ChatGoogleGenerativeAI)
-- LangExtract api_key pass-through (all 4 extraction passes forward settings.gemini_api_key)
-- Cost ceiling enforcement (build_book_graph / build_chapter_graph check CostTracker before each chapter)
-- Embedding pipeline (VoyageAI batch → Neo4j vector write-back)
-- arq background workers (extraction + embedding tasks, auto-chaining)
-- Book ingestion API (upload, CRUD, async extract, job polling)
-- Graph explorer API (search, subgraph, neighbors, timeline, character profile)
-- Admin API (cost tracking, DLQ inspection, retry endpoints)
-- DLQ retry mechanism (single chapter + bulk retry-all, re-enqueue via arq)
-- Ontology runtime loader (3-layer YAML loading: core → genre → series, enum validation, FastAPI dependency)
-- GROUNDED_IN relationships (label-aware UNWIND per entity type, source chunk offsets)
-- Reconciliation integrated in LangGraph (reconcile node after merge, alias_map in state)
-- alias_map normalization (stat_changes.character, skill/class/title names, all lore entities)
-- Frontend: books management, D3 force graph explorer, chat placeholder
-- Docker Compose (Neo4j, Redis, PostgreSQL, LangFuse)
-- Dockerfile for app containerization (multi-stage build, backend + worker services)
-- 211 tests passing (golden dataset, unit, integration)
+**Done**: Full extraction pipeline (LangGraph 4-pass + regex), 11 entity types, 3-tier dedup, reconciler, embedding pipeline (VoyageAI), arq workers, book ingestion API, graph explorer API, admin API (costs + DLQ), ontology loader, frontend (books + Sigma.js graph explorer), Docker Compose, ~586 tests.
 
-### 🔴 Not Yet Implemented
-- Chat/RAG query API (hybrid retrieval: vector → rerank → LLM generate)
-- Chat + Reader LangGraph agents
-- Functional chat frontend (currently placeholder)
-- LangGraph PostgreSQL checkpointing
+**TODO**: Chat/RAG query API (hybrid retrieval: vector → rerank → LLM), Chat + Reader LangGraph agents, functional chat frontend, LangGraph PostgreSQL checkpointing.
