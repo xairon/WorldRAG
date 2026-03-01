@@ -78,7 +78,7 @@ function SidebarSection({
         {items.slice(0, 15).map((item) => (
           <div
             key={item.entity_name}
-            className="px-2 py-1 rounded border border-slate-800 bg-slate-900/50 text-slate-400 hover:text-slate-300 transition-colors"
+            className="px-2 py-1 rounded glass text-muted-foreground hover:text-foreground transition-colors"
           >
             {item.entity_name}
           </div>

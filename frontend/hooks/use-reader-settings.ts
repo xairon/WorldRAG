@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 
-export type ReaderTheme = "white" | "sepia" | "night"
+export type ReaderTheme = "white" | "sepia" | "night" | "black" | "twilight"
 export type ReaderFont = "serif" | "sans"
 
 export interface ReaderSettings {
@@ -68,6 +68,34 @@ export const THEME_STYLES = {
     selectBg: "rgba(99,102,241,0.25)",
     annotationBgOpacity: "25",
     annotationBorderOpacity: "80",
+  },
+  black: {
+    bg: "#000000",
+    text: "#c0c0c0",
+    textMuted: "#666666",
+    border: "#1a1a1a",
+    surface: "#0a0a0a",
+    heading: "#e0e0e0",
+    speaker: "#a78bfa",
+    bluebox: { border: "#22d3ee", bg: "rgba(6,182,212,0.06)", text: "#67e8f9", corner: "#06b6d4" },
+    sceneBreak: "#333333",
+    selectBg: "rgba(99,102,241,0.20)",
+    annotationBgOpacity: "20",
+    annotationBorderOpacity: "70",
+  },
+  twilight: {
+    bg: "#1a1f36",
+    text: "#b0b8d0",
+    textMuted: "#6b7394",
+    border: "#2a3050",
+    surface: "#222844",
+    heading: "#d0d8f0",
+    speaker: "#c4b5fd",
+    bluebox: { border: "#38bdf8", bg: "rgba(56,189,248,0.08)", text: "#7dd3fc", corner: "#0ea5e9" },
+    sceneBreak: "#3a4060",
+    selectBg: "rgba(99,102,241,0.25)",
+    annotationBgOpacity: "22",
+    annotationBorderOpacity: "75",
   },
 } as const
 
