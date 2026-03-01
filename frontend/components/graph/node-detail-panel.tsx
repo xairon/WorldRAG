@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
+import { motion } from "motion/react"
 import {
   X,
   Users,
@@ -45,17 +46,23 @@ export function NodeDetailPanel({ node, bookId, onClose, onExpandNeighbors }: No
   }, [node.name, node.labels, isCharacter, bookId])
 
   return (
-    <div className="rounded-xl border border-slate-800 bg-slate-900/80 backdrop-blur-sm overflow-hidden">
+    <motion.div
+      initial={{ x: 300, opacity: 0 }}
+      animate={{ x: 0, opacity: 1 }}
+      exit={{ x: 300, opacity: 0 }}
+      transition={{ type: "spring", stiffness: 300, damping: 30 }}
+      className="glass rounded-l-2xl overflow-hidden h-full"
+    >
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-slate-800">
+      <div className="flex items-center justify-between p-4 border-b border-[var(--glass-border)]">
         <div className="flex items-center gap-2 min-w-0">
           <span
             className="h-3 w-3 rounded-full shrink-0"
             style={{ backgroundColor: labelColor(primaryLabel) }}
           />
-          <h3 className="font-semibold text-sm truncate">{node.name}</h3>
+          <h3 className="font-semibold text-sm truncate text-foreground">{node.name}</h3>
         </div>
-        <button onClick={onClose} className="text-slate-500 hover:text-slate-300 transition-colors">
+        <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
           <X className="h-4 w-4" />
         </button>
       </div>
@@ -71,7 +78,7 @@ export function NodeDetailPanel({ node, bookId, onClose, onExpandNeighbors }: No
 
           {/* Description */}
           {node.description && (
-            <p className="text-xs text-slate-400 leading-relaxed">{node.description}</p>
+            <p className="text-xs text-muted-foreground leading-relaxed">{node.description}</p>
           )}
 
           {/* Actions */}
@@ -108,9 +115,9 @@ export function NodeDetailPanel({ node, bookId, onClose, onExpandNeighbors }: No
                   {profile.skills.length > 0 && (
                     <ProfileSection title="Skills" icon={<Sparkles className="h-3 w-3 text-emerald-400" />}>
                       {profile.skills.map((s) => (
-                        <div key={s.name} className="text-xs text-slate-400">
+                        <div key={s.name} className="text-xs text-muted-foreground">
                           <EntityBadge name={s.name} type="Skill" size="sm" />
-                          {s.rank && <span className="text-slate-600 ml-1">({s.rank})</span>}
+                          {s.rank && <span className="text-muted-foreground/60 ml-1">({s.rank})</span>}
                         </div>
                       ))}
                     </ProfileSection>
@@ -119,9 +126,9 @@ export function NodeDetailPanel({ node, bookId, onClose, onExpandNeighbors }: No
                   {profile.classes.length > 0 && (
                     <ProfileSection title="Classes" icon={<Shield className="h-3 w-3 text-amber-400" />}>
                       {profile.classes.map((c) => (
-                        <div key={c.name} className="text-xs text-slate-400">
+                        <div key={c.name} className="text-xs text-muted-foreground">
                           <EntityBadge name={c.name} type="Class" size="sm" />
-                          {c.tier && <span className="text-slate-600 ml-1">(T{c.tier})</span>}
+                          {c.tier && <span className="text-muted-foreground/60 ml-1">(T{c.tier})</span>}
                         </div>
                       ))}
                     </ProfileSection>
@@ -130,7 +137,7 @@ export function NodeDetailPanel({ node, bookId, onClose, onExpandNeighbors }: No
                   {profile.titles.length > 0 && (
                     <ProfileSection title="Titles" icon={<Crown className="h-3 w-3 text-pink-400" />}>
                       {profile.titles.map((t) => (
-                        <div key={t.name} className="text-xs text-slate-400">
+                        <div key={t.name} className="text-xs text-muted-foreground">
                           <EntityBadge name={t.name} type="Title" size="sm" />
                         </div>
                       ))}
@@ -140,9 +147,9 @@ export function NodeDetailPanel({ node, bookId, onClose, onExpandNeighbors }: No
                   {profile.relationships.length > 0 && (
                     <ProfileSection title="Relationships" icon={<Users className="h-3 w-3 text-indigo-400" />}>
                       {profile.relationships.map((r, i) => (
-                        <div key={i} className="text-xs text-slate-400 flex items-center gap-1">
+                        <div key={i} className="text-xs text-muted-foreground flex items-center gap-1">
                           <EntityBadge name={r.name} type="Character" size="sm" />
-                          <span className="text-slate-600">({r.rel_type})</span>
+                          <span className="text-muted-foreground/60">({r.rel_type})</span>
                         </div>
                       ))}
                     </ProfileSection>
@@ -151,13 +158,13 @@ export function NodeDetailPanel({ node, bookId, onClose, onExpandNeighbors }: No
                   {profile.events.length > 0 && (
                     <ProfileSection title="Events" icon={<Swords className="h-3 w-3 text-red-400" />}>
                       {profile.events.slice(0, 8).map((e) => (
-                        <div key={e.name} className="text-xs text-slate-400">
+                        <div key={e.name} className="text-xs text-muted-foreground">
                           <span className="font-medium text-red-400">{e.name}</span>
-                          <span className="text-slate-600"> (ch.{e.chapter})</span>
+                          <span className="text-muted-foreground/60"> (ch.{e.chapter})</span>
                         </div>
                       ))}
                       {profile.events.length > 8 && (
-                        <span className="text-[10px] text-slate-600">
+                        <span className="text-[10px] text-muted-foreground/60">
                           +{profile.events.length - 8} more
                         </span>
                       )}
@@ -169,7 +176,7 @@ export function NodeDetailPanel({ node, bookId, onClose, onExpandNeighbors }: No
           )}
         </div>
       </ScrollArea>
-    </div>
+    </motion.div>
   )
 }
 
@@ -184,7 +191,7 @@ function ProfileSection({
 }) {
   return (
     <div>
-      <div className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+      <div className="flex items-center gap-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
         {icon} {title}
       </div>
       <div className="space-y-1">{children}</div>
