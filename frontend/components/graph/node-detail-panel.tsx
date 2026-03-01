@@ -145,7 +145,7 @@ export function NodeDetailPanel({ node, bookId, onClose, onExpandNeighbors }: No
                   )}
 
                   {profile.relationships.length > 0 && (
-                    <ProfileSection title="Relationships" icon={<Users className="h-3 w-3 text-indigo-400" />}>
+                    <ProfileSection title="Relationships" icon={<Users className="h-3 w-3 text-primary" />}>
                       {profile.relationships.map((r, i) => (
                         <div key={i} className="text-xs text-muted-foreground flex items-center gap-1">
                           <EntityBadge name={r.name} type="Character" size="sm" />

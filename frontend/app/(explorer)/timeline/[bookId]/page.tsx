@@ -59,11 +59,11 @@ export default function TimelinePage() {
       {/* Header */}
       <div>
         <div className="flex items-center gap-3">
-          <Clock className="h-6 w-6 text-indigo-400" />
+          <Clock className="h-6 w-6 text-primary" />
           <h1 className="text-2xl font-bold tracking-tight">Timeline</h1>
         </div>
         {bookDetail && (
-          <p className="text-slate-400 text-sm mt-1">{bookDetail.book.title}</p>
+          <p className="text-muted-foreground text-sm mt-1">{bookDetail.book.title}</p>
         )}
       </div>
 
@@ -71,8 +71,8 @@ export default function TimelinePage() {
       <div className="flex flex-wrap items-center gap-3">
         {/* Significance */}
         <div className="flex items-center gap-1.5">
-          <Filter className="h-3.5 w-3.5 text-slate-500" />
-          <span className="text-xs text-slate-500">Min:</span>
+          <Filter className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className="text-xs text-muted-foreground">Min:</span>
           {SIGNIFICANCE_LEVELS.map((level) => (
             <Button
               key={level}
@@ -102,7 +102,7 @@ export default function TimelinePage() {
               type="button"
               size="sm"
               variant="ghost"
-              className="h-7 text-xs text-slate-500"
+              className="h-7 text-xs text-muted-foreground"
               onClick={clearCharacterFilter}
             >
               Clear
@@ -110,7 +110,7 @@ export default function TimelinePage() {
           )}
         </form>
 
-        <span className="text-xs text-slate-600 ml-auto">
+        <span className="text-xs text-muted-foreground/60 ml-auto">
           {loading ? "..." : `${events.length} events`}
         </span>
       </div>

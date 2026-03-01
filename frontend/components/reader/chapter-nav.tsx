@@ -43,7 +43,7 @@ export function ChapterNav({ bookId, currentChapter, chapters }: ChapterNavProps
         onChange={(e) => {
           router.push(`/read/${bookId}/${e.target.value}`)
         }}
-        className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-sm focus:border-indigo-500 focus:outline-none"
+        className="rounded-lg border border-[var(--glass-border)] bg-accent px-3 py-1.5 text-sm focus:border-primary focus:outline-none"
       >
         {chapters.map((ch) => (
           <option key={ch.number} value={ch.number}>

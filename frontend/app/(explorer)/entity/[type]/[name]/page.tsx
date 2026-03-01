@@ -69,7 +69,7 @@ export default function EntityWikiPage() {
         <div>
           <EntityBadge name={name} type={type} clickable={false} size="md" />
           {typeof wiki.properties.description === "string" && wiki.properties.description && (
-            <p className="text-sm text-slate-400 mt-3 max-w-2xl leading-relaxed">
+            <p className="text-sm text-muted-foreground mt-3 max-w-2xl leading-relaxed">
               {wiki.properties.description}
             </p>
           )}
@@ -78,17 +78,17 @@ export default function EntityWikiPage() {
         {/* Properties */}
         {visibleProps.length > 0 && (
           <section>
-            <h2 className="text-sm font-semibold text-slate-300 mb-3">Properties</h2>
+            <h2 className="text-sm font-semibold text-foreground mb-3">Properties</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {visibleProps.map(([key, value]) => (
                 <div
                   key={key}
-                  className="rounded-lg bg-slate-900/50 border border-slate-800 px-3 py-2"
+                  className="rounded-lg glass px-3 py-2"
                 >
-                  <span className="text-[11px] text-slate-500 uppercase tracking-wider">
+                  <span className="text-[11px] text-muted-foreground uppercase tracking-wider">
                     {key.replace(/_/g, " ")}
                   </span>
-                  <p className="text-sm text-slate-300 mt-0.5 truncate">
+                  <p className="text-sm text-foreground mt-0.5 truncate">
                     {Array.isArray(value) ? value.join(", ") : String(value ?? "—")}
                   </p>
                 </div>
@@ -97,19 +97,19 @@ export default function EntityWikiPage() {
           </section>
         )}
 
-        <Separator className="bg-slate-800" />
+        <Separator className="bg-[var(--glass-border)]" />
 
         {/* Connections */}
         {Object.keys(wiki.connections).length > 0 && (
           <section>
             <div className="flex items-center gap-2 mb-3">
-              <Network className="h-4 w-4 text-slate-500" />
-              <h2 className="text-sm font-semibold text-slate-300">Connections</h2>
+              <Network className="h-4 w-4 text-muted-foreground" />
+              <h2 className="text-sm font-semibold text-foreground">Connections</h2>
             </div>
             <div className="space-y-4">
               {Object.entries(wiki.connections).map(([relType, conns]) => (
                 <div key={relType}>
-                  <h3 className="text-xs text-slate-500 uppercase tracking-wider mb-2">
+                  <h3 className="text-xs text-muted-foreground uppercase tracking-wider mb-2">
                     {relType.replace(/_/g, " ")} ({conns.length})
                   </h3>
                   <div className="flex flex-wrap gap-2">
@@ -117,10 +117,10 @@ export default function EntityWikiPage() {
                       <Link
                         key={`${conn.target_id}-${i}`}
                         href={`/entity/${encodeURIComponent(conn.target_label)}/${encodeURIComponent(conn.target_name)}`}
-                        className="group flex items-center gap-1.5 rounded-lg bg-slate-900/50 border border-slate-800 px-3 py-1.5 text-xs hover:border-slate-600 transition-colors"
+                        className="group flex items-center gap-1.5 rounded-lg glass px-3 py-1.5 text-xs hover:border-accent transition-colors"
                       >
                         {conn.direction === "outgoing" && (
-                          <ArrowRight className="h-3 w-3 text-slate-600" />
+                          <ArrowRight className="h-3 w-3 text-muted-foreground/60" />
                         )}
                         <EntityBadge
                           name={conn.target_name}
@@ -137,14 +137,14 @@ export default function EntityWikiPage() {
           </section>
         )}
 
-        <Separator className="bg-slate-800" />
+        <Separator className="bg-[var(--glass-border)]" />
 
         {/* Appearances */}
         {wiki.appearances.length > 0 && (
           <section>
             <div className="flex items-center gap-2 mb-3">
-              <BookOpen className="h-4 w-4 text-slate-500" />
-              <h2 className="text-sm font-semibold text-slate-300">
+              <BookOpen className="h-4 w-4 text-muted-foreground" />
+              <h2 className="text-sm font-semibold text-foreground">
                 Appears in {wiki.appearances.length} chapter{wiki.appearances.length > 1 ? "s" : ""}
               </h2>
             </div>
@@ -155,7 +155,7 @@ export default function EntityWikiPage() {
                 <Badge
                   key={`ch-${app.chapter}-${i}`}
                   variant="outline"
-                  className="text-xs border-slate-700 text-slate-400"
+                  className="text-xs border-[var(--glass-border)] text-muted-foreground"
                 >
                   Ch. {app.chapter}
                   {app.title ? ` — ${app.title}` : ""}

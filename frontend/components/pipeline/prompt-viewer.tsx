@@ -15,7 +15,7 @@ export function PromptViewer({ prompts }: PromptViewerProps) {
   const current = prompts[active]
 
   if (prompts.length === 0) {
-    return <p className="text-sm text-slate-500">No prompts loaded.</p>
+    return <p className="text-sm text-muted-foreground">No prompts loaded.</p>
   }
 
   return (
@@ -29,12 +29,12 @@ export function PromptViewer({ prompts }: PromptViewerProps) {
             className={cn(
               "w-full text-left px-3 py-2 rounded-lg text-xs transition-colors",
               i === active
-                ? "bg-indigo-500/15 text-indigo-300 border border-indigo-500/30"
-                : "text-slate-400 hover:bg-slate-800/50 border border-transparent",
+                ? "bg-primary/15 text-primary border border-primary/30"
+                : "text-muted-foreground hover:bg-accent border border-transparent",
             )}
           >
             <div className="font-medium truncate">{p.pass_number}</div>
-            <div className="text-[10px] text-slate-500 truncate">{p.name}</div>
+            <div className="text-[10px] text-muted-foreground truncate">{p.name}</div>
           </button>
         ))}
       </div>
@@ -49,8 +49,8 @@ export function PromptViewer({ prompts }: PromptViewerProps) {
             </Badge>
           )}
         </div>
-        <ScrollArea className="h-[calc(65vh-3rem)] rounded-lg border border-slate-800 bg-slate-950/50">
-          <pre className="p-4 text-xs text-slate-300 whitespace-pre-wrap font-mono leading-relaxed">
+        <ScrollArea className="h-[calc(65vh-3rem)] rounded-lg border border-[var(--glass-border)] bg-background">
+          <pre className="p-4 text-xs text-foreground whitespace-pre-wrap font-mono leading-relaxed">
             {current.description}
           </pre>
         </ScrollArea>

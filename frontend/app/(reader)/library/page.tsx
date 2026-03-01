@@ -73,7 +73,7 @@ export default function LibraryPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Library</h1>
-          <p className="text-slate-400 text-sm mt-1">
+          <p className="text-muted-foreground text-sm mt-1">
             Upload, process, and explore your novels
           </p>
         </div>
@@ -97,31 +97,31 @@ export default function LibraryPage() {
               <h2 className="text-lg font-semibold">Upload a Book</h2>
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
-                  <label htmlFor="book-file" className="block text-sm text-slate-400 mb-1">File *</label>
+                  <label htmlFor="book-file" className="block text-sm text-muted-foreground mb-1">File *</label>
                   <input
                     id="book-file"
                     type="file"
                     name="file"
                     accept=".epub,.pdf,.txt"
                     required
-                    className="block w-full text-sm text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-indigo-600 file:text-white hover:file:bg-indigo-500 cursor-pointer"
+                    className="block w-full text-sm text-foreground file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary file:text-white hover:file:bg-primary/90 cursor-pointer"
                   />
                 </div>
                 <div>
-                  <label htmlFor="book-title" className="block text-sm text-slate-400 mb-1">Title</label>
+                  <label htmlFor="book-title" className="block text-sm text-muted-foreground mb-1">Title</label>
                   <Input id="book-title" name="title" placeholder="Auto-detected from filename" />
                 </div>
                 <div>
-                  <label htmlFor="book-author" className="block text-sm text-slate-400 mb-1">Author</label>
+                  <label htmlFor="book-author" className="block text-sm text-muted-foreground mb-1">Author</label>
                   <Input id="book-author" name="author" />
                 </div>
                 <div>
-                  <label htmlFor="book-genre" className="block text-sm text-slate-400 mb-1">Genre</label>
+                  <label htmlFor="book-genre" className="block text-sm text-muted-foreground mb-1">Genre</label>
                   <select
                     id="book-genre"
                     name="genre"
                     defaultValue="litrpg"
-                    className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+                    className="w-full rounded-lg border border-[var(--glass-border)] bg-accent px-3 py-2 text-sm focus:border-primary focus:outline-none"
                   >
                     <option value="litrpg">LitRPG</option>
                     <option value="cultivation">Cultivation</option>
@@ -131,11 +131,11 @@ export default function LibraryPage() {
                   </select>
                 </div>
                 <div>
-                  <label htmlFor="book-series" className="block text-sm text-slate-400 mb-1">Series</label>
+                  <label htmlFor="book-series" className="block text-sm text-muted-foreground mb-1">Series</label>
                   <Input id="book-series" name="series_name" />
                 </div>
                 <div>
-                  <label htmlFor="book-order" className="block text-sm text-slate-400 mb-1">Order in Series</label>
+                  <label htmlFor="book-order" className="block text-sm text-muted-foreground mb-1">Order in Series</label>
                   <Input id="book-order" type="number" name="order_in_series" min={1} />
                 </div>
               </div>
@@ -154,19 +154,19 @@ export default function LibraryPage() {
       )}
 
       {loading ? (
-        <div className="text-center py-12 text-slate-500">Loading books...</div>
+        <div className="text-center py-12 text-muted-foreground">Loading books...</div>
       ) : books.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-slate-700 bg-slate-900/30 p-12 text-center">
-          <BookOpen className="h-12 w-12 text-slate-600 mx-auto mb-4" />
-          <p className="text-slate-500 text-lg mb-2">No books yet</p>
-          <p className="text-slate-600 text-sm">Upload an ePub, PDF, or TXT file to get started</p>
+        <div className="glass rounded-xl border-dashed p-12 text-center">
+          <BookOpen className="h-12 w-12 text-muted-foreground/60 mx-auto mb-4" />
+          <p className="text-muted-foreground text-lg mb-2">No books yet</p>
+          <p className="text-muted-foreground/60 text-sm">Upload an ePub, PDF, or TXT file to get started</p>
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {books.map((book) => (
             <Card
               key={book.id}
-              className="group hover:border-slate-700 transition-all cursor-pointer"
+              className="group hover:border-[var(--glass-border)] transition-all cursor-pointer"
               onClick={() => setSelectedBookId(book.id)}
             >
               <CardContent className="pt-5">
@@ -174,13 +174,13 @@ export default function LibraryPage() {
                   <div className="min-w-0 flex-1">
                     <Link
                       href={`/library/${book.id}`}
-                      className="font-semibold text-sm group-hover:text-indigo-400 transition-colors block truncate"
+                      className="font-semibold text-sm group-hover:text-primary transition-colors block truncate"
                       onClick={(e) => e.stopPropagation()}
                     >
                       {book.title}
                     </Link>
                     {book.author && (
-                      <p className="text-xs text-slate-500 mt-0.5">by {book.author}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">by {book.author}</p>
                     )}
                   </div>
                   <span className={cn(
@@ -191,7 +191,7 @@ export default function LibraryPage() {
                   </span>
                 </div>
 
-                <div className="flex items-center gap-3 text-xs text-slate-500 mb-4">
+                <div className="flex items-center gap-3 text-xs text-muted-foreground mb-4">
                   {book.series_name && (
                     <span>{book.series_name} {book.order_in_series ? `#${book.order_in_series}` : ""}</span>
                   )}
@@ -199,7 +199,7 @@ export default function LibraryPage() {
                   <span>{book.genre}</span>
                 </div>
 
-                <div className="flex items-center gap-1.5 border-t border-slate-800 pt-3 -mx-1">
+                <div className="flex items-center gap-1.5 border-t border-[var(--glass-border)] pt-3 -mx-1">
                   {book.status === "completed" && (
                     <Button
                       size="sm"
@@ -219,7 +219,7 @@ export default function LibraryPage() {
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="h-7 text-xs text-indigo-400 hover:text-indigo-300"
+                        className="h-7 text-xs text-primary hover:text-primary"
                         asChild
                         onClick={(e) => e.stopPropagation()}
                       >

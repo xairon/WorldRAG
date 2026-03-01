@@ -21,7 +21,7 @@ export function SpoilerGuard({ maxChapter, totalChapters, onChange }: SpoilerGua
       "flex items-center gap-3 rounded-lg border px-3 py-2 text-xs transition-colors",
       isActive
         ? "border-amber-500/30 bg-amber-500/5"
-        : "border-slate-700/50 bg-slate-800/30",
+        : "border-[var(--glass-border)] bg-accent",
     )}>
       <Button
         variant="ghost"
@@ -32,7 +32,7 @@ export function SpoilerGuard({ maxChapter, totalChapters, onChange }: SpoilerGua
         {isActive ? (
           <Shield className="h-3.5 w-3.5" />
         ) : (
-          <ShieldOff className="h-3.5 w-3.5 text-slate-500" />
+          <ShieldOff className="h-3.5 w-3.5 text-muted-foreground" />
         )}
       </Button>
 
@@ -50,7 +50,7 @@ export function SpoilerGuard({ maxChapter, totalChapters, onChange }: SpoilerGua
           </span>
         </>
       ) : (
-        <span className="text-slate-500">Spoiler guard off</span>
+        <span className="text-muted-foreground">Spoiler guard off</span>
       )}
     </div>
   )

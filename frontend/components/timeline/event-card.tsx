@@ -22,20 +22,20 @@ export function EventCard({ event, bookId }: EventCardProps) {
   const style = SIGNIFICANCE_STYLES[event.significance] ?? SIGNIFICANCE_STYLES.minor
 
   return (
-    <div className={cn("rounded-lg border bg-slate-900/50 p-4", style.border)}>
+    <div className={cn("rounded-lg border bg-[var(--glass-bg)] p-4", style.border)}>
       <div className="flex items-start gap-3">
         <div className={cn("mt-1.5 h-2.5 w-2.5 rounded-full shrink-0", style.dot)} />
         <div className="min-w-0 flex-1 space-y-2">
           {/* Header */}
           <div className="flex items-center justify-between gap-2">
-            <h3 className="text-sm font-medium text-slate-200 truncate">{event.name}</h3>
+            <h3 className="text-sm font-medium text-foreground truncate">{event.name}</h3>
             <div className="flex items-center gap-2 shrink-0">
               {event.type && (
-                <span className="text-[10px] uppercase tracking-wider text-slate-500">
+                <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
                   {event.type.replace(/_/g, " ")}
                 </span>
               )}
-              <span className="text-[10px] uppercase tracking-wider text-slate-600">
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground/60">
                 {event.significance}
               </span>
             </div>
@@ -43,7 +43,7 @@ export function EventCard({ event, bookId }: EventCardProps) {
 
           {/* Description */}
           {event.description && (
-            <p className="text-xs text-slate-400 leading-relaxed line-clamp-2">
+            <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
               {event.description}
             </p>
           )}
