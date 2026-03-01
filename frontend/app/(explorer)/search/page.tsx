@@ -49,7 +49,7 @@ export default function SearchPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Search className="h-6 w-6 text-indigo-400" />
+        <Search className="h-6 w-6 text-primary" />
         <h1 className="text-2xl font-bold tracking-tight">Search</h1>
       </div>
 
@@ -70,8 +70,8 @@ export default function SearchPage() {
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-1.5">
-          <Filter className="h-3.5 w-3.5 text-slate-500" />
-          <span className="text-xs text-slate-500">Type:</span>
+          <Filter className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className="text-xs text-muted-foreground">Type:</span>
           <Button
             variant={!typeFilter ? "secondary" : "outline"}
             size="sm"
@@ -98,7 +98,7 @@ export default function SearchPage() {
             aria-label="Filter by book"
             value={bookFilter ?? ""}
             onChange={(e) => setBookFilter(e.target.value || undefined)}
-            className="rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-xs focus:border-indigo-500 focus:outline-none"
+            className="rounded-lg border border-[var(--glass-border)] bg-accent px-2 py-1 text-xs focus:border-primary focus:outline-none"
           >
             <option value="">All books</option>
             {books.map((b) => (
@@ -117,8 +117,8 @@ export default function SearchPage() {
         </div>
       ) : searched ? (
         results.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-slate-700 bg-slate-900/30 p-12 text-center">
-            <p className="text-slate-500">No entities found for &ldquo;{query}&rdquo;</p>
+          <div className="glass rounded-xl border-dashed p-12 text-center">
+            <p className="text-muted-foreground">No entities found for &ldquo;{query}&rdquo;</p>
           </div>
         ) : (
           <ScrollArea className="h-[calc(100vh-18rem)]">
@@ -128,7 +128,7 @@ export default function SearchPage() {
                 return (
                   <div
                     key={entity.id}
-                    className="flex items-center gap-3 rounded-lg bg-slate-900/50 border border-slate-800 px-4 py-3 hover:border-slate-700 transition-colors"
+                    className="flex items-center gap-3 glass rounded-lg px-4 py-3 hover:border-[var(--glass-border)] transition-colors"
                   >
                     <EntityBadge
                       name={entity.name}
@@ -136,7 +136,7 @@ export default function SearchPage() {
                       size="md"
                     />
                     {entity.description && (
-                      <p className="text-xs text-slate-500 line-clamp-1 flex-1 min-w-0">
+                      <p className="text-xs text-muted-foreground line-clamp-1 flex-1 min-w-0">
                         {entity.description}
                       </p>
                     )}
@@ -147,8 +147,8 @@ export default function SearchPage() {
           </ScrollArea>
         )
       ) : (
-        <div className="rounded-xl border border-dashed border-slate-700 bg-slate-900/30 p-12 text-center">
-          <p className="text-slate-500">Enter a search term to find entities across the Knowledge Graph</p>
+        <div className="glass rounded-xl border-dashed p-12 text-center">
+          <p className="text-muted-foreground">Enter a search term to find entities across the Knowledge Graph</p>
         </div>
       )}
     </div>

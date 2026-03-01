@@ -13,8 +13,34 @@ interface SigmaGraphProps {
   onNodeHover?: (nodeId: string | null) => void
   onReady?: (actions: { zoomIn: () => void; zoomOut: () => void; resetZoom: () => void }) => void
   highlightNodeId?: string | null
-  height?: number
+  height?: number | string
   className?: string
+}
+
+/**
+ * Reads a CSS custom property from the container element or falls back to a default value.
+ */
+function getCssVar(el: HTMLElement, varName: string, fallback: string): string {
+  const value = getComputedStyle(el).getPropertyValue(varName).trim()
+  return value || fallback
+}
+
+/** Convert any CSS color to rgba with a given alpha using an offscreen canvas. */
+function colorWithAlpha(color: string, alpha: number): string {
+  if (typeof document === "undefined") return color
+  const ctx = document.createElement("canvas").getContext("2d")
+  if (!ctx) return color
+  ctx.fillStyle = color
+  // ctx.fillStyle normalizes to rgb()/rgba() string
+  const normalized = ctx.fillStyle
+  if (normalized.startsWith("#")) {
+    const r = parseInt(normalized.slice(1, 3), 16)
+    const g = parseInt(normalized.slice(3, 5), 16)
+    const b = parseInt(normalized.slice(5, 7), 16)
+    return `rgba(${r},${g},${b},${alpha})`
+  }
+  // Already rgb(...) form
+  return normalized.replace("rgb(", "rgba(").replace(")", `,${alpha})`)
 }
 
 export function SigmaGraph({
@@ -23,7 +49,7 @@ export function SigmaGraph({
   onNodeHover,
   onReady,
   highlightNodeId,
-  height = 650,
+  height = "100%",
   className,
 }: SigmaGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -33,7 +59,7 @@ export function SigmaGraph({
   const hoveredNodeRef = useRef<string | null>(null)
 
   // Build graphology graph from API data
-  const buildGraph = useCallback((data: SubgraphData): Graph => {
+  const buildGraph = useCallback((data: SubgraphData, edgeColor: string): Graph => {
     const graph = new Graph()
 
     for (const node of data.nodes) {
@@ -64,7 +90,7 @@ export function SigmaGraph({
           graph.addEdgeWithKey(edgeKey, edge.source, edge.target, {
             label: edge.type,
             size: 1,
-            color: "#334155",
+            color: edgeColor,
             type: "arrow",
           })
         }
@@ -90,7 +116,16 @@ export function SigmaGraph({
       return
     }
 
-    const graph = buildGraph(data)
+    const container = containerRef.current
+
+    // Resolve theme-aware colors from CSS variables
+    const labelColorResolved = getCssVar(container, "--foreground", "#888888")
+    const highlightEdgeColor = getCssVar(container, "--primary", "#a78bfa")
+    const mutedColor = getCssVar(container, "--muted-foreground", "#888888")
+    const edgeColor = colorWithAlpha(mutedColor, 0.2)
+    const dimmedNodeColor = colorWithAlpha(mutedColor, 0.15)
+
+    const graph = buildGraph(data, edgeColor)
     graphRef.current = graph
 
     // Kill previous instances
@@ -104,12 +139,12 @@ export function SigmaGraph({
     }
 
     // Create sigma renderer
-    const sigma = new Sigma(graph, containerRef.current, {
+    const sigma = new Sigma(graph, container, {
       renderLabels: true,
       renderEdgeLabels: false,
       labelSize: 12,
       labelWeight: "bold",
-      labelColor: { color: "#e2e8f0" },
+      labelColor: { color: labelColorResolved },
       labelFont: "system-ui, sans-serif",
       stagePadding: 30,
       defaultEdgeType: "arrow",
@@ -125,7 +160,7 @@ export function SigmaGraph({
           // Check if this node is a neighbor of hovered
           const isNeighbor = graph.hasEdge(hovered, node) || graph.hasEdge(node, hovered)
           if (!isNeighbor) {
-            res.color = "#1e293b"
+            res.color = dimmedNodeColor
             res.label = ""
             res.zIndex = 0
           }
@@ -148,7 +183,7 @@ export function SigmaGraph({
           if (source !== hovered && target !== hovered) {
             res.hidden = true
           } else {
-            res.color = "#6366f1"
+            res.color = highlightEdgeColor
             res.size = 2
           }
         }
@@ -241,12 +276,10 @@ export function SigmaGraph({
       style={{
         height,
         width: "100%",
-        borderRadius: "0.75rem",
-        border: "1px solid #1e293b",
-        background: "#0f172a",
+        borderRadius: 0,
+        background: "transparent",
         overflow: "hidden",
       }}
     />
   )
 }
-

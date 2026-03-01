@@ -44,10 +44,10 @@ export default function ChatPage() {
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)]">
       {/* Header */}
-      <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+      <div className="flex items-center justify-between pb-4 border-b border-[var(--glass-border)]">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Chat</h1>
-          <p className="text-slate-400 text-sm mt-1">Ask questions about your novels</p>
+          <p className="text-muted-foreground text-sm mt-1">Ask questions about your novels</p>
         </div>
         <div className="flex items-center gap-3">
           <SpoilerGuard
@@ -59,7 +59,7 @@ export default function ChatPage() {
             aria-label="Select book"
             value={bookId}
             onChange={(e) => setBookId(e.target.value)}
-            className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+            className="rounded-lg border border-[var(--glass-border)] bg-accent px-3 py-2 text-sm focus:border-primary focus:outline-none"
           >
             <option value="">Select a book...</option>
             {books.map((b) => (
@@ -80,7 +80,7 @@ export default function ChatPage() {
       </ScrollArea>
 
       {/* Input */}
-      <form onSubmit={handleSend} className="flex gap-3 pt-4 border-t border-slate-800">
+      <form onSubmit={handleSend} className="flex gap-3 pt-4 border-t border-[var(--glass-border)]">
         <Input
           value={input}
           onChange={(e) => setInput(e.target.value)}
@@ -103,7 +103,7 @@ export default function ChatPage() {
           size="sm"
           onClick={clearMessages}
           disabled={isStreaming || messages.length <= 1}
-          className="text-slate-500 hover:text-slate-300"
+          className="text-muted-foreground hover:text-foreground"
         >
           <Trash2 className="h-4 w-4" />
         </Button>

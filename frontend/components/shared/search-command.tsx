@@ -120,7 +120,7 @@ export function SearchCommand() {
                     <Icon className="h-3.5 w-3.5" />
                   </span>
                   <span>{node.name}</span>
-                  <span className="ml-auto text-[10px] text-slate-500">{type}</span>
+                  <span className="ml-auto text-[10px] text-muted-foreground">{type}</span>
                 </CommandItem>
               )
             })}

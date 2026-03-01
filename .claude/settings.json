@@ -1,5 +1,16 @@
 {
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "case \"{{filepath}}\" in *.env|*.env.*|*credentials*|*.secret*|*.pem|*.key) echo 'BLOCKED: Do not edit secrets/credential files' >&2; exit 1 ;; esac"
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Write|Edit",
@@ -7,6 +18,15 @@
           {
             "type": "command",
             "command": "cd $CLAUDE_PROJECT_DIR && uv run ruff check --fix {{filepath}} 2>/dev/null; uv run ruff format {{filepath}} 2>/dev/null; true"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "case \"{{filepath}}\" in */frontend/*.ts|*/frontend/*.tsx) cd $CLAUDE_PROJECT_DIR/frontend && npx eslint --fix {{filepath}} 2>/dev/null; true ;; esac"
           }
         ]
       }

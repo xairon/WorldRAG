@@ -42,15 +42,15 @@ export function ChapterSlider({ chapter, totalChapters, onChange }: ChapterSlide
   }, [])
 
   return (
-    <div className="rounded-xl bg-slate-900/50 border border-slate-800 px-5 py-4">
+    <div className="rounded-xl glass px-5 py-4">
       <div className="flex items-center justify-between mb-3">
-        <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">
+        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
           Chapter Progress
         </span>
-        <span className="text-sm font-medium text-slate-300">
-          <span className="font-mono text-indigo-400">{localValue}</span>
-          <span className="text-slate-500 mx-1">/</span>
-          <span className="font-mono text-slate-500">{totalChapters}</span>
+        <span className="text-sm font-medium text-foreground">
+          <span className="font-mono text-primary">{localValue}</span>
+          <span className="text-muted-foreground mx-1">/</span>
+          <span className="font-mono text-muted-foreground">{totalChapters}</span>
         </span>
       </div>
       <Slider
@@ -60,9 +60,9 @@ export function ChapterSlider({ chapter, totalChapters, onChange }: ChapterSlide
         value={[localValue]}
         onValueChange={handleValueChange}
         className={cn(
-          "[&_[data-slot=slider-track]]:bg-slate-800",
-          "[&_[data-slot=slider-range]]:bg-indigo-500",
-          "[&_[data-slot=slider-thumb]]:border-indigo-500 [&_[data-slot=slider-thumb]]:bg-slate-950",
+          "[&_[data-slot=slider-track]]:bg-[var(--border)]",
+          "[&_[data-slot=slider-range]]:bg-[var(--primary)]",
+          "[&_[data-slot=slider-thumb]]:border-[var(--primary)] [&_[data-slot=slider-thumb]]:bg-background",
         )}
       />
     </div>

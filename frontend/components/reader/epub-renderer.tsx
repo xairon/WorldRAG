@@ -239,7 +239,6 @@ function injectAnnotations(
       const underlineStyle = ann.mention_type === "alias" ? "dashed"
         : ann.mention_type === "pronoun" ? "dotted" : "solid"
 
-      mark.style.setProperty("background-color", `${color}${t.annotationBgOpacity}`)
       mark.style.setProperty("border-bottom", `2px ${underlineStyle} ${color}${t.annotationBorderOpacity}`)
 
       fragment.appendChild(mark)
@@ -301,12 +300,12 @@ function AnnotationPopover({
               <EntityBadge name={entityName} type={entityType} size="sm" />
             </div>
             {mentionType && mentionType !== "langextract" && (
-              <span className="text-[10px] text-slate-500 uppercase tracking-wider">
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
                 {mentionType.replace("_", " ")}
               </span>
             )}
             {extractionText && (
-              <p className="text-xs text-slate-500 leading-relaxed line-clamp-3">
+              <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3">
                 {extractionText}
               </p>
             )}
@@ -342,7 +341,7 @@ export function EpubRenderer({
   const t = THEME_STYLES[theme]
   const font = fontFamily === "serif"
     ? '"Literata", "Georgia", "Cambria", "Times New Roman", serif'
-    : '"Inter", system-ui, -apple-system, sans-serif'
+    : '"DM Sans", system-ui, -apple-system, sans-serif'
 
   // DOMPurify sanitizes all epub XHTML (XSS protection)
   const sanitizedHTML = sanitizeHTML(xhtml)

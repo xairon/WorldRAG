@@ -61,7 +61,7 @@ export function ChapterSelector({
             onCheckedChange={(checked) => (checked ? selectAll() : selectNone())}
             disabled={disabled}
           />
-          <span className="text-xs text-slate-400">
+          <span className="text-xs text-muted-foreground">
             {selected.size}/{chapters.length} selected
           </span>
         </div>
@@ -98,15 +98,15 @@ export function ChapterSelector({
         </div>
       </div>
 
-      <ScrollArea className="h-[60vh] rounded-lg border border-slate-800">
-        <div className="divide-y divide-slate-800/60">
+      <ScrollArea className="h-[60vh] rounded-lg border border-[var(--glass-border)]">
+        <div className="divide-y divide-[var(--glass-border)]">
           {chapters.map((ch) => (
             <label
               key={ch.number}
               className={cn(
                 "flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors",
-                "hover:bg-slate-900/40",
-                selected.has(ch.number) && "bg-slate-900/60",
+                "hover:bg-accent",
+                selected.has(ch.number) && "bg-accent",
                 disabled && "opacity-50 cursor-not-allowed",
               )}
             >
@@ -115,16 +115,16 @@ export function ChapterSelector({
                 onCheckedChange={() => toggleChapter(ch.number)}
                 disabled={disabled}
               />
-              <span className="text-slate-500 font-mono text-xs w-8 shrink-0">
+              <span className="text-muted-foreground font-mono text-xs w-8 shrink-0">
                 {ch.number}
               </span>
               <div className="flex items-center gap-2 min-w-0 flex-1">
-                <FileText className="h-3.5 w-3.5 text-slate-600 shrink-0" />
+                <FileText className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0" />
                 <span className="text-sm truncate">
                   {ch.title || `Chapter ${ch.number}`}
                 </span>
               </div>
-              <span className="text-xs text-slate-500 shrink-0">
+              <span className="text-xs text-muted-foreground shrink-0">
                 {formatNumber(ch.word_count)}w
               </span>
               {ch.entity_count > 0 && (

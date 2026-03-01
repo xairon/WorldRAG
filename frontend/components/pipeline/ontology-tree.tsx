@@ -41,7 +41,7 @@ export function OntologyTree({ nodeTypes, relTypes }: OntologyTreeProps) {
     <ScrollArea className="h-[65vh]">
       <Accordion type="multiple" defaultValue={Object.keys(layers)} className="space-y-2">
         {Object.entries(layers).map(([layer, { nodes, rels }]) => (
-          <AccordionItem key={layer} value={layer} className="border border-slate-800 rounded-lg px-4">
+          <AccordionItem key={layer} value={layer} className="border border-[var(--glass-border)] rounded-lg px-4">
             <AccordionTrigger className="text-sm font-medium hover:no-underline">
               <div className="flex items-center gap-2">
                 <span>{LAYER_LABELS[layer] ?? layer}</span>
@@ -57,7 +57,7 @@ export function OntologyTree({ nodeTypes, relTypes }: OntologyTreeProps) {
               <div className="space-y-4 pb-2">
                 {/* Node types */}
                 <div>
-                  <h4 className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">
+                  <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
                     Node Types
                   </h4>
                   <Accordion type="multiple" className="space-y-1">
@@ -65,14 +65,14 @@ export function OntologyTree({ nodeTypes, relTypes }: OntologyTreeProps) {
                       <AccordionItem
                         key={nt.name}
                         value={nt.name}
-                        className="border border-slate-800/60 rounded-md px-3"
+                        className="border border-[var(--glass-border)]/60 rounded-md px-3"
                       >
                         <AccordionTrigger className="text-xs hover:no-underline py-2">
                           <div className="flex items-center gap-2">
                             <Badge className={labelBadgeClass(nt.name)} variant="outline">
                               {nt.name}
                             </Badge>
-                            <span className="text-slate-500">
+                            <span className="text-muted-foreground">
                               {nt.properties.length} properties
                             </span>
                           </div>
@@ -81,7 +81,7 @@ export function OntologyTree({ nodeTypes, relTypes }: OntologyTreeProps) {
                           {nt.properties.length > 0 ? (
                             <table className="w-full text-[11px] mb-2">
                               <thead>
-                                <tr className="text-slate-500">
+                                <tr className="text-muted-foreground">
                                   <th className="text-left py-1 font-medium">Property</th>
                                   <th className="text-left py-1 font-medium">Type</th>
                                   <th className="text-center py-1 font-medium">Req</th>
@@ -89,14 +89,14 @@ export function OntologyTree({ nodeTypes, relTypes }: OntologyTreeProps) {
                                   <th className="text-left py-1 font-medium">Values</th>
                                 </tr>
                               </thead>
-                              <tbody className="divide-y divide-slate-800/40">
+                              <tbody className="divide-y divide-[var(--glass-border)]">
                                 {nt.properties.map((p) => (
                                   <tr key={p.name}>
-                                    <td className="py-1 font-mono text-slate-300">{p.name}</td>
-                                    <td className="py-1 text-slate-400">{p.type}</td>
+                                    <td className="py-1 font-mono text-foreground">{p.name}</td>
+                                    <td className="py-1 text-muted-foreground">{p.type}</td>
                                     <td className="py-1 text-center">{p.required ? "Y" : ""}</td>
                                     <td className="py-1 text-center">{p.unique ? "Y" : ""}</td>
-                                    <td className="py-1 text-slate-500">
+                                    <td className="py-1 text-muted-foreground">
                                       {p.values?.join(", ") ?? ""}
                                     </td>
                                   </tr>
@@ -104,7 +104,7 @@ export function OntologyTree({ nodeTypes, relTypes }: OntologyTreeProps) {
                               </tbody>
                             </table>
                           ) : (
-                            <p className="text-[11px] text-slate-500 pb-2">No properties defined</p>
+                            <p className="text-[11px] text-muted-foreground pb-2">No properties defined</p>
                           )}
                         </AccordionContent>
                       </AccordionItem>
@@ -115,22 +115,22 @@ export function OntologyTree({ nodeTypes, relTypes }: OntologyTreeProps) {
                 {/* Relationship types */}
                 {rels.length > 0 && (
                   <div>
-                    <h4 className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">
+                    <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
                       Relationship Types
                     </h4>
                     <div className="space-y-1">
                       {rels.map((rt) => (
                         <div
                           key={rt.name}
-                          className="flex items-center gap-2 px-3 py-1.5 text-xs rounded-md bg-slate-900/40"
+                          className="flex items-center gap-2 px-3 py-1.5 text-xs rounded-md bg-background"
                         >
                           <span className="font-mono text-cyan-400">{rt.name}</span>
-                          <span className="text-slate-600">:</span>
-                          <span className="text-slate-400">{rt.from_type || "*"}</span>
-                          <span className="text-slate-600">&rarr;</span>
-                          <span className="text-slate-400">{rt.to_type || "*"}</span>
+                          <span className="text-muted-foreground/60">:</span>
+                          <span className="text-muted-foreground">{rt.from_type || "*"}</span>
+                          <span className="text-muted-foreground/60">&rarr;</span>
+                          <span className="text-muted-foreground">{rt.to_type || "*"}</span>
                           {rt.properties.length > 0 && (
-                            <span className="text-slate-600 ml-auto">
+                            <span className="text-muted-foreground/60 ml-auto">
                               {rt.properties.map((p) => p.name).join(", ")}
                             </span>
                           )}
