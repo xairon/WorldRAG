@@ -10,7 +10,7 @@ interface SkillListProps {
 }
 
 const RANK_COLORS: Record<string, string> = {
-  common: "border-slate-600 bg-slate-500/10 text-slate-400",
+  common: "border-[var(--glass-border)] bg-accent text-muted-foreground",
   uncommon: "border-emerald-500/30 bg-emerald-500/10 text-emerald-400",
   rare: "border-blue-500/30 bg-blue-500/10 text-blue-400",
   epic: "border-violet-500/30 bg-violet-500/10 text-violet-400",
@@ -44,8 +44,8 @@ export function SkillList({ skills }: SkillListProps) {
 
   if (skills.length === 0) {
     return (
-      <div className="rounded-xl border border-slate-800 bg-slate-900/30 p-8 text-center">
-        <p className="text-sm text-slate-500">No skills acquired yet.</p>
+      <div className="rounded-xl glass border-dashed p-8 text-center">
+        <p className="text-sm text-muted-foreground">No skills acquired yet.</p>
       </div>
     )
   }
@@ -60,8 +60,8 @@ export function SkillList({ skills }: SkillListProps) {
             className={cn(
               "rounded-full px-3 py-1 text-xs font-medium transition-colors",
               typeFilter === null
-                ? "bg-indigo-500/15 text-indigo-400 border border-indigo-500/25"
-                : "text-slate-500 hover:text-slate-300 border border-slate-800 hover:border-slate-700",
+                ? "glass text-primary border-primary/25"
+                : "text-muted-foreground hover:text-foreground border border-[var(--glass-border)] hover:border-[var(--border)]",
             )}
           >
             All ({skills.length})
@@ -73,8 +73,8 @@ export function SkillList({ skills }: SkillListProps) {
               className={cn(
                 "rounded-full px-3 py-1 text-xs font-medium transition-colors",
                 typeFilter === t
-                  ? "bg-indigo-500/15 text-indigo-400 border border-indigo-500/25"
-                  : "text-slate-500 hover:text-slate-300 border border-slate-800 hover:border-slate-700",
+                  ? "glass text-primary border-primary/25"
+                  : "text-muted-foreground hover:text-foreground border border-[var(--glass-border)] hover:border-[var(--border)]",
               )}
             >
               {t}
@@ -88,11 +88,11 @@ export function SkillList({ skills }: SkillListProps) {
         {filtered.map((skill) => (
           <div
             key={skill.name}
-            className="rounded-xl bg-slate-900/50 border border-slate-800 px-4 py-3 flex items-start justify-between gap-4"
+            className="rounded-xl glass px-4 py-3 flex items-start justify-between gap-4"
           >
             <div className="flex flex-col gap-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-sm font-medium text-slate-200">
+                <span className="text-sm font-medium text-foreground">
                   {skill.name}
                 </span>
                 <Badge
@@ -104,20 +104,20 @@ export function SkillList({ skills }: SkillListProps) {
                 {skill.skill_type && (
                   <Badge
                     variant="outline"
-                    className="text-[10px] border-slate-700 text-slate-500"
+                    className="text-[10px] border-[var(--glass-border)] text-muted-foreground"
                   >
                     {skill.skill_type}
                   </Badge>
                 )}
               </div>
               {skill.description && (
-                <p className="text-xs text-slate-500 line-clamp-2">
+                <p className="text-xs text-muted-foreground line-clamp-2">
                   {skill.description}
                 </p>
               )}
             </div>
             {skill.acquired_chapter !== null && (
-              <span className="text-[10px] text-slate-600 font-mono whitespace-nowrap mt-0.5">
+              <span className="text-[10px] text-muted-foreground/60 font-mono whitespace-nowrap mt-0.5">
                 Ch. {skill.acquired_chapter}
               </span>
             )}
