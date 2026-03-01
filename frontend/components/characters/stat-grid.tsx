@@ -20,8 +20,8 @@ export function StatGrid({ stats, chapterChanges }: StatGridProps) {
 
   if (stats.length === 0) {
     return (
-      <div className="rounded-xl border border-slate-800 bg-slate-900/30 p-8 text-center">
-        <p className="text-sm text-slate-500">No stats recorded yet.</p>
+      <div className="rounded-xl glass border-dashed p-8 text-center">
+        <p className="text-sm text-muted-foreground">No stats recorded yet.</p>
       </div>
     )
   }
@@ -35,19 +35,19 @@ export function StatGrid({ stats, chapterChanges }: StatGridProps) {
           <div
             key={stat.name}
             className={cn(
-              "rounded-xl bg-slate-900/50 border px-4 py-3 flex items-center justify-between",
+              "rounded-xl glass px-4 py-3 flex items-center justify-between",
               delta !== undefined && delta !== 0
                 ? delta > 0
                   ? "border-emerald-500/20"
                   : "border-red-500/20"
-                : "border-slate-800",
+                : "",
             )}
           >
             <div className="flex flex-col gap-0.5">
-              <span className="text-xs text-slate-500 uppercase tracking-wider">
+              <span className="text-xs text-muted-foreground uppercase tracking-wider">
                 {stat.name}
               </span>
-              <span className="text-lg font-bold font-mono text-slate-200">
+              <span className="text-lg font-bold font-mono text-foreground">
                 {stat.value}
               </span>
             </div>
