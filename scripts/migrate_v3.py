@@ -8,7 +8,7 @@ Usage:
 Requires:
     NEO4J_URI (default: bolt://localhost:7687)
     NEO4J_USER (default: neo4j)
-    NEO4J_PASSWORD (default: worldrag)
+    NEO4J_PASSWORD (required, no default)
 """
 
 import argparse
@@ -21,7 +21,7 @@ from neo4j import AsyncGraphDatabase
 
 NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")
 NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
-NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "worldrag")
+NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "")
 
 
 CLEANUP_QUERIES = [
