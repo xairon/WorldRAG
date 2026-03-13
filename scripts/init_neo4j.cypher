@@ -240,7 +240,10 @@ FOR (c:Chunk) ON (c.embedding)
 OPTIONS {
   indexConfig: {
     `vector.dimensions`: 1024,
-    `vector.similarity_function`: 'cosine'
+    `vector.similarity_function`: 'cosine',
+    `vector.hnsw.m`: 24,
+    `vector.hnsw.ef_construction`: 200,
+    `vector.quantization.enabled`: false
   }
 };
 
