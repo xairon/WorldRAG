@@ -123,6 +123,7 @@ services:
       LANGCHAIN_PROJECT: worldrag-rag
     volumes:
       - hf_cache:/hf_cache    # HuggingFace model cache (persisted)
+      - project_data:/data/projects
     deploy:
       resources:
         reservations:
@@ -162,6 +163,7 @@ services:
       LANGCHAIN_PROJECT: worldrag-kg
     volumes:
       - hf_cache:/hf_cache
+      - project_data:/data/projects
     deploy:
       resources:
         reservations:
@@ -201,6 +203,7 @@ volumes:
   redis_data:
   postgres_data:
   hf_cache:      # persists ~5 GB of local models across restarts
+  project_data:  # persists uploaded EPUBs and project files
 
 networks:
   worldrag:
