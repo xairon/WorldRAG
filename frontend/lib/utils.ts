@@ -33,12 +33,40 @@ export const LABEL_BADGE_CLASSES: Record<string, string> = {
   Concept: "bg-slate-500/15 text-slate-400 border-slate-500/25",
 }
 
+/** Fallback palette for dynamically induced entity types not in LABEL_COLORS. */
+const FALLBACK_COLORS = [
+  "#8b5cf6", "#f59e0b", "#14b8a6", "#f43f5e", "#6366f1",
+  "#84cc16", "#e879f9", "#22d3ee", "#fb923c", "#a3e635",
+]
+
+/** Fallback Tailwind badge classes for unknown types. */
+const FALLBACK_BADGE_CLASSES = [
+  "bg-violet-500/15 text-violet-400 border-violet-500/25",
+  "bg-amber-500/15 text-amber-400 border-amber-500/25",
+  "bg-teal-500/15 text-teal-400 border-teal-500/25",
+  "bg-rose-500/15 text-rose-400 border-rose-500/25",
+  "bg-indigo-500/15 text-indigo-400 border-indigo-500/25",
+  "bg-lime-500/15 text-lime-400 border-lime-500/25",
+  "bg-fuchsia-500/15 text-fuchsia-400 border-fuchsia-500/25",
+  "bg-cyan-500/15 text-cyan-400 border-cyan-500/25",
+  "bg-orange-500/15 text-orange-400 border-orange-500/25",
+  "bg-green-500/15 text-green-400 border-green-500/25",
+]
+
+function hashStringToIndex(str: string, max: number): number {
+  let hash = 0
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0
+  }
+  return Math.abs(hash) % max
+}
+
 export function labelColor(label: string): string {
-  return LABEL_COLORS[label] ?? "#94a3b8"
+  return LABEL_COLORS[label] ?? FALLBACK_COLORS[hashStringToIndex(label, FALLBACK_COLORS.length)]
 }
 
 export function labelBadgeClass(label: string): string {
-  return LABEL_BADGE_CLASSES[label] ?? "bg-slate-500/15 text-slate-400 border-slate-500/25"
+  return LABEL_BADGE_CLASSES[label] ?? FALLBACK_BADGE_CLASSES[hashStringToIndex(label, FALLBACK_BADGE_CLASSES.length)]
 }
 
 /** Status badge styling. */

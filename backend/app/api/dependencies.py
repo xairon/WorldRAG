@@ -67,6 +67,16 @@ async def get_postgres(request: Request):
     return pool
 
 
+async def get_graphiti(request: Request):
+    """Get GraphitiClient from app state."""
+    client = getattr(request.app.state, "graphiti", None)
+    if client is None:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=503, detail="Graphiti not available")
+    return client
+
+
 async def get_neo4j_session(request: Request) -> AsyncGenerator:
     """Get a Neo4j async session (auto-closed)."""
     driver: AsyncDriver = request.app.state.neo4j_driver

@@ -11,8 +11,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react"
-import { cn } from "@/lib/utils"
-import { LABEL_COLORS } from "@/lib/utils"
+import { cn, labelColor } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import type { ExtractionEvent } from "@/hooks/use-extraction-progress"
@@ -49,6 +48,8 @@ const ENTITY_ICONS: Record<string, string> = {
   Faction: "\u2694",
   Concept: "\ud83d\udca1",
 }
+
+const FALLBACK_ENTITY_ICON = "\ud83d\udd37"
 
 export function ExtractionDashboard({
   bookId,
@@ -184,23 +185,24 @@ export function ExtractionDashboard({
       {entityStats && entityStats.total_nodes > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {Object.entries(entityStats.nodes)
-            .filter(([label, count]) => count > 0 && label in ENTITY_ICONS)
+            .filter(([, count]) => count > 0)
             .sort(([, a], [, b]) => b - a)
             .map(([label, count]) => {
               const plural = count > 1
                 ? label === "Class" ? "es" : "s"
                 : ""
+              const color = labelColor(label)
               return (
                 <Badge
                   key={label}
                   variant="outline"
                   className="text-xs px-2 py-0.5"
                   style={{
-                    borderColor: LABEL_COLORS[label] ?? "#475569",
-                    color: LABEL_COLORS[label] ?? "#94a3b8",
+                    borderColor: color,
+                    color: color,
                   }}
                 >
-                  {ENTITY_ICONS[label]} {count} {label}{plural}
+                  {ENTITY_ICONS[label] ?? FALLBACK_ENTITY_ICON} {count} {label}{plural}
                 </Badge>
               )
             })}

@@ -17,6 +17,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from app.api.auth import require_auth
 from app.api.dependencies import get_neo4j, get_postgres
+from app.config import settings
 from app.core.logging import get_logger
 from app.schemas.chat import ChatRequest, ChatResponse, FeedbackRequest, FeedbackResponse
 from app.services.chat_service import ChatService
@@ -45,6 +46,18 @@ async def chat_query(
     them as context for follow-up questions.
     """
     checkpointer = getattr(http_request.app.state, "checkpointer", None)
+    if settings.graphiti_enabled:
+        from app.services.chat_service_v2 import ChatServiceV2
+
+        graphiti = getattr(http_request.app.state, "graphiti", None)
+        service_v2 = ChatServiceV2(graphiti, driver, checkpointer=checkpointer)
+        return await service_v2.query(
+            query=request.query,
+            book_id=request.book_id,
+            saga_id=request.book_id,  # default: saga_id = book_id
+            max_chapter=request.max_chapter,
+            thread_id=request.thread_id,
+        )
     service = ChatService(driver, checkpointer=checkpointer)
     return await service.query(
         query=request.query,
@@ -91,6 +104,24 @@ async def chat_stream(
       - `error`: something went wrong
     """
     checkpointer = getattr(request.app.state, "checkpointer", None)
+    if settings.graphiti_enabled:
+        from app.services.chat_service_v2 import ChatServiceV2
+
+        graphiti = getattr(request.app.state, "graphiti", None)
+        service_v2 = ChatServiceV2(graphiti, driver, checkpointer=checkpointer)
+
+        async def event_generator_v2():
+            async for event in service_v2.query_stream(
+                query=q,
+                book_id=book_id,
+                saga_id=book_id,  # default: saga_id = book_id
+                max_chapter=max_chapter,
+                thread_id=thread_id,
+            ):
+                yield event
+
+        return EventSourceResponse(event_generator_v2())
+
     service = ChatService(driver, checkpointer=checkpointer)
 
     async def event_generator():

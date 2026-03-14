@@ -511,3 +511,119 @@ async def process_book_embeddings(
         "total_tokens": result.total_tokens,
         "cost_usd": result.cost_usd,
     }
+
+
+async def process_book_graphiti(
+    ctx: dict[str, Any],
+    book_id: str,
+    saga_id: str,
+    saga_name: str,
+    book_num: int = 1,
+    saga_profile_json: str | None = None,
+) -> dict[str, Any]:
+    """Ingest a book via Graphiti (KG v2 pipeline).
+
+    Discovery Mode if saga_profile_json is None, Guided Mode otherwise.
+    After Discovery Mode, auto-runs SagaProfileInducer and stores result in Redis.
+    """
+    graphiti = ctx["graphiti"]
+    neo4j_driver = ctx["neo4j_driver"]
+    dlq = ctx.get("dlq")
+
+    book_repo = BookRepository(neo4j_driver)
+    chapter_data = await book_repo.get_chapters_for_extraction(book_id)
+    chapters = [{"number": ch.number, "text": ch.text} for ch in chapter_data]
+
+    logger.info(
+        "task_graphiti_ingestion_started",
+        book_id=book_id,
+        saga_id=saga_id,
+        chapters=len(chapters),
+        mode="guided" if saga_profile_json else "discovery",
+    )
+
+    from app.services.ingestion.graphiti_ingest import BookIngestionOrchestrator
+
+    orchestrator = BookIngestionOrchestrator(graphiti=graphiti)
+
+    failed_chapters: list[int] = []
+    if saga_profile_json:
+        from app.services.saga_profile.models import SagaProfile
+
+        profile = SagaProfile.model_validate_json(saga_profile_json)
+        for ch in chapters:
+            try:
+                await orchestrator.ingest_guided(
+                    chapters=[ch],
+                    book_id=book_id,
+                    book_num=book_num,
+                    saga_id=saga_id,
+                    profile=profile,
+                )
+            except Exception as exc:
+                logger.exception("graphiti_chapter_failed", chapter=ch["number"])
+                failed_chapters.append(ch["number"])
+                if dlq:
+                    await dlq.push_failure(
+                        book_id=book_id,
+                        chapter=ch["number"],
+                        error=exc,
+                        metadata={"saga_id": saga_id, "pipeline": "graphiti-guided"},
+                    )
+    else:
+        for ch in chapters:
+            try:
+                await orchestrator.ingest_discovery(
+                    chapters=[ch],
+                    book_id=book_id,
+                    book_num=book_num,
+                    saga_id=saga_id,
+                )
+            except Exception as exc:
+                logger.exception("graphiti_chapter_failed", chapter=ch["number"])
+                failed_chapters.append(ch["number"])
+                if dlq:
+                    await dlq.push_failure(
+                        book_id=book_id,
+                        chapter=ch["number"],
+                        error=exc,
+                        metadata={"saga_id": saga_id, "pipeline": "graphiti-discovery"},
+                    )
+
+        # Auto-run SagaProfileInducer after Discovery
+        from app.services.saga_profile.inducer import SagaProfileInducer
+
+        full_text = "\n".join(ch["text"] for ch in chapters)
+        inducer = SagaProfileInducer(driver=neo4j_driver)
+        profile = await inducer.induce(
+            saga_id=saga_id,
+            saga_name=saga_name,
+            source_book=book_id,
+            raw_text=full_text,
+        )
+        # Store profile in Redis for reuse in Guided Mode
+        dlq_redis = ctx.get("dlq_redis")
+        if dlq_redis:
+            await dlq_redis.set(f"saga_profile:{saga_id}", profile.model_dump_json())
+        logger.info(
+            "saga_profile_induced",
+            saga_id=saga_id,
+            entity_types=len(profile.entity_types),
+            patterns=len(profile.text_patterns),
+        )
+
+        # Run community clustering
+        from app.services.community_clustering import run_community_clustering
+        clustering_result = await run_community_clustering(neo4j_driver, saga_id=saga_id)
+        logger.info("community_clustering_done", **clustering_result)
+
+    result = {
+        "book_id": book_id,
+        "saga_id": saga_id,
+        "chapters_processed": len(chapters) - len(failed_chapters),
+        "chapters_failed": len(failed_chapters),
+        "pipeline": "graphiti",
+        "mode": "guided" if saga_profile_json else "discovery",
+    }
+    logger.info("task_graphiti_ingestion_completed", **result)
+    return result

@@ -11,7 +11,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { EntityBadge } from "@/components/shared/entity-badge"
 import { LABEL_COLORS } from "@/lib/utils"
 
-const ENTITY_TYPES = Object.keys(LABEL_COLORS)
+const DEFAULT_ENTITY_TYPES = Object.keys(LABEL_COLORS)
 
 export default function SearchPage() {
   const [query, setQuery] = useState("")
@@ -21,6 +21,7 @@ export default function SearchPage() {
   const [typeFilter, setTypeFilter] = useState<string | undefined>()
   const [bookFilter, setBookFilter] = useState<string | undefined>()
   const [books, setBooks] = useState<BookInfo[]>([])
+  const [dynamicTypes, setDynamicTypes] = useState<string[]>([])
 
   useEffect(() => {
     listBooks().then(setBooks).catch(() => {})
@@ -33,6 +34,20 @@ export default function SearchPage() {
     try {
       const data = await searchEntities(query.trim(), typeFilter, bookFilter)
       setResults(data)
+      // Collect any types from results that aren't in the defaults
+      const extraTypes = Array.from(
+        new Set(
+          data
+            .map((n) => n.labels?.[0])
+            .filter((l): l is string => !!l && !DEFAULT_ENTITY_TYPES.includes(l))
+        )
+      )
+      if (extraTypes.length > 0) {
+        setDynamicTypes((prev) => {
+          const merged = Array.from(new Set([...prev, ...extraTypes]))
+          return merged
+        })
+      }
     } catch {
       setResults([])
     } finally {
@@ -80,7 +95,7 @@ export default function SearchPage() {
           >
             All
           </Button>
-          {ENTITY_TYPES.map((t) => (
+          {[...DEFAULT_ENTITY_TYPES, ...dynamicTypes].map((t) => (
             <Button
               key={t}
               variant={typeFilter === t ? "secondary" : "outline"}

@@ -26,13 +26,13 @@ services:
       - "0.0.0.0:49519:7687"   # Bolt    (optional, can be removed in prod)
     environment:
       NEO4J_AUTH: neo4j/${NEO4J_PASSWORD}
-      NEO4J_PLUGINS: '["apoc"]'
-      NEO4J_dbms_memory_heap_max__size: "4G"
-      NEO4J_dbms_memory_pagecache_size: "2G"
-      NEO4J_dbms_security_procedures_allowlist: "apoc.path.*,apoc.cypher.*,apoc.meta.*"
+      NEO4J_PLUGINS: '["apoc", "graph-data-science"]'
+      NEO4J_dbms_memory_heap_max__size: "6G"
+      NEO4J_dbms_memory_pagecache_size: "3G"
+      NEO4J_dbms_security_procedures_allowlist: "apoc.*,gds.*"
     volumes:
       - neo4j_data:/data
-    mem_limit: 8g
+    mem_limit: 12g
     healthcheck:
       test: ["CMD", "neo4j", "status"]
       interval: 10s
@@ -84,7 +84,7 @@ services:
       - "0.0.0.0:49517:3000"
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/langfuse
-      NEXTAUTH_URL: http://localhost:49517
+      NEXTAUTH_URL: http://dib-2019006065:49517
       NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET}
       SALT: ${LANGFUSE_SALT}
       TELEMETRY_ENABLED: "false"
@@ -118,8 +118,9 @@ services:
       EMBEDDING_DEVICE: cuda
       EMBEDDING_BATCH_SIZE: 128
       # CORS: allow frontend
-      CORS_ORIGINS: '["http://localhost:49516","http://0.0.0.0:49516"]'
+      CORS_ORIGINS: '["http://dib-2019006065:49516","http://localhost:49516"]'
       HF_HOME: /hf_cache
+      LANGCHAIN_PROJECT: worldrag-rag
     volumes:
       - hf_cache:/hf_cache    # HuggingFace model cache (persisted)
     deploy:
@@ -158,6 +159,7 @@ services:
       EMBEDDING_DEVICE: cuda
       EMBEDDING_BATCH_SIZE: 128
       HF_HOME: /hf_cache
+      LANGCHAIN_PROJECT: worldrag-kg
     volumes:
       - hf_cache:/hf_cache
     deploy:

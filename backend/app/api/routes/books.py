@@ -34,6 +34,7 @@ from app.schemas.pipeline import (  # noqa: TC001 — runtime use by FastAPI
     ExtractionRequestV3,
     ReprocessRequest,
 )
+from app.schemas.saga_profile import ExtractGraphitiRequest
 from app.services.chunking import chunk_chapter
 from app.services.extraction.regex_extractor import RegexExtractor
 from app.services.ingestion import extract_epub_metadata, ingest_file
@@ -708,3 +709,41 @@ async def delete_book(
         "book_id": book_id,
         "chapters_deleted": chapters_deleted,
     }
+
+
+@router.post("/{book_id}/extract-graphiti", dependencies=[Depends(require_auth)], status_code=202)
+async def extract_graphiti(
+    book_id: str,
+    body: ExtractGraphitiRequest,
+    http_request: Request,
+    arq_pool=Depends(get_arq_pool),
+) -> dict:
+    """Enqueue a Graphiti-based KG extraction job for a book.
+
+    Checks Redis for an existing SagaProfile:
+    - If found → mode is "guided" (profile JSON passed to worker)
+    - If not found → mode is "discovery" (worker induces profile from scratch)
+
+    Returns 202 immediately with {job_id, mode, book_id}.
+    """
+    redis = http_request.app.state.redis
+    existing_profile = await redis.get(f"saga_profile:{body.saga_id}")
+    mode = "guided" if existing_profile else "discovery"
+    job = await arq_pool.enqueue_job(
+        "process_book_graphiti",
+        book_id,
+        body.saga_id,
+        body.saga_name,
+        body.book_num,
+        existing_profile,
+        _queue_name="worldrag:arq",
+        _job_id=f"graphiti:{book_id}",
+    )
+    logger.info(
+        "book_graphiti_enqueued",
+        book_id=book_id,
+        saga_id=body.saga_id,
+        mode=mode,
+        job_id=job.job_id if job else None,
+    )
+    return {"job_id": job.job_id, "mode": mode, "book_id": book_id}
