@@ -12,6 +12,7 @@ import {
   Bug,
   Flag,
   Lightbulb,
+  Tag,
 } from "lucide-react"
 import { cn, labelBadgeClass } from "@/lib/utils"
 
@@ -37,7 +38,7 @@ interface EntityBadgeProps {
 }
 
 export function EntityBadge({ name, type, clickable = true, size = "sm", className }: EntityBadgeProps) {
-  const Icon = ENTITY_ICONS[type] ?? Lightbulb
+  const Icon = ENTITY_ICONS[type] ?? Tag
   const badgeClass = labelBadgeClass(type)
 
   const content = (

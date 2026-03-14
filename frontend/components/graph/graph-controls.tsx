@@ -3,7 +3,7 @@
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import { useState } from "react"
 import { Slider } from "@/components/ui/slider"
-import { cn, LABEL_COLORS } from "@/lib/utils"
+import { cn, LABEL_COLORS, labelColor } from "@/lib/utils"
 import { useGraphStore } from "@/stores/graph-store"
 
 interface GraphControlsProps {
@@ -13,8 +13,15 @@ interface GraphControlsProps {
 export function GraphControls({
   totalChapters,
 }: GraphControlsProps) {
-  const { filters, toggleLabel, setFilters } = useGraphStore()
+  const { graphData, filters, toggleLabel, setFilters } = useGraphStore()
   const [collapsed, setCollapsed] = useState(false)
+
+  // Build label list from actual graph data, falling back to hardcoded defaults when graph is empty
+  const graphLabels = Array.from(
+    new Set(graphData.nodes.flatMap((n) => n.labels ?? []).filter(Boolean))
+  )
+  const defaultLabels = Object.keys(LABEL_COLORS)
+  const activeLabels = graphLabels.length > 0 ? graphLabels : defaultLabels
 
   return (
     <div className="glass rounded-2xl overflow-hidden">
@@ -41,7 +48,8 @@ export function GraphControls({
               Entity Types
             </h3>
             <div className="flex flex-wrap gap-1.5">
-              {Object.entries(LABEL_COLORS).map(([label, color]) => {
+              {activeLabels.map((label) => {
+                const color = labelColor(label)
                 const active = filters.labels.length === 0 || filters.labels.includes(label)
                 return (
                   <button
