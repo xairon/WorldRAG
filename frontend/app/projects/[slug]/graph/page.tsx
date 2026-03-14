@@ -12,6 +12,7 @@ import { useGraphStore } from "@/stores/graph-store"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { NodeDetailPanel } from "@/components/graph/node-detail-panel"
+import { BookSelector } from "@/components/projects/book-selector"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 const SigmaGraph = dynamic(
@@ -89,8 +90,9 @@ export default function ProjectGraphPage() {
         </div>
       )}
 
-      {/* Search */}
+      {/* Search + book selector */}
       <div className="absolute left-3 right-3 top-3 z-20 flex gap-2">
+        <BookSelector slug={params.slug} value={bookId} onChange={setBookId} />
         <form onSubmit={handleSearch} className="flex gap-2 flex-1 max-w-md">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />

@@ -23,6 +23,7 @@ from app.core.logging import get_logger
 from app.services.saga_profile.models import (
     InducedEntityType,
     InducedPattern,
+    InducedRelationType,
     SagaProfile,
 )
 
@@ -191,6 +192,130 @@ async def _formalize_clusters_llm(
     return results
 
 
+def _extract_json_array(text: str) -> list[Any] | None:
+    """Extract the first JSON array from *text* using bracket counting.
+
+    Handles nested brackets correctly.
+    Returns the parsed list or None if no valid JSON array is found.
+    """
+    start = text.find("[")
+    if start == -1:
+        return None
+
+    depth = 0
+    for i in range(start, len(text)):
+        if text[i] == "[":
+            depth += 1
+        elif text[i] == "]":
+            depth -= 1
+            if depth == 0:
+                try:
+                    return json.loads(text[start : i + 1])
+                except json.JSONDecodeError:
+                    return None
+    return None
+
+
+# Universal entity types always available as relation endpoints
+_UNIVERSAL_TYPES = [
+    "Character",
+    "Location",
+    "Object",
+    "Organization",
+    "Event",
+    "Concept",
+]
+
+
+async def _induce_relations_llm(
+    entity_types: list[InducedEntityType],
+    entities: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Call LLM to propose relation types between induced entity types.
+
+    Builds a prompt listing all induced + universal entity types and asks the LLM
+    to propose the most important relationships between them.
+
+    Returns:
+        List of dicts matching InducedRelationType fields, filtered to valid types only.
+    """
+    from app.llm.providers import get_langchain_llm
+
+    llm = get_langchain_llm(settings.llm_generation)
+
+    # Collect all valid type names (induced + universal)
+    induced_names = [et.type_name for et in entity_types]
+    all_type_names = list(dict.fromkeys(induced_names + _UNIVERSAL_TYPES))
+
+    # Build a concise sample of entity instances for context
+    instance_sample = []
+    for et in entity_types:
+        sample = et.instances_found[:3]
+        instance_sample.append(f"- {et.type_name}: {', '.join(sample)}")
+
+    prompt = (
+        "You are analyzing a fiction novel's knowledge graph. "
+        "Given the following entity types, propose the most important relationships between them.\n\n"
+        "Entity types:\n"
+        + "\n".join(f"  - {t}" for t in all_type_names)
+        + "\n\nEntity instances (sample):\n"
+        + ("\n".join(instance_sample) if instance_sample else "  (none)")
+        + "\n\nExamples of good relations:\n"
+        '  {"relation_name": "has_skill", "source_type": "Character", "target_type": "Skill", '
+        '"cardinality": "N:N", "temporal": true, "description": "Character possesses a skill"}\n'
+        '  {"relation_name": "belongs_to", "source_type": "Character", "target_type": "Organization", '
+        '"cardinality": "N:N", "temporal": true, "description": "Character is a member of an org"}\n'
+        '  {"relation_name": "located_in", "source_type": "Character", "target_type": "Location", '
+        '"cardinality": "N:1", "temporal": true, "description": "Character resides in a location"}\n\n'
+        "Rules:\n"
+        "  - Only propose relations where both source_type AND target_type are in the list above.\n"
+        "  - relation_name must be snake_case.\n"
+        "  - cardinality must be one of: 1:1, 1:N, N:1, N:N.\n"
+        "  - Only include confident, meaningful relations (omit speculative ones).\n"
+        "  - Respond ONLY with a JSON array of relation objects, no text around it.\n\n"
+        "JSON array:"
+    )
+
+    try:
+        response = await llm.ainvoke(prompt)
+        content = response.content if hasattr(response, "content") else str(response)
+
+        # Try direct JSON parse first, fall back to bracket-counting extraction
+        try:
+            parsed = json.loads(content)
+            if not isinstance(parsed, list):
+                raise ValueError("Expected JSON array")
+        except (json.JSONDecodeError, ValueError):
+            parsed = _extract_json_array(content)
+            if parsed is None:
+                raise ValueError("No JSON array found in LLM response")
+
+        # Filter: both source_type and target_type must exist in all_type_names
+        valid_type_set = set(all_type_names)
+        results: list[dict[str, Any]] = []
+        for item in parsed:
+            if not isinstance(item, dict):
+                continue
+            src = item.get("source_type", "")
+            tgt = item.get("target_type", "")
+            if src not in valid_type_set or tgt not in valid_type_set:
+                logger.debug(
+                    "relation_type_skipped_unknown_endpoint",
+                    relation_name=item.get("relation_name"),
+                    source_type=src,
+                    target_type=tgt,
+                )
+                continue
+            results.append(item)
+
+        logger.info("relation_types_induced", count=len(results))
+        return results
+
+    except Exception:
+        logger.warning("llm_induce_relations_failed", exc_info=True)
+        return []
+
+
 def _detect_patterns(raw_text: str) -> list[InducedPattern]:
     """Scan raw text for recurring structural patterns. Only keep patterns with >= 2 matches."""
     if not raw_text:
@@ -299,6 +424,19 @@ class SagaProfileInducer:
             InducedEntityType(**f) for f in formalized if f["confidence"] >= MIN_CONFIDENCE
         ]
 
+        # Step 5b — Induce relation types via LLM
+        raw_relations = await _induce_relations_llm(entity_types, entities)
+        relation_types: list[InducedRelationType] = []
+        for r in raw_relations:
+            try:
+                relation_types.append(InducedRelationType(**r))
+            except Exception:
+                logger.warning(
+                    "relation_type_parse_error",
+                    relation_data=r,
+                    exc_info=True,
+                )
+
         type_names = [et.type_name for et in entity_types]
         narrative_systems = _detect_narrative_systems(type_names)
         complexity = _estimate_complexity(len(entity_types))
@@ -308,7 +446,7 @@ class SagaProfileInducer:
             saga_name=saga_name,
             source_book=source_book,
             entity_types=entity_types,
-            relation_types=[],
+            relation_types=relation_types,
             text_patterns=text_patterns,
             narrative_systems=narrative_systems,
             estimated_complexity=complexity,
@@ -318,6 +456,7 @@ class SagaProfileInducer:
             "saga_profile_induction_complete",
             saga_id=saga_id,
             entity_type_count=len(entity_types),
+            relation_type_count=len(relation_types),
             pattern_count=len(text_patterns),
             complexity=complexity,
         )

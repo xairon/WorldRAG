@@ -5,6 +5,7 @@ import { useParams } from "next/navigation"
 import { Send, Trash2, StopCircle } from "lucide-react"
 import { listProjectBooks } from "@/lib/api/projects"
 import { useChatStore } from "@/stores/chat-store"
+import { BookSelector } from "@/components/projects/book-selector"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -85,8 +86,11 @@ export default function ProjectChatPage() {
           </div>
         </ScrollArea>
 
-        {/* Input */}
-        <form onSubmit={handleSend} className="flex gap-3 pt-4 border-t border-border">
+        {/* Book selector + Input */}
+        <div className="flex items-center gap-3 pt-4 border-t border-border">
+          <BookSelector slug={params.slug} value={bookId} onChange={setBookId} />
+        </div>
+        <form onSubmit={handleSend} className="flex gap-3 pt-2">
           <Input
             value={input}
             onChange={(e) => setInput(e.target.value)}

@@ -12,8 +12,14 @@ from app.services.saga_profile.inducer import (
     SagaProfileInducer,
     _cluster_entities,
     _detect_patterns,
+    _induce_relations_llm,
 )
-from app.services.saga_profile.models import InducedPattern, SagaProfile
+from app.services.saga_profile.models import (
+    InducedEntityType,
+    InducedPattern,
+    InducedRelationType,
+    SagaProfile,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -71,6 +77,10 @@ async def test_inducer_returns_saga_profile():
         "app.services.saga_profile.inducer._formalize_clusters_llm",
         new_callable=AsyncMock,
         return_value=formalized,
+    ), patch(
+        "app.services.saga_profile.inducer._induce_relations_llm",
+        new_callable=AsyncMock,
+        return_value=[],
     ):
         inducer = SagaProfileInducer(driver)
         profile = await inducer.induce(
@@ -117,6 +127,10 @@ async def test_low_confidence_types_filtered():
         "app.services.saga_profile.inducer._formalize_clusters_llm",
         new_callable=AsyncMock,
         return_value=formalized,
+    ), patch(
+        "app.services.saga_profile.inducer._induce_relations_llm",
+        new_callable=AsyncMock,
+        return_value=[],
     ):
         inducer = SagaProfileInducer(driver)
         profile = await inducer.induce(
@@ -190,3 +204,127 @@ def test_cluster_entities_min_size():
     assert len(clusters) == 1
     assert clusters[0]["label"] == "Concept"
     assert len(clusters[0]["members"]) == 3
+
+
+# ---------------------------------------------------------------------------
+# 6. test_induce_relations
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_induce_relations():
+    """_induce_relations_llm returns parsed InducedRelationType dicts from LLM JSON."""
+    entity_types = [
+        InducedEntityType(
+            type_name="Spell",
+            parent_universal="Concept",
+            description="A magical ability",
+            instances_found=["Fireball", "Ice Shard"],
+            typical_attributes=["element", "mana_cost"],
+            confidence=0.9,
+        ),
+        InducedEntityType(
+            type_name="Guild",
+            parent_universal="Organization",
+            description="A group of adventurers",
+            instances_found=["Mage's Circle", "Warrior Brotherhood"],
+            typical_attributes=["rank", "territory"],
+            confidence=0.85,
+        ),
+    ]
+    entities = [
+        _make_entity("Fireball", "A fire spell", ["Entity", "Concept"]),
+        _make_entity("Aldric", "A warrior", ["Entity", "Character"]),
+        _make_entity("Mage's Circle", "A guild of mages", ["Entity", "Organization"]),
+    ]
+
+    # LLM returns a JSON array with one valid and one invalid (unknown type) relation
+    llm_response_json = (
+        "[\n"
+        '  {"relation_name": "has_spell", "source_type": "Character", "target_type": "Spell", '
+        '"cardinality": "N:N", "temporal": true, "description": "Character can cast a spell"},\n'
+        '  {"relation_name": "member_of", "source_type": "Character", "target_type": "Guild", '
+        '"cardinality": "N:N", "temporal": true, "description": "Character belongs to a guild"},\n'
+        '  {"relation_name": "invalid_relation", "source_type": "UnknownType", "target_type": "Spell", '
+        '"cardinality": "1:1", "temporal": false, "description": "Should be filtered out"}\n'
+        "]"
+    )
+
+    llm_mock = AsyncMock()
+    llm_response_mock = MagicMock()
+    llm_response_mock.content = llm_response_json
+    llm_mock.ainvoke = AsyncMock(return_value=llm_response_mock)
+
+    with patch("app.llm.providers.get_langchain_llm", return_value=llm_mock):
+        result = await _induce_relations_llm(entity_types, entities)
+
+    # Two valid relations (UnknownType is filtered out)
+    assert len(result) == 2
+    relation_names = {r["relation_name"] for r in result}
+    assert "has_spell" in relation_names
+    assert "member_of" in relation_names
+    assert "invalid_relation" not in relation_names
+
+    # Verify the dicts can be parsed into InducedRelationType models
+    for r in result:
+        model = InducedRelationType(**r)
+        assert model.relation_name
+        assert model.source_type
+        assert model.target_type
+
+
+@pytest.mark.asyncio
+async def test_induce_full_pipeline_produces_relations():
+    """Full induce() pipeline wires relation types from _induce_relations_llm into SagaProfile."""
+    entities = [
+        _make_entity("Fireball", "A fire spell", ["Entity", "Concept"]),
+        _make_entity("Ice Shard", "An ice spell", ["Entity", "Concept"]),
+        _make_entity("Lightning Bolt", "An electric spell", ["Entity", "Concept"]),
+    ]
+    driver = _mock_neo4j_driver(entities)
+
+    formalized = [
+        {
+            "type_name": "Spell",
+            "parent_universal": "Concept",
+            "description": "A magical ability",
+            "typical_attributes": ["element"],
+            "instances_found": ["Fireball", "Ice Shard", "Lightning Bolt"],
+            "confidence": 0.9,
+        }
+    ]
+    relations = [
+        {
+            "relation_name": "has_spell",
+            "source_type": "Character",
+            "target_type": "Spell",
+            "cardinality": "N:N",
+            "temporal": True,
+            "description": "Character can cast a spell",
+        }
+    ]
+
+    with patch(
+        "app.services.saga_profile.inducer._formalize_clusters_llm",
+        new_callable=AsyncMock,
+        return_value=formalized,
+    ), patch(
+        "app.services.saga_profile.inducer._induce_relations_llm",
+        new_callable=AsyncMock,
+        return_value=relations,
+    ):
+        inducer = SagaProfileInducer(driver)
+        profile = await inducer.induce(
+            saga_id="saga-3",
+            saga_name="Relations Saga",
+            source_book="book-3",
+            raw_text="",
+        )
+
+    assert len(profile.relation_types) == 1
+    rel = profile.relation_types[0]
+    assert isinstance(rel, InducedRelationType)
+    assert rel.relation_name == "has_spell"
+    assert rel.source_type == "Character"
+    assert rel.target_type == "Spell"
+    assert rel.cardinality == "N:N"
+    assert rel.temporal is True

@@ -23,6 +23,9 @@ faithfulness     -> END (score >= 0.6 or retries >= 2) | graphiti_search (retry)
 
 from __future__ import annotations
 
+import asyncio
+import math
+import re
 from typing import Any
 
 from langgraph.graph import END, START, StateGraph
@@ -341,26 +344,103 @@ def build_chat_v2_graph(graphiti: Any, neo4j_driver: Any) -> StateGraph:
     # ------------------------------------------------------------------ #
 
     async def faithfulness(state: dict[str, Any]) -> dict[str, Any]:
-        """Lightweight faithfulness check (real NLI wired later).
+        """NLI-based faithfulness check using DeBERTa-v3-large CrossEncoder.
 
         Scoring rules:
-        - If context is empty AND route is not "direct" -> score 0.3
-          (answer may be hallucinated — no grounding available)
-        - Otherwise -> score 0.8
-          (context was present, assume acceptable grounding)
+        1. route == "direct"  -> score 1.0 (no retrieval, nothing to check)
+        2. no context         -> score 0.3 (no grounding, possible hallucination)
+        3. otherwise          -> run NLI, score = mean(p_entail + 0.5*p_neutral)
+                                 over sentence-level claims in the generation.
+
+        The CrossEncoder predict() is synchronous — runs in a thread executor.
+        Falls back to 0.8 on model-load or inference failure (safe for tests).
         """
         route: str = state.get("route", "graphiti_search")
         entity_summaries: list[dict[str, Any]] = state.get("entity_summaries", [])
         context_text = "\n".join(s.get("text", "") for s in entity_summaries).strip()
+        generation: str = state.get("generation", "")
 
-        if not context_text and route != "direct":
-            score = 0.3
-            reasoning = "No context retrieved for a non-direct query — possible hallucination."
-        else:
+        # Case 1: direct (conversational) route — no retrieval, skip NLI
+        if route == "direct":
+            logger.info("chat_v2_faithfulness", score=1.0, route=route, reason="direct_route_skip")
+            return {
+                "faithfulness_score": 1.0,
+                "reasoning": "Direct conversational route — faithfulness check skipped.",
+            }
+
+        # Case 2: no context retrieved
+        if not context_text:
+            logger.info("chat_v2_faithfulness", score=0.3, route=route, reason="no_context")
+            return {
+                "faithfulness_score": 0.3,
+                "reasoning": "No context retrieved for a non-direct query — possible hallucination.",
+            }
+
+        # Case 3: run NLI
+        _CTX_MAX_CHARS = 2000
+        _MIN_CLAIM_WORDS = 4
+
+        def _split_claims(text: str) -> list[str]:
+            sentences = re.split(r"(?<=[.!?])\s+", text.strip())
+            return [s.strip() for s in sentences if len(s.split()) >= _MIN_CLAIM_WORDS]
+
+        def _logits_to_score(logits: list[float]) -> tuple[float, bool]:
+            """Convert [contradiction, entailment, neutral] logits to a score."""
+            c_logit, e_logit, n_logit = float(logits[0]), float(logits[1]), float(logits[2])
+            exp_c = math.exp(c_logit)
+            exp_e = math.exp(e_logit)
+            exp_n = math.exp(n_logit)
+            total = exp_c + exp_e + exp_n
+            p_contra = exp_c / total
+            p_entail = exp_e / total
+            p_neutral = exp_n / total
+            score = p_entail * 1.0 + p_neutral * 0.5
+            return score, p_contra > 0.5
+
+        claims = _split_claims(generation)
+        if not claims:
+            logger.warning("chat_v2_faithfulness_no_claims", generation_len=len(generation))
+            return {
+                "faithfulness_score": 0.0,
+                "reasoning": "No scoreable claims found in the generated answer.",
+            }
+
+        truncated_ctx = context_text[:_CTX_MAX_CHARS]
+        pairs = [(claim, truncated_ctx) for claim in claims]
+
+        try:
+            from app.llm.local_models import get_nli_model
+
+            nli_model = get_nli_model()
+            loop = asyncio.get_running_loop()
+            raw_scores = await loop.run_in_executor(
+                None, lambda: nli_model.predict(pairs).tolist()
+            )
+
+            claim_scores: list[float] = []
+            has_contradiction = False
+            for logits in raw_scores:
+                claim_score, is_contra = _logits_to_score(logits)
+                claim_scores.append(claim_score)
+                if is_contra:
+                    has_contradiction = True
+
+            score = sum(claim_scores) / len(claim_scores)
+            reasoning = (
+                f"NLI score {score:.2f} over {len(claims)} claim(s)"
+                + (" — contradiction detected" if has_contradiction else "")
+            )
+        except Exception:  # noqa: BLE001
+            logger.warning("chat_v2_faithfulness_nli_failed", route=route, exc_info=True)
             score = 0.8
-            reasoning = "Context was available; answer assumed faithful."
+            reasoning = "NLI model error — defaulting to 0.8."
 
-        logger.info("chat_v2_faithfulness", score=score, route=route)
+        logger.info(
+            "chat_v2_faithfulness",
+            score=round(score, 3),
+            route=route,
+            claims=len(claims),
+        )
         return {"faithfulness_score": score, "reasoning": reasoning}
 
     # ------------------------------------------------------------------ #
