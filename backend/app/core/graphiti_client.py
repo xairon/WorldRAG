@@ -85,6 +85,35 @@ def _build_default_embedder() -> Any:
         return None
 
 
+def _build_default_cross_encoder() -> Any:
+    """Build a Graphiti-compatible cross-encoder/reranker from app settings."""
+    from app.config import settings
+
+    try:
+        from graphiti_core.cross_encoder.openai_reranker_client import OpenAIRerankerClient
+        from graphiti_core.llm_client.config import LLMConfig
+
+        if settings.gemini_api_key:
+            config = LLMConfig(
+                api_key=settings.gemini_api_key,
+                model="gemini-2.5-flash",
+                base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+            )
+            logger.info("graphiti_cross_encoder_configured", provider="gemini")
+            return OpenAIRerankerClient(config=config)
+
+        if settings.openai_api_key:
+            config = LLMConfig(api_key=settings.openai_api_key, model="gpt-4o-mini")
+            logger.info("graphiti_cross_encoder_configured", provider="openai")
+            return OpenAIRerankerClient(config=config)
+
+        logger.warning("graphiti_no_cross_encoder_key")
+        return None
+    except Exception:
+        logger.warning("graphiti_cross_encoder_config_failed", exc_info=True)
+        return None
+
+
 class GraphitiClient:
     """Thin wrapper around :class:`graphiti_core.Graphiti`.
 
@@ -102,16 +131,16 @@ class GraphitiClient:
         neo4j_auth: tuple[str, str],
         llm_client: Any | None = None,
         embedder: Any | None = None,
+        cross_encoder: Any | None = None,
     ) -> None:
         """Create a Graphiti instance.
 
         Args:
-            neo4j_uri: Bolt URI for the Neo4j instance (e.g. ``bolt://localhost:7687``).
+            neo4j_uri: Bolt URI for the Neo4j instance.
             neo4j_auth: ``(username, password)`` tuple.
-            llm_client: Optional :class:`graphiti_core.llm_client.client.LLMClient`
-                override. If *None* Graphiti uses its default client.
-            embedder: Optional :class:`graphiti_core.embedder.client.EmbedderClient`
-                override. If *None* Graphiti uses its default embedder.
+            llm_client: Optional LLM client override.
+            embedder: Optional embedder override.
+            cross_encoder: Optional cross-encoder/reranker override.
         """
         user, password = neo4j_auth
 
@@ -120,6 +149,8 @@ class GraphitiClient:
             llm_client = _build_default_llm_client()
         if embedder is None:
             embedder = _build_default_embedder()
+        if cross_encoder is None:
+            cross_encoder = _build_default_cross_encoder()
 
         self._client: Graphiti = Graphiti(
             uri=neo4j_uri,
@@ -127,6 +158,7 @@ class GraphitiClient:
             password=password,
             llm_client=llm_client,
             embedder=embedder,
+            cross_encoder=cross_encoder,
         )
         logger.info(
             "graphiti_client_created",
