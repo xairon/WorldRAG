@@ -39,7 +39,7 @@ FAITHFULNESS_THRESHOLD = 0.6
 MAX_RETRIES = 2
 
 # --------------------------------------------------------------------------- #
-# Keywords used by the router to classify intent                               #
+# Keyword fallback patterns (used when LLM router is unavailable)              #
 # --------------------------------------------------------------------------- #
 _CYPHER_PATTERNS: tuple[str, ...] = (
     "list skill",
@@ -74,9 +74,23 @@ _DIRECT_PATTERNS: tuple[str, ...] = (
     "awesome",
 )
 
+_VALID_ROUTES: frozenset[str] = frozenset({"cypher_lookup", "graphiti_search", "direct"})
 
-def _classify_route(query: str) -> str:
-    """Classify a query into one of three route strings.
+_ROUTER_PROMPT = """\
+Classify this user question about a fiction novel into exactly one category.
+
+Categories:
+- "cypher_lookup": Structured factual questions about specific entities, attributes, or lists. Examples: "What skills does Jake have?", "List all characters", "What class is Jake at chapter 30?"
+- "graphiti_search": Open-ended questions about plot, relationships, themes, or analysis. Examples: "Why did Jake choose that path?", "What happened in the battle?", "How are Jake and Viper related?"
+- "direct": Greetings, thanks, or conversational messages with no knowledge retrieval needed. Examples: "Hello", "Thanks!", "Can you help me?"
+
+Question: {query}
+
+Respond with ONLY the category name, nothing else."""
+
+
+def _keyword_classify_route(query: str) -> str:
+    """Keyword-based fallback classifier.
 
     Returns:
         "cypher_lookup" for structured entity-list queries.
@@ -118,7 +132,7 @@ def build_chat_v2_graph(graphiti: Any, neo4j_driver: Any) -> StateGraph:
     # ------------------------------------------------------------------ #
 
     async def router(state: dict[str, Any]) -> dict[str, Any]:
-        """Classify the user query and write the route field."""
+        """Classify the user query using an LLM, with keyword fallback."""
         query: str = state.get("query", "")
         if not query:
             # Try to extract from last human message
@@ -130,7 +144,28 @@ def build_chat_v2_graph(graphiti: Any, neo4j_driver: Any) -> StateGraph:
                     query = str(msg.content)
                     break
 
-        route = _classify_route(query)
+        # Fast LLM classification
+        route: str | None = None
+        try:
+            from app.config import settings
+            from app.llm.providers import get_langchain_llm
+
+            llm = get_langchain_llm(settings.llm_generation)
+            prompt = _ROUTER_PROMPT.format(query=query)
+            response = await llm.ainvoke(prompt)
+            raw = response.content if hasattr(response, "content") else str(response)
+            candidate = raw.strip().strip('"').lower()
+            if candidate in _VALID_ROUTES:
+                route = candidate
+                logger.info("chat_v2_router_llm", query=query[:120], route=route)
+        except Exception:
+            logger.warning("chat_v2_router_llm_failed", exc_info=True)
+
+        if route is None:
+            # Fallback: keyword heuristic
+            route = _keyword_classify_route(query)
+            logger.info("chat_v2_router_keyword_fallback", query=query[:120], route=route)
+
         logger.info("chat_v2_router", query=query[:120], route=route)
         return {"route": route, "query": query, "original_query": query}
 

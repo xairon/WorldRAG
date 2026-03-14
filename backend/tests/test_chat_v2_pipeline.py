@@ -115,3 +115,82 @@ class TestChatV2GraphBuilds:
         graphiti, neo4j_driver = self._make_deps()
         builder = build_chat_v2_graph(graphiti, neo4j_driver)
         assert isinstance(builder, StateGraph)
+
+
+class TestKeywordFallbackRouter:
+    """Tests for _keyword_classify_route — the LLM-unavailable fallback."""
+
+    def test_cypher_pattern_matched(self) -> None:
+        """Queries with structured-lookup keywords route to cypher_lookup."""
+        from app.agents.chat_v2.graph import _keyword_classify_route
+
+        assert _keyword_classify_route("What skills does Jake have?") == "cypher_lookup"
+        assert _keyword_classify_route("list class for Ilea") == "cypher_lookup"
+        assert _keyword_classify_route("what level is she?") == "cypher_lookup"
+        assert _keyword_classify_route("how many skills does he have?") == "cypher_lookup"
+
+    def test_direct_pattern_matched(self) -> None:
+        """Conversational messages route to direct."""
+        from app.agents.chat_v2.graph import _keyword_classify_route
+
+        assert _keyword_classify_route("hello") == "direct"
+        assert _keyword_classify_route("hi there") == "direct"
+        assert _keyword_classify_route("thanks") == "direct"
+        assert _keyword_classify_route("thank you so much") == "direct"
+
+    def test_open_ended_routes_to_graphiti(self) -> None:
+        """Open-ended narrative questions default to graphiti_search."""
+        from app.agents.chat_v2.graph import _keyword_classify_route
+
+        assert _keyword_classify_route("Why did Jake choose that path?") == "graphiti_search"
+        assert _keyword_classify_route("What happened in the battle?") == "graphiti_search"
+        assert _keyword_classify_route("How are Jake and Viper related?") == "graphiti_search"
+
+    @pytest.mark.asyncio
+    async def test_router_node_falls_back_when_llm_raises(self) -> None:
+        """router node uses keyword fallback when LLM raises an exception."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from app.agents.chat_v2.graph import build_chat_v2_graph
+
+        graphiti = MagicMock()
+        graphiti.search = AsyncMock(return_value=[])
+        neo4j_driver = MagicMock()
+
+        builder = build_chat_v2_graph(graphiti, neo4j_driver)
+        # Extract the async router closure from the LangGraph node spec
+        router_fn = builder.nodes["router"].runnable.afunc  # type: ignore[attr-defined]
+
+        with patch(
+            "app.llm.providers.get_langchain_llm",
+            side_effect=RuntimeError("LLM unavailable"),
+        ):
+            result = await router_fn({"query": "What skills does Jake have?"})
+
+        assert result["route"] == "cypher_lookup"
+        assert result["query"] == "What skills does Jake have?"
+
+    @pytest.mark.asyncio
+    async def test_router_node_falls_back_on_invalid_llm_response(self) -> None:
+        """router node uses keyword fallback when LLM returns an unrecognized category."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from app.agents.chat_v2.graph import build_chat_v2_graph
+
+        graphiti = MagicMock()
+        graphiti.search = AsyncMock(return_value=[])
+        neo4j_driver = MagicMock()
+
+        builder = build_chat_v2_graph(graphiti, neo4j_driver)
+        router_fn = builder.nodes["router"].runnable.afunc  # type: ignore[attr-defined]
+
+        mock_response = MagicMock()
+        mock_response.content = "unknown_route"
+        mock_llm = MagicMock()
+        mock_llm.ainvoke = AsyncMock(return_value=mock_response)
+
+        with patch("app.llm.providers.get_langchain_llm", return_value=mock_llm):
+            result = await router_fn({"query": "hello"})
+
+        # LLM returned garbage, so keyword fallback kicks in -> "direct"
+        assert result["route"] == "direct"
