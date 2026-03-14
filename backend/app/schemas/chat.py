@@ -13,13 +13,25 @@ class ChatRequest(BaseModel):
     """Request schema for a chat query."""
 
     query: str = Field(..., min_length=1, max_length=2000, description="User question")
-    book_id: str = Field(..., min_length=1, description="Book to query against")
+    book_id: str = Field(
+        ...,
+        min_length=1,
+        max_length=200,
+        pattern=r"^[\w\-.:]+$",
+        description="Book to query against",
+    )
     top_k: int = Field(default=20, ge=1, le=100, description="Chunks to retrieve")
     rerank_top_n: int = Field(default=5, ge=1, le=50, description="Chunks after reranking")
     min_relevance: float = Field(default=0.1, ge=0.0, le=1.0, description="Minimum reranker score")
     include_sources: bool = Field(default=True, description="Include source chunks in response")
     max_chapter: int | None = Field(
         default=None, ge=1, description="Spoiler guard: only search up to this chapter"
+    )
+    thread_id: str | None = Field(
+        default=None,
+        max_length=200,
+        pattern=r"^[\w\-.:]+$",
+        description="Conversation thread ID for multi-turn support",
     )
 
 
@@ -41,6 +53,13 @@ class RelatedEntity(BaseModel):
     description: str = ""
 
 
+class Citation(BaseModel):
+    """A citation linking a generated answer back to a source chunk."""
+
+    chapter: int
+    position: int | None = None
+
+
 class ChatResponse(BaseModel):
     """Response schema for a chat query."""
 
@@ -49,3 +68,5 @@ class ChatResponse(BaseModel):
     related_entities: list[RelatedEntity] = []
     chunks_retrieved: int = 0
     chunks_after_rerank: int = 0
+    thread_id: str | None = None
+    citations: list[Citation] = []

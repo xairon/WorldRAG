@@ -119,6 +119,28 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         logger.warning("postgres_connection_failed", error=type(e).__name__)
     app.state.pg_pool = pg_pool
 
+    # --- LangGraph Checkpointer (psycopg pool) ---
+    from psycopg_pool import AsyncConnectionPool as PsycopgPool
+
+    from app.core.checkpointer import create_checkpointer
+
+    checkpointer = None
+    psycopg_pool = None
+    try:
+        # psycopg needs conninfo format (same URI works)
+        psycopg_pool = PsycopgPool(
+            conninfo=settings.postgres_uri,
+            max_size=5,
+            open=False,
+            kwargs={"autocommit": True, "prepare_threshold": 0},
+        )
+        await psycopg_pool.open()
+        checkpointer, _ = await create_checkpointer(psycopg_pool)
+    except Exception as e:
+        logger.warning("checkpointer_pool_failed", error=type(e).__name__)
+    app.state.psycopg_pool = psycopg_pool
+    app.state.checkpointer = checkpointer
+
     # --- LangFuse ---
     langfuse = None
     if settings.langfuse_host and settings.langfuse_public_key and settings.langfuse_secret_key:
@@ -180,6 +202,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     await redis.close()
     if pg_pool is not None:
         await pg_pool.close()
+    if psycopg_pool is not None:
+        await psycopg_pool.close()
     if langfuse is not None:
         langfuse.flush()
     logger.info("worldrag_stopped")

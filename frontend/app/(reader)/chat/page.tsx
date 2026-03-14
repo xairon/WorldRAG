@@ -5,6 +5,7 @@ import { Send, Trash2, StopCircle } from "lucide-react"
 import { listBooks } from "@/lib/api"
 import type { BookInfo } from "@/lib/api"
 import { useBookStore } from "@/stores/book-store"
+import { useChatStore } from "@/stores/chat-store"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -14,6 +15,7 @@ import { useChatStream } from "@/hooks/use-chat-stream"
 
 export default function ChatPage() {
   const { selectedBookId, book, spoilerChapter, setSpoilerChapter } = useBookStore()
+  const { threadId, setThreadId, addThread } = useChatStore()
   const [books, setBooks] = useState<BookInfo[]>([])
   const [bookId, setBookId] = useState(selectedBookId ?? "")
   const [input, setInput] = useState("")
@@ -37,8 +39,27 @@ export default function ChatPage() {
   function handleSend(e: React.FormEvent) {
     e.preventDefault()
     if (!input.trim() || isStreaming || !bookId) return
-    send(input.trim(), bookId, spoilerChapter ?? undefined)
+
+    let currentThreadId = threadId
+    if (!currentThreadId) {
+      currentThreadId = crypto.randomUUID()
+      setThreadId(currentThreadId)
+      addThread({
+        id: currentThreadId,
+        bookId,
+        title: input.trim().slice(0, 80),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      })
+    }
+
+    send(input.trim(), bookId, spoilerChapter ?? undefined, currentThreadId)
     setInput("")
+  }
+
+  function handleClear() {
+    clearMessages()
+    setThreadId(null)
   }
 
   return (
@@ -101,7 +122,7 @@ export default function ChatPage() {
           type="button"
           variant="ghost"
           size="sm"
-          onClick={clearMessages}
+          onClick={handleClear}
           disabled={isStreaming || messages.length <= 1}
           className="text-muted-foreground hover:text-foreground"
         >

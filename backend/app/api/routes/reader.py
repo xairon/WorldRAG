@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from app.api.auth import require_auth
 from app.api.dependencies import get_neo4j
+from app.schemas.reader import ReaderQueryRequest, ReaderQueryResponse
 
 if TYPE_CHECKING:
     from neo4j import AsyncDriver
@@ -258,4 +259,31 @@ async def get_chapter_entities(
         book_id=book_id,
         chapter_number=chapter_number,
         annotations=annotations,
+    )
+
+
+@router.post("/query", dependencies=[Depends(require_auth)])
+async def reader_query(
+    request: Request,
+    body: ReaderQueryRequest,
+    driver: AsyncDriver = Depends(get_neo4j),
+) -> ReaderQueryResponse:
+    """Ask a chapter-scoped question using the Reader LangGraph agent."""
+    from app.services.reader_service import ReaderService
+
+    checkpointer = getattr(request.app.state, "checkpointer", None)
+    service = ReaderService(driver, checkpointer=checkpointer)
+    result = await service.query(
+        query=body.query,
+        book_id=body.book_id,
+        chapter_number=body.chapter_number,
+        max_chapter=body.max_chapter,
+        thread_id=body.thread_id,
+    )
+    return ReaderQueryResponse(
+        answer=result["answer"],
+        route=result["route"],
+        paragraphs_used=result["paragraphs_used"],
+        entities_found=result["entities_found"],
+        thread_id=body.thread_id,
     )

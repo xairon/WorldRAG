@@ -1,66 +1,167 @@
 """Chat/RAG query service.
 
-Implements the hybrid retrieval pipeline for answering user questions
-about novels grounded in the Knowledge Graph:
-
-    Vector search (local embeddings) → Rerank (Cohere, optional) → Graph context → LLM generate
+Thin wrapper around the LangGraph chat agent graph. The graph handles
+all retrieval, reranking, KG lookups, generation, and faithfulness checks.
+This service compiles the graph, invokes it, and maps the final state
+back to API response schemas.
 """
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
+    from neo4j import AsyncDriver
+
+from langchain_core.messages import AIMessageChunk, HumanMessage
+
+from app.agents.chat.graph import build_chat_graph
 from app.config import settings
 from app.core.logging import get_logger
-from app.core.resilience import retry_llm_call
 from app.llm.embeddings import LocalEmbedder
-from app.llm.providers import get_langchain_llm
 from app.repositories.base import Neo4jRepository
 from app.schemas.chat import (
     ChatResponse,
+    Citation,
     RelatedEntity,
     SourceChunk,
 )
 
-if TYPE_CHECKING:
-    from neo4j import AsyncDriver
-
 logger = get_logger(__name__)
 
-# System prompt grounding the LLM on the retrieved context
-_SYSTEM_PROMPT = """\
-You are WorldRAG, an expert assistant for fiction novel universes.
-Answer the user's question using ONLY the provided context from the KG and source chunks.
-If the context doesn't contain enough information, say so honestly.
 
-Rules:
-- Ground every claim in the provided sources.
-- Reference chapters when possible (e.g., "In Chapter 5, ...").
-- Keep answers concise but thorough.
-- If asked about character progression (levels, skills, classes), be precise with numbers.
-- Never invent information not present in the context.
-"""
+def _build_langfuse_callbacks(
+    *,
+    session_id: str | None = None,
+    book_id: str = "",
+) -> list[Any]:
+    """Build Langfuse CallbackHandler list for LangGraph config.
+
+    Returns a list with one handler if Langfuse is configured, empty list otherwise.
+    Each request gets a fresh handler so session_id/user_id are scoped correctly.
+    """
+    has_langfuse = (
+        settings.langfuse_host and settings.langfuse_public_key and settings.langfuse_secret_key
+    )
+    if not has_langfuse:
+        return []
+
+    try:
+        from langfuse.callback import CallbackHandler
+
+        handler = CallbackHandler(
+            public_key=settings.langfuse_public_key,
+            secret_key=settings.langfuse_secret_key,
+            host=settings.langfuse_host,
+            session_id=session_id or f"chat-{book_id}",
+            tags=["chat-agent", f"book:{book_id}"],
+            metadata={"book_id": book_id, "pipeline": "agentic-rag"},
+        )
+        return [handler]
+    except ImportError:
+        logger.warning("langfuse_callback_import_failed")
+        return []
+
+
+def _flush_langfuse_score(
+    config: dict[str, Any],
+    *,
+    score_name: str,
+    value: float,
+) -> None:
+    """Push a numeric score to the Langfuse trace (best-effort, fire-and-forget).
+
+    Extracts the CallbackHandler from config and calls `langfuse.score()`.
+    Silently does nothing if no handler is present or on any error.
+    """
+    callbacks = config.get("callbacks", [])
+    if not callbacks:
+        return
+
+    try:
+        handler = callbacks[0]
+        # CallbackHandler exposes .langfuse and .get_trace_id()
+        if hasattr(handler, "langfuse") and hasattr(handler, "get_trace_id"):
+            handler.langfuse.score(
+                trace_id=handler.get_trace_id(),
+                name=score_name,
+                value=value,
+            )
+    except Exception:  # noqa: BLE001 — best-effort observability
+        logger.debug("langfuse_score_push_failed", score_name=score_name)
 
 
 class ChatService:
-    """Hybrid retrieval + generation service for novel Q&A."""
+    """Hybrid retrieval + generation service for novel Q&A.
 
-    def __init__(self, driver: AsyncDriver) -> None:
+    Delegates all pipeline logic to the LangGraph chat agent graph
+    built by ``build_chat_graph``. The service is responsible for:
+
+    - Constructing the graph with the right dependencies (repo, embedder).
+    - Mapping user inputs into the graph's state schema.
+    - Mapping the graph's output state back to ``ChatResponse``.
+    - Providing an SSE streaming interface via ``query_stream``.
+
+    The compiled graph is cached as a class-level singleton to avoid
+    expensive recompilation on every request (C1 audit fix).
+    """
+
+    _compiled_graph: Any = None
+    _shared_repo: Any = None
+    _shared_embedder: Any = None
+    _shared_driver: Any = None  # Track driver identity for invalidation (N5 fix)
+    _shared_checkpointer: Any = None
+
+    def __init__(self, driver: AsyncDriver, checkpointer: Any = None) -> None:
         self.repo = Neo4jRepository(driver)
-        self.embedder = LocalEmbedder()
-        self._reranker = None
 
-    @property
-    def reranker(self):
-        """Lazy-load reranker only if Cohere API key is configured."""
-        if self._reranker is None and settings.cohere_api_key:
-            from app.llm.reranker import CohereReranker
+        # Invalidate cached graph if driver changed (N5 fix - e.g. pool refresh)
+        if ChatService._shared_driver is not None and ChatService._shared_driver is not driver:
+            logger.info("chat_service_driver_changed_recompiling")
+            ChatService._compiled_graph = None
+            ChatService._shared_repo = None
+            ChatService._shared_embedder = None
+            ChatService._shared_checkpointer = None
 
-            self._reranker = CohereReranker()
-        return self._reranker
+        # Compile graph once and reuse across all instances
+        if ChatService._compiled_graph is None:
+            self.embedder = LocalEmbedder()
+            ChatService._shared_repo = self.repo
+            ChatService._shared_embedder = self.embedder
+            ChatService._shared_driver = driver
+            ChatService._shared_checkpointer = checkpointer
+            builder = build_chat_graph(
+                repo=self.repo,
+                embedder=self.embedder,
+            )
+            ChatService._compiled_graph = builder.compile(
+                checkpointer=checkpointer,
+            )
+        else:
+            self.embedder = ChatService._shared_embedder
+
+        self._graph = ChatService._compiled_graph
+
+    def _build_config(
+        self,
+        *,
+        thread_id: str | None = None,
+        book_id: str = "",
+    ) -> dict[str, Any]:
+        """Build LangGraph invoke/stream config with optional Langfuse + thread_id."""
+        config: dict[str, Any] = {}
+
+        if thread_id:
+            config["configurable"] = {"thread_id": thread_id}
+
+        callbacks = _build_langfuse_callbacks(session_id=thread_id, book_id=book_id)
+        if callbacks:
+            config["callbacks"] = callbacks
+
+        return config
 
     async def query(
         self,
@@ -72,14 +173,9 @@ class ChatService:
         min_relevance: float = 0.1,
         include_sources: bool = True,
         max_chapter: int | None = None,
+        thread_id: str | None = None,
     ) -> ChatResponse:
-        """Run the full RAG pipeline.
-
-        1. Embed query with local model
-        2. Vector search on Chunk embeddings (Neo4j vector index)
-        3. Rerank with Cohere (if available) or use vector scores
-        4. Fetch related KG entities from matching chunks
-        5. Generate answer with LLM
+        """Run the full RAG pipeline via the LangGraph chat agent.
 
         Args:
             query: User question.
@@ -88,92 +184,90 @@ class ChatService:
             rerank_top_n: Number of chunks to keep after reranking.
             min_relevance: Minimum reranker relevance score.
             include_sources: Whether to include source chunks in response.
+            max_chapter: Spoiler guard: only search up to this chapter.
+            thread_id: Conversation thread ID for multi-turn support.
 
         Returns:
-            ChatResponse with answer, sources, and related entities.
+            ChatResponse with answer, sources, related entities, and citations.
         """
-        # Step 1: Embed the query
-        query_embedding = await self.embedder.embed_query(query)
+        # top_k, rerank_top_n, min_relevance kept for API backward compat;
+        # the graph nodes manage their own retrieval configuration.
+        _ = top_k, rerank_top_n, min_relevance
 
-        # Step 2: Vector search on chunks
-        chunks = await self._vector_search(query_embedding, book_id, top_k, max_chapter=max_chapter)
+        state_input: dict[str, Any] = {
+            "messages": [HumanMessage(content=query)],
+            "original_query": query,
+            "query": query,
+            "book_id": book_id,
+            "max_chapter": max_chapter,
+            "retries": 0,
+        }
 
-        if not chunks:
-            return ChatResponse(
-                answer="I couldn't find any relevant content in this book for your question. "
-                "Make sure the book has been fully processed (extracted and embedded).",
-                chunks_retrieved=0,
-                chunks_after_rerank=0,
-            )
+        config = self._build_config(thread_id=thread_id, book_id=book_id)
 
-        # Step 3: Rerank or just take top-N by vector score
-        if self.reranker:
-            chunk_texts = [c["text"] for c in chunks]
-            reranked = await self.reranker.rerank(
-                query=query,
-                documents=chunk_texts,
-                top_n=rerank_top_n,
-                min_relevance=min_relevance,
-            )
+        result = await self._graph.ainvoke(state_input, config=config)
 
-            if not reranked:
-                return ChatResponse(
-                    answer=(
-                        "I found some content but it doesn't seem"
-                        " relevant enough to your question. "
-                        "Try rephrasing or asking something more"
-                        " specific about the story."
-                    ),
-                    chunks_retrieved=len(chunks),
-                    chunks_after_rerank=0,
-                )
+        # Map graph output to ChatResponse
+        answer = result.get("generation", "") or "I wasn't able to generate an answer."
 
-            top_chunks = [chunks[r.index] for r in reranked]
-            relevance_scores = [r.relevance_score for r in reranked]
-        else:
-            # No reranker — use top-N from vector search (already sorted by score)
-            top_chunks = chunks[:rerank_top_n]
-            relevance_scores = [c.get("score", 0.0) for c in top_chunks]
-
-        # Step 4: Fetch related KG entities
-        chapter_numbers = list({c["chapter_number"] for c in top_chunks})
-        related_entities = await self._fetch_related_entities(
-            book_id, chapter_numbers, max_chapter=max_chapter
-        )
-
-        # Step 5: Generate answer
-        context = self._build_context(top_chunks, relevance_scores, related_entities)
-        answer = await self._generate_answer(query, context)
-
-        # Build response
         sources: list[SourceChunk] = []
         if include_sources:
-            sources = [
-                SourceChunk(
-                    text=chunk["text"][:500],
-                    chapter_number=chunk["chapter_number"],
-                    chapter_title=chunk.get("chapter_title", ""),
-                    position=chunk.get("position", 0),
-                    relevance_score=score,
+            for chunk in result.get("reranked_chunks", []):
+                sources.append(
+                    SourceChunk(
+                        text=chunk.get("text", "")[:500],
+                        chapter_number=chunk.get("chapter_number", 0),
+                        chapter_title=chunk.get("chapter_title", ""),
+                        position=chunk.get("position", 0),
+                        relevance_score=chunk.get("relevance_score", 0.0),
+                    )
                 )
-                for chunk, score in zip(top_chunks, relevance_scores, strict=True)
-            ]
+
+        related_entities = [
+            RelatedEntity(
+                name=e.get("name", ""),
+                label=e.get("label", ""),
+                description=e.get("description", ""),
+            )
+            for e in result.get("kg_entities", [])
+            if e.get("name")
+        ]
+
+        citations = [
+            Citation(
+                chapter=c["chapter"],
+                position=c.get("position"),
+            )
+            for c in result.get("citations", [])
+            if "chapter" in c
+        ]
+
+        # Push faithfulness score to Langfuse trace (best-effort)
+        _flush_langfuse_score(
+            config,
+            score_name="faithfulness",
+            value=result.get("faithfulness_score", 0.0),
+        )
 
         logger.info(
             "chat_query_completed",
             book_id=book_id,
             query_len=len(query),
-            chunks_retrieved=len(chunks),
-            chunks_after_rerank=len(top_chunks),
+            chunks_retrieved=len(result.get("fused_results", [])),
+            chunks_after_rerank=len(result.get("reranked_chunks", [])),
             entities_found=len(related_entities),
+            faithfulness_score=result.get("faithfulness_score"),
+            thread_id=thread_id,
         )
 
         return ChatResponse(
             answer=answer,
             sources=sources,
             related_entities=related_entities,
-            chunks_retrieved=len(chunks),
-            chunks_after_rerank=len(top_chunks),
+            chunks_retrieved=len(result.get("fused_results", [])),
+            chunks_after_rerank=len(result.get("reranked_chunks", [])),
+            thread_id=thread_id,
+            citations=citations,
         )
 
     async def query_stream(
@@ -185,93 +279,54 @@ class ChatService:
         rerank_top_n: int = 5,
         min_relevance: float = 0.1,
         max_chapter: int | None = None,
-    ) -> AsyncGenerator[dict[str, Any], None]:
-        """Stream the RAG pipeline as SSE events.
+        thread_id: str | None = None,
+    ) -> AsyncGenerator[dict[str, str], None]:
+        """Stream the RAG pipeline as SSE events via LangGraph astream.
 
         Yields dicts with "event" and "data" keys:
-          - {"event": "sources", "data": {sources, related_entities,
-            chunks_retrieved, chunks_after_rerank}}
+          - {"event": "step", "data": <json step info>}
           - {"event": "token", "data": {"token": "..."}}
-          - {"event": "done", "data": {}}
+          - {"event": "done", "data": "{}"}
           - {"event": "error", "data": {"message": "..."}}
         """
-        import json
+        _ = top_k, rerank_top_n, min_relevance  # backward compat; graph manages config
 
-        from langchain_core.messages import HumanMessage, SystemMessage
-
-        # Step 1-3: Retrieve and rerank (same as query)
-        query_embedding = await self.embedder.embed_query(query)
-        chunks = await self._vector_search(query_embedding, book_id, top_k, max_chapter=max_chapter)
-
-        if not chunks:
-            yield {"event": "error", "data": json.dumps({"message": "No relevant content found."})}
-            return
-
-        if self.reranker:
-            chunk_texts = [c["text"] for c in chunks]
-            reranked = await self.reranker.rerank(
-                query=query,
-                documents=chunk_texts,
-                top_n=rerank_top_n,
-                min_relevance=min_relevance,
-            )
-            if not reranked:
-                yield {
-                    "event": "error",
-                    "data": json.dumps({"message": "Content not relevant enough."}),
-                }
-                return
-            top_chunks = [chunks[r.index] for r in reranked]
-            relevance_scores = [r.relevance_score for r in reranked]
-        else:
-            top_chunks = chunks[:rerank_top_n]
-            relevance_scores = [c.get("score", 0.0) for c in top_chunks]
-
-        # Step 4: Fetch related entities
-        chapter_numbers = list({c["chapter_number"] for c in top_chunks})
-        related_entities = await self._fetch_related_entities(
-            book_id, chapter_numbers, max_chapter=max_chapter
-        )
-
-        # Emit sources event before streaming tokens
-        sources = [
-            SourceChunk(
-                text=chunk["text"][:500],
-                chapter_number=chunk["chapter_number"],
-                chapter_title=chunk.get("chapter_title", ""),
-                position=chunk.get("position", 0),
-                relevance_score=score,
-            )
-            for chunk, score in zip(top_chunks, relevance_scores, strict=True)
-        ]
-        yield {
-            "event": "sources",
-            "data": json.dumps(
-                {
-                    "sources": [s.model_dump() for s in sources],
-                    "related_entities": [e.model_dump() for e in related_entities],
-                    "chunks_retrieved": len(chunks),
-                    "chunks_after_rerank": len(top_chunks),
-                }
-            ),
+        state_input: dict[str, Any] = {
+            "messages": [HumanMessage(content=query)],
+            "original_query": query,
+            "query": query,
+            "book_id": book_id,
+            "max_chapter": max_chapter,
+            "retries": 0,
         }
 
-        # Step 5: Stream LLM answer
-        context = self._build_context(top_chunks, relevance_scores, related_entities)
-        llm = get_langchain_llm(settings.llm_chat)
-        messages = [
-            SystemMessage(content=_SYSTEM_PROMPT),
-            HumanMessage(content=f"{context}\n\n---\n\nQuestion: {query}"),
-        ]
+        config = self._build_config(thread_id=thread_id, book_id=book_id)
 
         try:
-            async for chunk in llm.astream(messages):
-                token = chunk.content if hasattr(chunk, "content") else str(chunk)
-                if token:
-                    yield {"event": "token", "data": json.dumps({"token": token})}
-        except Exception:
-            logger.exception("chat_stream_llm_error")
-            yield {"event": "error", "data": json.dumps({"message": "LLM generation failed."})}
+            async for stream_type, event_data in self._graph.astream(
+                state_input, config=config, stream_mode=["messages", "custom"]
+            ):
+                if stream_type == "custom":
+                    yield {
+                        "event": "step",
+                        "data": json.dumps(event_data if isinstance(event_data, dict) else {}),
+                    }
+                elif stream_type == "messages":
+                    # messages mode yields (AIMessageChunk, metadata) tuples
+                    chunk_msg, _ = event_data
+                    if isinstance(chunk_msg, AIMessageChunk) and chunk_msg.content:
+                        content = chunk_msg.content
+                        token = content if isinstance(content, str) else str(content)
+                        yield {
+                            "event": "token",
+                            "data": json.dumps({"token": token}),
+                        }
+        except Exception as exc:  # noqa: BLE001 — stream must not crash
+            logger.exception("chat_stream_error", exc_info=True)
+            yield {
+                "event": "error",
+                "data": json.dumps({"message": f"Stream failed: {type(exc).__name__}"}),
+            }
             return
 
         yield {"event": "done", "data": "{}"}
@@ -280,120 +335,5 @@ class ChatService:
             "chat_stream_completed",
             book_id=book_id,
             query_len=len(query),
-            chunks_retrieved=len(chunks),
-            chunks_after_rerank=len(top_chunks),
+            thread_id=thread_id,
         )
-
-    async def _vector_search(
-        self,
-        query_embedding: list[float],
-        book_id: str,
-        top_k: int,
-        *,
-        max_chapter: int | None = None,
-    ) -> list[dict[str, Any]]:
-        """Search chunks by vector similarity using the Neo4j vector index."""
-        results = await self.repo.execute_read(
-            """
-            CALL db.index.vector.queryNodes('chunk_embedding', $top_k, $embedding)
-            YIELD node AS chunk, score
-            MATCH (chap:Chapter)-[:HAS_CHUNK]->(chunk)
-            WHERE chap.book_id = $book_id
-              AND ($max_chapter IS NULL OR chap.number <= $max_chapter)
-            RETURN chunk.text AS text,
-                   chap.number AS chapter_number,
-                   chap.title AS chapter_title,
-                   chunk.position AS position,
-                   score
-            ORDER BY score DESC
-            """,
-            {
-                "embedding": query_embedding,
-                "book_id": book_id,
-                "top_k": top_k,
-                "max_chapter": max_chapter,
-            },
-        )
-        return results
-
-    async def _fetch_related_entities(
-        self,
-        book_id: str,
-        chapter_numbers: list[int],
-        *,
-        max_chapter: int | None = None,
-    ) -> list[RelatedEntity]:
-        """Fetch KG entities grounded in the relevant chapters."""
-        if not chapter_numbers:
-            return []
-
-        results = await self.repo.execute_read(
-            """
-            MATCH (entity)-[:GROUNDED_IN|MENTIONED_IN]->(chap:Chapter)
-            WHERE chap.book_id = $book_id AND chap.number IN $chapters
-              AND NOT entity:Chunk AND NOT entity:Book AND NOT entity:Chapter
-              AND ($max_chapter IS NULL OR chap.number <= $max_chapter)
-            RETURN DISTINCT entity.name AS name,
-                   labels(entity)[0] AS label,
-                   entity.description AS description
-            ORDER BY label, name
-            LIMIT 30
-            """,
-            {"book_id": book_id, "chapters": chapter_numbers, "max_chapter": max_chapter},
-        )
-
-        return [
-            RelatedEntity(
-                name=r["name"],
-                label=r["label"],
-                description=r.get("description") or "",
-            )
-            for r in results
-            if r.get("name")
-        ]
-
-    def _build_context(
-        self,
-        chunks: list[dict[str, Any]],
-        scores: list[float],
-        entities: list[RelatedEntity],
-    ) -> str:
-        """Build the context string for LLM generation."""
-        parts: list[str] = []
-
-        # Source chunks
-        parts.append("## Source Passages\n")
-        for i, (chunk, score) in enumerate(zip(chunks, scores, strict=True), 1):
-            chapter = chunk.get("chapter_number", "?")
-            title = chunk.get("chapter_title", "")
-            header = f"Chapter {chapter}"
-            if title:
-                header += f" — {title}"
-            parts.append(f"### [{i}] {header} (relevance: {score:.2f})")
-            parts.append(chunk["text"])
-            parts.append("")
-
-        # Related KG entities
-        if entities:
-            parts.append("\n## Related Knowledge Graph Entities\n")
-            for e in entities:
-                desc = f": {e.description}" if e.description else ""
-                parts.append(f"- **{e.name}** ({e.label}){desc}")
-
-        return "\n".join(parts)
-
-    @retry_llm_call(max_attempts=2)
-    async def _generate_answer(self, query: str, context: str) -> str:
-        """Generate an answer using the configured chat LLM via LangChain."""
-        from langchain_core.messages import HumanMessage, SystemMessage
-
-        llm = get_langchain_llm(settings.llm_chat)
-        messages = [
-            SystemMessage(content=_SYSTEM_PROMPT),
-            HumanMessage(content=f"{context}\n\n---\n\nQuestion: {query}"),
-        ]
-        response = await llm.ainvoke(messages)
-        content = response.content
-        if isinstance(content, str):
-            return content or "I wasn't able to generate an answer."
-        return "I wasn't able to generate an answer."

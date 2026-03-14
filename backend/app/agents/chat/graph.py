@@ -41,9 +41,16 @@ def _route_after_kg_query(state: dict[str, Any]) -> str:
     return "context_assembly"
 
 
+def _route_after_generate(state: dict[str, Any]) -> str:
+    """After generate: skip faithfulness for direct route (N1 fix)."""
+    if state.get("route") == "direct":
+        return "end"
+    return "faithfulness_check"
+
+
 def _route_after_faithfulness(state: dict[str, Any]) -> str:
     """After faithfulness check: pass, retry, or give up."""
-    score = state.get("faithfulness_score", 1.0)
+    score = state.get("faithfulness_score", 0.0)
     retries = state.get("retries", 0)
 
     if score >= FAITHFULNESS_THRESHOLD:
@@ -72,13 +79,16 @@ def build_chat_graph(
     async def _retrieve_node(state: dict[str, Any]) -> dict[str, Any]:
         queries = state.get("transformed_queries", [state["query"]])
         query_embedding = await embedder.embed_query(queries[0])
+        # Pass multi-query variants as extra BM25 arms (C2 audit fix)
+        extra_bm25 = queries[1:] if len(queries) > 1 else None
         return {
             "fused_results": await hybrid_retrieve(
                 repo,
-                query_text=state["query"],
+                query_text=queries[0],
                 query_embedding=query_embedding,
                 book_id=state["book_id"],
                 max_chapter=state.get("max_chapter"),
+                extra_bm25_queries=extra_bm25,
             ),
         }
 
@@ -106,17 +116,25 @@ def build_chat_graph(
     builder.add_edge(START, "router")
 
     # Router dispatches to 3 paths
-    builder.add_conditional_edges("router", _route_after_router, {
-        "kg_query": "kg_query",
-        "query_transform": "query_transform",
-        "generate": "generate",
-    })
+    builder.add_conditional_edges(
+        "router",
+        _route_after_router,
+        {
+            "kg_query": "kg_query",
+            "query_transform": "query_transform",
+            "generate": "generate",
+        },
+    )
 
     # KG query path: may fallback to hybrid
-    builder.add_conditional_edges("kg_query", _route_after_kg_query, {
-        "context_assembly": "context_assembly",
-        "query_transform": "query_transform",
-    })
+    builder.add_conditional_edges(
+        "kg_query",
+        _route_after_kg_query,
+        {
+            "context_assembly": "context_assembly",
+            "query_transform": "query_transform",
+        },
+    )
 
     # Hybrid RAG path
     builder.add_edge("query_transform", "retrieve")
@@ -124,14 +142,25 @@ def build_chat_graph(
     builder.add_edge("rerank", "context_assembly")
     builder.add_edge("context_assembly", "generate")
 
-    # Generation → faithfulness check
-    builder.add_edge("generate", "faithfulness_check")
+    # Generation → faithfulness check (or END for direct route — N1 fix)
+    builder.add_conditional_edges(
+        "generate",
+        _route_after_generate,
+        {
+            "faithfulness_check": "faithfulness_check",
+            "end": END,
+        },
+    )
 
     # Faithfulness: pass → END, fail → rewrite → retrieve
-    builder.add_conditional_edges("faithfulness_check", _route_after_faithfulness, {
-        "end": END,
-        "rewrite_query": "rewrite_query",
-    })
+    builder.add_conditional_edges(
+        "faithfulness_check",
+        _route_after_faithfulness,
+        {
+            "end": END,
+            "rewrite_query": "rewrite_query",
+        },
+    )
 
     # Rewrite loops back to retrieve
     builder.add_edge("rewrite_query", "retrieve")

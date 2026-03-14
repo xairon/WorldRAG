@@ -1,7 +1,7 @@
 """Tests for ChatAgentState schema."""
+
 import operator
 
-from langchain_core.messages import HumanMessage
 from langgraph.graph.message import add_messages
 
 from app.agents.chat.state import ChatAgentState
@@ -11,11 +11,25 @@ def test_state_has_required_keys():
     """ChatAgentState defines all required keys."""
     hints = ChatAgentState.__annotations__
     required = [
-        "messages", "original_query", "query", "route",
-        "transformed_queries", "fused_results", "reranked_chunks",
-        "kg_entities", "kg_cypher_result", "context", "generation",
-        "citations", "faithfulness_score", "faithfulness_reason",
-        "retries", "book_id", "max_chapter",
+        "messages",
+        "original_query",
+        "query",
+        "route",
+        "transformed_queries",
+        "fused_results",
+        "reranked_chunks",
+        "kg_entities",
+        "kg_cypher_result",
+        "context",
+        "generation",
+        "citations",
+        "faithfulness_score",
+        "faithfulness_reason",
+        "faithfulness_grounded",
+        "faithfulness_relevant",
+        "retries",
+        "book_id",
+        "max_chapter",
     ]
     for key in required:
         assert key in hints, f"Missing state key: {key}"
@@ -29,6 +43,7 @@ def test_state_is_total_false():
 def test_messages_uses_add_messages_reducer():
     """The messages field uses LangGraph's add_messages reducer."""
     from typing import get_type_hints
+
     hints = get_type_hints(ChatAgentState, include_extras=True)
     msg_hint = hints["messages"]
     assert hasattr(msg_hint, "__metadata__")
@@ -38,6 +53,7 @@ def test_messages_uses_add_messages_reducer():
 def test_retries_uses_operator_add():
     """The retries field uses operator.add reducer for increment."""
     from typing import get_type_hints
+
     hints = get_type_hints(ChatAgentState, include_extras=True)
     retries_hint = hints["retries"]
     assert hasattr(retries_hint, "__metadata__")

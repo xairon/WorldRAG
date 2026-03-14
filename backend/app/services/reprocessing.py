@@ -190,7 +190,9 @@ async def reextract_chapters(
 
             # Persist updated registry
             await book_repo.save_entity_registry(
-                book_id, entity_registry.to_dict(), settings.ontology_version,
+                book_id,
+                entity_registry.to_dict(),
+                settings.ontology_version,
             )
         except Exception:
             logger.exception(

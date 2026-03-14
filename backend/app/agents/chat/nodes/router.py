@@ -15,13 +15,25 @@ VALID_ROUTES = {"kg_query", "hybrid_rag", "direct"}
 
 
 async def classify_intent(state: dict[str, Any]) -> dict[str, Any]:
-    """Classify the user's question intent for routing."""
+    """Classify the user's question intent for routing.
+
+    Includes conversation history (if any) so the router can resolve
+    context in multi-turn conversations (C3 audit fix).
+    """
     llm = get_langchain_llm(settings.llm_chat)
 
-    messages = [
-        SystemMessage(content=ROUTER_SYSTEM),
-        HumanMessage(content=state["query"]),
-    ]
+    # Build messages: system + optional conversation history + current query
+    messages: list = [SystemMessage(content=ROUTER_SYSTEM)]
+
+    # Include recent conversation history for multi-turn context (N7 fix)
+    history = state.get("messages", [])
+    if len(history) > 2:
+        # Include up to 4 prior turns, excluding the last message (current query)
+        # and the one before it on 2-message conversations to avoid duplicate
+        for msg in history[-5:-1]:
+            messages.append(msg)
+
+    messages.append(HumanMessage(content=state["query"]))
 
     response = await llm.ainvoke(messages)
     route = response.content.strip().lower()

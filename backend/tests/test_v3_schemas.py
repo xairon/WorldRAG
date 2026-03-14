@@ -126,7 +126,10 @@ class TestExtractedCharacterV3:
         from app.schemas.extraction import ExtractedCharacter
 
         statuses: list[Literal["alive", "dead", "unknown", "transformed"]] = [
-            "alive", "dead", "unknown", "transformed",
+            "alive",
+            "dead",
+            "unknown",
+            "transformed",
         ]
         for status in statuses:
             char = ExtractedCharacter(

@@ -52,6 +52,7 @@ export function chatStream(
   bookId: string,
   callbacks: ChatStreamCallbacks,
   maxChapter?: number,
+  threadId?: string,
 ): AbortController {
   const controller = new AbortController()
 
@@ -61,6 +62,9 @@ export function chatStream(
   })
   if (maxChapter != null) {
     params.set("max_chapter", String(maxChapter))
+  }
+  if (threadId) {
+    params.set("thread_id", threadId)
   }
 
   const url = `${API_BASE}/chat/stream?${params.toString()}`

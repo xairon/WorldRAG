@@ -49,6 +49,8 @@ class ChatAgentState(TypedDict, total=False):
     # -- Quality control --
     faithfulness_score: float
     faithfulness_reason: str
+    faithfulness_grounded: bool
+    faithfulness_relevant: bool
     retries: Annotated[int, operator.add]
 
     # -- Scope --

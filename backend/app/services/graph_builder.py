@@ -600,15 +600,24 @@ async def _persist_extraction_result(
     # Phase 3: Layer 3 (series-specific entities)
     if result.layer3.bloodlines:
         counts["bloodlines"] = await entity_repo.upsert_bloodlines(
-            book_id, chapter_number, result.layer3.bloodlines, batch_id,
+            book_id,
+            chapter_number,
+            result.layer3.bloodlines,
+            batch_id,
         )
     if result.layer3.professions:
         counts["professions"] = await entity_repo.upsert_professions(
-            book_id, chapter_number, result.layer3.professions, batch_id,
+            book_id,
+            chapter_number,
+            result.layer3.professions,
+            batch_id,
         )
     if result.layer3.churches:
         counts["churches"] = await entity_repo.upsert_churches(
-            book_id, chapter_number, result.layer3.churches, batch_id,
+            book_id,
+            chapter_number,
+            result.layer3.churches,
+            batch_id,
         )
 
     # Phase 4: Mentions (depends on entities existing)
@@ -721,19 +730,24 @@ async def build_chapter_graph_v3(
     # 5. Update chapter status + entity count
     total_entity_count = sum(counts.values()) if counts else 0
     await book_repo.update_chapter_status(
-        book_id, chapter_number, "extracted", entity_count=total_entity_count,
+        book_id,
+        chapter_number,
+        "extracted",
+        entity_count=total_entity_count,
     )
 
     # Build entity summary for EntityRegistry update by caller
     extracted_entities: list[dict[str, Any]] = []
     for char in result.characters.characters:
-        extracted_entities.append({
-            "name": char.canonical_name or char.name,
-            "type": "Character",
-            "aliases": list(char.aliases) if char.aliases else [],
-            "significance": char.role or "",
-            "description": char.description[:100] if char.description else "",
-        })
+        extracted_entities.append(
+            {
+                "name": char.canonical_name or char.name,
+                "type": "Character",
+                "aliases": list(char.aliases) if char.aliases else [],
+                "significance": char.role or "",
+                "description": char.description[:100] if char.description else "",
+            }
+        )
     for skill in result.systems.skills:
         extracted_entities.append({"name": skill.name, "type": "Skill"})
     for cls in result.systems.classes:

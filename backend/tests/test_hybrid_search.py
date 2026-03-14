@@ -1,7 +1,8 @@
 """Tests for hybrid search with RRF fusion."""
+
 import pytest
 
-from app.agents.chat.nodes.retrieve import rrf_fuse, RRF_K
+from app.agents.chat.nodes.retrieve import RRF_K, rrf_fuse
 
 
 def test_rrf_fuse_single_list():

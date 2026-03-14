@@ -51,6 +51,58 @@ from app.services.extraction.systems import extract_systems
 logger = get_logger(__name__)
 
 
+# ── LangFuse tracing helper ────────────────────────────────────────────
+
+
+def _build_langfuse_config(
+    book_id: str,
+    chapter_number: int,
+    graph_name: str,
+) -> dict[str, Any]:
+    """Build LangGraph invoke config with LangFuse callback if available.
+
+    Returns a config dict with callbacks=[CallbackHandler] when LangFuse
+    is configured, or an empty dict otherwise. The callback auto-traces
+    every LangGraph node (inputs, outputs, latency) in the LangFuse UI.
+    """
+    from app.config import settings
+
+    if not (
+        settings.langfuse_host and settings.langfuse_public_key and settings.langfuse_secret_key
+    ):
+        return {}
+
+    try:
+        from langfuse.callback import CallbackHandler
+
+        handler = CallbackHandler(
+            public_key=settings.langfuse_public_key,
+            secret_key=settings.langfuse_secret_key,
+            host=settings.langfuse_host,
+            session_id=f"{book_id}-ch{chapter_number}",
+            tags=[graph_name, f"book:{book_id}", f"chapter:{chapter_number}"],
+            metadata={
+                "book_id": book_id,
+                "chapter_number": chapter_number,
+                "graph": graph_name,
+            },
+        )
+        return {"callbacks": [handler]}
+    except ImportError:
+        logger.warning("langfuse_callback_import_failed")
+        return {}
+
+
+def _flush_langfuse_callbacks(config: dict[str, Any]) -> None:
+    """Flush any LangFuse callbacks in the config to ensure traces are sent."""
+    for cb in config.get("callbacks", []):
+        if hasattr(cb, "langfuse"):
+            try:
+                cb.langfuse.flush()
+            except Exception:
+                pass
+
+
 # ── Merge node ──────────────────────────────────────────────────────────
 
 
@@ -576,7 +628,14 @@ async def extract_chapter(
         text_length=len(chapter_text),
     )
 
-    final_state = await _extraction_graph.ainvoke(initial_state)
+    # Wire LangFuse tracing if available
+    invoke_config = _build_langfuse_config(
+        book_id=book_id,
+        chapter_number=chapter_number,
+        graph_name="extraction",
+    )
+
+    final_state = await _extraction_graph.ainvoke(initial_state, config=invoke_config)
 
     # Build result from final state
     result = ChapterExtractionResult(
@@ -594,6 +653,9 @@ async def extract_chapter(
     )
 
     result.count_entities()
+
+    # Flush LangFuse traces
+    _flush_langfuse_callbacks(invoke_config)
 
     logger.info(
         "chapter_extraction_completed",
@@ -1319,7 +1381,14 @@ async def extract_chapter_v3(
         ontology_version=ontology_version,
     )
 
-    final_state = await v3_graph.ainvoke(initial_state)
+    # Wire LangFuse tracing if available
+    invoke_config = _build_langfuse_config(
+        book_id=book_id,
+        chapter_number=chapter_number,
+        graph_name="extraction_v3",
+    )
+
+    final_state = await v3_graph.ainvoke(initial_state, config=invoke_config)
 
     # Build result from final state (same schema as V1 for compatibility)
     result = ChapterExtractionResult(
@@ -1339,6 +1408,9 @@ async def extract_chapter_v3(
     )
 
     result.count_entities()
+
+    # Flush LangFuse traces
+    _flush_langfuse_callbacks(invoke_config)
 
     logger.info(
         "v3_chapter_extraction_completed",

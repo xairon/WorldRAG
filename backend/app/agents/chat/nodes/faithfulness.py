@@ -23,27 +23,39 @@ async def check_faithfulness(state: dict[str, Any]) -> dict[str, Any]:
         f"Generated Answer:\n{state['generation']}"
     )
 
-    response = await llm.ainvoke([
-        SystemMessage(content=FAITHFULNESS_SYSTEM),
-        HumanMessage(content=judge_input),
-    ])
+    response = await llm.ainvoke(
+        [
+            SystemMessage(content=FAITHFULNESS_SYSTEM),
+            HumanMessage(content=judge_input),
+        ]
+    )
 
     try:
         result = json.loads(response.content)
         score = float(result.get("score", 0.0))
+        grounded = bool(result.get("grounded", False))
+        relevant = bool(result.get("relevant", False))
         reason = result.get("reason", "")
     except (json.JSONDecodeError, ValueError, TypeError):
         logger.warning("faithfulness_parse_failed", raw=response.content[:200])
-        score = 1.0
-        reason = "Judge response unparseable, defaulting to pass"
+        # Default to FAIL (0.0) on parse error — forces a retry rather than
+        # silently passing a potentially bad answer (I2 audit fix).
+        score = 0.0
+        grounded = False
+        relevant = False
+        reason = "Judge response unparseable, defaulting to fail"
 
     logger.info(
         "faithfulness_check_completed",
         score=score,
+        grounded=grounded,
+        relevant=relevant,
         reason=reason[:100],
     )
 
     return {
         "faithfulness_score": score,
         "faithfulness_reason": reason,
+        "faithfulness_grounded": grounded,
+        "faithfulness_relevant": relevant,
     }

@@ -1,7 +1,8 @@
 """Tests for rerank and KG query nodes."""
-import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
 
+from unittest.mock import AsyncMock, patch
+
+import pytest
 from langchain_core.messages import AIMessage
 
 
@@ -14,10 +15,12 @@ class TestRerankNode:
         from app.llm.reranker import RerankResult
 
         mock_reranker = AsyncMock()
-        mock_reranker.rerank = AsyncMock(return_value=[
-            RerankResult(index=1, text="relevant", relevance_score=0.95),
-            RerankResult(index=0, text="less relevant", relevance_score=0.6),
-        ])
+        mock_reranker.rerank = AsyncMock(
+            return_value=[
+                RerankResult(index=1, text="relevant", relevance_score=0.95),
+                RerankResult(index=0, text="less relevant", relevance_score=0.6),
+            ]
+        )
 
         state = {
             "query": "test",
@@ -70,19 +73,41 @@ class TestKGQueryNode:
         from app.agents.chat.nodes.kg_query import kg_search
 
         mock_llm = AsyncMock()
-        mock_llm.ainvoke = AsyncMock(return_value=AIMessage(
-            content='{"entities": ["Randidly"], "query_type": "entity_lookup"}'
-        ))
+        mock_llm.ainvoke = AsyncMock(
+            return_value=AIMessage(
+                content='{"entities": ["Randidly"], "query_type": "entity_lookup"}'
+            )
+        )
 
         mock_repo = AsyncMock()
-        mock_repo.execute_read = AsyncMock(side_effect=[
-            [{"name": "Randidly Ghosthound", "label": "Character",
-              "description": "Main protagonist", "score": 5.0}],
-            [{"source": "Randidly Ghosthound", "rel_type": "HAS_SKILL", "target_name": "Spear Mastery",
-              "target_label": "Skill"}],
-            [{"text": "Randidly gripped his spear...", "chapter_number": 1,
-              "chapter_title": "Awakening", "node_id": "c1"}],
-        ])
+        mock_repo.execute_read = AsyncMock(
+            side_effect=[
+                [
+                    {
+                        "name": "Randidly Ghosthound",
+                        "label": "Character",
+                        "description": "Main protagonist",
+                        "score": 5.0,
+                    }
+                ],
+                [
+                    {
+                        "source": "Randidly Ghosthound",
+                        "rel_type": "HAS_SKILL",
+                        "target_name": "Spear Mastery",
+                        "target_label": "Skill",
+                    }
+                ],
+                [
+                    {
+                        "text": "Randidly gripped his spear...",
+                        "chapter_number": 1,
+                        "chapter_title": "Awakening",
+                        "node_id": "c1",
+                    }
+                ],
+            ]
+        )
 
         with patch("app.agents.chat.nodes.kg_query.get_langchain_llm", return_value=mock_llm):
             result = await kg_search(
@@ -98,9 +123,11 @@ class TestKGQueryNode:
         from app.agents.chat.nodes.kg_query import kg_search
 
         mock_llm = AsyncMock()
-        mock_llm.ainvoke = AsyncMock(return_value=AIMessage(
-            content='{"entities": ["NonExistent"], "query_type": "entity_lookup"}'
-        ))
+        mock_llm.ainvoke = AsyncMock(
+            return_value=AIMessage(
+                content='{"entities": ["NonExistent"], "query_type": "entity_lookup"}'
+            )
+        )
 
         mock_repo = AsyncMock()
         mock_repo.execute_read = AsyncMock(return_value=[])

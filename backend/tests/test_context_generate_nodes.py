@@ -1,8 +1,9 @@
 """Tests for context assembly and generate nodes."""
-import pytest
+
 from unittest.mock import AsyncMock, patch
 
-from langchain_core.messages import HumanMessage, AIMessage
+import pytest
+from langchain_core.messages import AIMessage, HumanMessage
 
 
 class TestContextAssemblyNode:
@@ -11,14 +12,20 @@ class TestContextAssemblyNode:
         from app.agents.chat.nodes.context_assembly import assemble_context
 
         mock_repo = AsyncMock()
-        mock_repo.execute_read = AsyncMock(return_value=[
-            {"name": "Jake", "label": "Character", "description": "Archer class"},
-        ])
+        mock_repo.execute_read = AsyncMock(
+            return_value=[
+                {"name": "Jake", "label": "Character", "description": "Archer class"},
+            ]
+        )
 
         state = {
             "reranked_chunks": [
-                {"text": "Jake fired his bow.", "chapter_number": 5,
-                 "chapter_title": "Arena", "relevance_score": 0.9},
+                {
+                    "text": "Jake fired his bow.",
+                    "chapter_number": 5,
+                    "chapter_title": "Arena",
+                    "relevance_score": 0.9,
+                },
             ],
             "book_id": "b1",
             "max_chapter": 10,
@@ -51,9 +58,11 @@ class TestGenerateNode:
         from app.agents.chat.nodes.generate import generate_answer
 
         mock_llm = AsyncMock()
-        mock_llm.ainvoke = AsyncMock(return_value=AIMessage(
-            content="Jake is a level 88 Arcane Hunter [Ch.5]. He defeated the Hydra [Ch.5]."
-        ))
+        mock_llm.ainvoke = AsyncMock(
+            return_value=AIMessage(
+                content="Jake is a level 88 Arcane Hunter [Ch.5]. He defeated the Hydra [Ch.5]."
+            )
+        )
 
         state = {
             "query": "Who is Jake?",

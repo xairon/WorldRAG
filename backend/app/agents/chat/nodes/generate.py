@@ -5,7 +5,7 @@ from typing import Any
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
-from app.agents.chat.prompts import GENERATOR_SYSTEM, SPOILER_GUARD
+from app.agents.chat.prompts import DIRECT_RESPONSE_SYSTEM, GENERATOR_SYSTEM, SPOILER_GUARD
 from app.config import settings
 from app.core.logging import get_logger
 from app.llm.providers import get_langchain_llm
@@ -30,6 +30,19 @@ async def generate_answer(state: dict[str, Any]) -> dict[str, Any]:
     context = state.get("context", "")
     query = state["query"]
     max_chapter = state.get("max_chapter")
+    route = state.get("route", "hybrid_rag")
+
+    # Direct route: use a lightweight prompt without context (I1 audit fix)
+    if route == "direct":
+        llm = get_langchain_llm(settings.llm_chat)
+        response = await llm.ainvoke(
+            [
+                SystemMessage(content=DIRECT_RESPONSE_SYSTEM),
+                HumanMessage(content=query),
+            ]
+        )
+        answer = response.content if isinstance(response.content, str) else str(response.content)
+        return {"generation": answer, "citations": [], "messages": [AIMessage(content=answer)]}
 
     if not context:
         return {

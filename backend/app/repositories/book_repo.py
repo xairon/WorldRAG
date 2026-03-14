@@ -241,9 +241,7 @@ class BookRepository(Neo4jRepository):
             {"id": book_id, "css": css},
         )
 
-    async def backfill_chapter_xhtml(
-        self, book_id: str, chapter_number: int, xhtml: str
-    ) -> bool:
+    async def backfill_chapter_xhtml(self, book_id: str, chapter_number: int, xhtml: str) -> bool:
         """Backfill XHTML for an existing chapter. Returns True if updated."""
         result = await self.execute_write(
             """

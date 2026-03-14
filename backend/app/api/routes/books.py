@@ -537,9 +537,7 @@ async def reprocess_book(
         )
 
     # Serialize OntologyChange models to dicts for arq transport
-    changes_dicts = (
-        [c.model_dump() for c in body.changes] if body and body.changes else None
-    )
+    changes_dicts = [c.model_dump() for c in body.changes] if body and body.changes else None
 
     job = await arq_pool.enqueue_job(
         "process_book_reprocessing",

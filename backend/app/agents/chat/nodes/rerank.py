@@ -18,6 +18,7 @@ def _get_reranker():
     global _reranker_instance
     if _reranker_instance is None and settings.cohere_api_key:
         from app.llm.reranker import CohereReranker
+
         _reranker_instance = CohereReranker()
     return _reranker_instance
 
@@ -54,9 +55,10 @@ async def rerank_results(state: dict[str, Any]) -> dict[str, Any]:
         return {"reranked_chunks": result}
 
     # No reranker available — use RRF order, take top-N
-    top = fused[:RERANK_TOP_N]
-    for chunk in top:
-        chunk["relevance_score"] = chunk.get("rrf_score", 0.0)
+    # Create new dicts to avoid mutating the state's fused_results in place
+    top = [
+        {**chunk, "relevance_score": chunk.get("rrf_score", 0.0)} for chunk in fused[:RERANK_TOP_N]
+    ]
 
     logger.info("rerank_skipped_no_cohere", output_count=len(top))
     return {"reranked_chunks": top}

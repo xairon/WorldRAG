@@ -20,7 +20,7 @@ export interface ChatMessage {
 interface UseChatStreamReturn {
   messages: ChatMessage[]
   isStreaming: boolean
-  send: (query: string, bookId: string, maxChapter?: number) => void
+  send: (query: string, bookId: string, maxChapter?: number, threadId?: string) => void
   stop: () => void
   clearMessages: () => void
 }
@@ -51,7 +51,7 @@ export function useChatStream(): UseChatStreamReturn {
   }, [])
 
   const send = useCallback(
-    (query: string, bookId: string, maxChapter?: number) => {
+    (query: string, bookId: string, maxChapter?: number, threadId?: string) => {
       if (isStreamingRef.current) return
 
       const userMsg: ChatMessage = {
@@ -118,7 +118,7 @@ export function useChatStream(): UseChatStreamReturn {
             ),
           )
         },
-      }, maxChapter)
+      }, maxChapter, threadId)
 
       controllerRef.current = controller
     },

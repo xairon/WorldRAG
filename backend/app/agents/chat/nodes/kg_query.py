@@ -5,6 +5,7 @@ from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
+from app.agents.chat.nodes.retrieve import _escape_lucene
 from app.agents.chat.prompts import KG_QUERY_SYSTEM
 from app.config import settings
 from app.core.logging import get_logger
@@ -28,10 +29,12 @@ async def kg_search(
     max_chapter = state.get("max_chapter")
 
     # Step 1: Extract entity names from query
-    response = await llm.ainvoke([
-        SystemMessage(content=KG_QUERY_SYSTEM),
-        HumanMessage(content=query),
-    ])
+    response = await llm.ainvoke(
+        [
+            SystemMessage(content=KG_QUERY_SYSTEM),
+            HumanMessage(content=query),
+        ]
+    )
 
     try:
         parsed = json.loads(response.content)
@@ -44,8 +47,21 @@ async def kg_search(
     if not entity_names:
         return {"route": "hybrid_rag", "kg_cypher_result": [], "kg_entities": []}
 
-    # Step 2: Search entities via fulltext index
-    entity_query = " OR ".join(entity_names)
+    # Step 2: Search entities via fulltext index (C4: escape Lucene specials)
+    # Filter by book_id via GROUNDED_IN → Chunk → Chapter to avoid cross-book
+    # entity pollution in multi-book deployments (N4 fix).
+    # Filter empty/whitespace names (#7 fix) and quote multi-word names (#4 fix)
+    # so Lucene treats them as phrase queries instead of splitting on spaces.
+    escaped_names = [_escape_lucene(name) for name in entity_names]
+    escaped_names = [n for n in escaped_names if n.strip()]
+    if not escaped_names:
+        return {"route": "hybrid_rag", "kg_cypher_result": [], "kg_entities": []}
+
+    def _quote_if_multi_word(term: str) -> str:
+        """Wrap multi-word terms in double quotes for Lucene phrase matching."""
+        return f'"{term}"' if " " in term.strip() else term
+
+    entity_query = " OR ".join(_quote_if_multi_word(n) for n in escaped_names)
     entities = await repo.execute_read(
         """
         CALL db.index.fulltext.queryNodes('entity_fulltext', $query)
@@ -54,14 +70,20 @@ async def kg_search(
           AND ($max_chapter IS NULL
                OR NOT exists(entity.valid_from_chapter)
                OR entity.valid_from_chapter <= $max_chapter)
+        WITH entity, score
+        OPTIONAL MATCH (entity)-[:GROUNDED_IN|MENTIONED_IN]->(:Chunk)
+                       <-[:HAS_CHUNK]-(chap:Chapter)
+        WHERE chap.book_id = $book_id
+        WITH entity, score, count(chap) AS book_hits
+        WHERE book_hits > 0
         RETURN entity.name AS name,
-               labels(entity)[0] AS label,
+               [l IN labels(entity) WHERE NOT l IN ['Entity', 'Node', '_Entity']][0] AS label,
                entity.description AS description,
                score
         ORDER BY score DESC
         LIMIT 10
         """,
-        {"query": entity_query, "max_chapter": max_chapter},
+        {"query": entity_query, "max_chapter": max_chapter, "book_id": book_id},
     )
 
     if not entities:
@@ -69,12 +91,15 @@ async def kg_search(
         return {"route": "hybrid_rag", "kg_cypher_result": [], "kg_entities": []}
 
     # Step 3: Expand relationships for found entities
+    # Pair each entity name with its own label to avoid UNWIND cross-product (N2 fix)
     entity_names_found = [e["name"] for e in entities]
+    entity_pairs = [{"name": e["name"], "label": e["label"]} for e in entities if e.get("label")]
     relationships = await repo.execute_read(
         """
-        UNWIND $names AS ename
-        MATCH (entity {name: ename})-[r]->(related)
-        WHERE NOT related:Chunk AND NOT related:Chapter AND NOT related:Book
+        UNWIND $pairs AS pair
+        MATCH (entity)-[r]->(related)
+        WHERE entity.name = pair.name AND pair.label IN labels(entity)
+          AND NOT related:Chunk AND NOT related:Chapter AND NOT related:Book
           AND type(r) <> 'MENTIONED_IN' AND type(r) <> 'GROUNDED_IN'
           AND ($max_chapter IS NULL
                OR NOT exists(r.valid_from_chapter)
@@ -82,10 +107,14 @@ async def kg_search(
         RETURN entity.name AS source,
                type(r) AS rel_type,
                related.name AS target_name,
-               labels(related)[0] AS target_label
+               [l IN labels(related)
+                WHERE NOT l IN ['Entity', 'Node', '_Entity']][0] AS target_label
         LIMIT 30
         """,
-        {"names": entity_names_found, "max_chapter": max_chapter},
+        {
+            "pairs": entity_pairs,
+            "max_chapter": max_chapter,
+        },
     )
 
     # Step 4: Fetch grounded chunks

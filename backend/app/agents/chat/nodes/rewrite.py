@@ -25,10 +25,12 @@ async def rewrite_query(state: dict[str, Any]) -> dict[str, Any]:
         f"Rewrite the query:"
     )
 
-    response = await llm.ainvoke([
-        SystemMessage(content=REWRITE_SYSTEM),
-        HumanMessage(content=rewrite_input),
-    ])
+    response = await llm.ainvoke(
+        [
+            SystemMessage(content=REWRITE_SYSTEM),
+            HumanMessage(content=rewrite_input),
+        ]
+    )
 
     new_query = response.content.strip()
     if not new_query:

@@ -423,5 +423,3 @@ class ProvenanceResult(BaseModel):
     """Result of provenance extraction for a chapter."""
 
     provenances: list[SkillProvenance] = Field(default_factory=list)
-
-

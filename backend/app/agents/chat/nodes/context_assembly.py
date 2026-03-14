@@ -74,7 +74,10 @@ async def assemble_context(
             rels = e.get("relationships", [])
             parts.append(f"- **{name}** ({label}){desc}")
             for r in rels[:5]:
-                parts.append(f"  - {r.get('rel_type', '?')} → {r.get('target_name', '?')} ({r.get('target_label', '?')})")
+                rel_type = r.get("rel_type", "?")
+                target = r.get("target_name", "?")
+                t_label = r.get("target_label", "?")
+                parts.append(f"  - {rel_type} → {target} ({t_label})")
 
     context = "\n".join(parts)
 
