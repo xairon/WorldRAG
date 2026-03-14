@@ -111,3 +111,14 @@ class LocalEmbedder:
 
 # Backward-compatible alias
 VoyageEmbedder = LocalEmbedder
+
+# Module-level factory for convenience
+_embedder_instance: LocalEmbedder | None = None
+
+
+def get_embedder() -> LocalEmbedder:
+    """Return a module-level LocalEmbedder singleton."""
+    global _embedder_instance  # noqa: PLW0603
+    if _embedder_instance is None:
+        _embedder_instance = LocalEmbedder()
+    return _embedder_instance
