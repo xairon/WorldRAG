@@ -1,4 +1,5 @@
 """Tests for openrouter and local provider branches."""
+
 from unittest.mock import patch
 
 import pytest

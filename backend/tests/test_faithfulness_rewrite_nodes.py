@@ -1,6 +1,5 @@
 """Tests for the NLI faithfulness check and rewrite query nodes."""
 
-import math
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np

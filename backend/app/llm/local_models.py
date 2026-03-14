@@ -1,4 +1,5 @@
 """Lazy-loaded local model singletons for reranking and NLI."""
+
 from __future__ import annotations
 
 from sentence_transformers import CrossEncoder

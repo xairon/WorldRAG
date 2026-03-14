@@ -54,7 +54,7 @@ class TestRerankNode:
 
     @pytest.mark.asyncio
     async def test_rerank_returns_top_n(self):
-        from app.agents.chat.nodes.rerank import rerank_results, RERANK_TOP_N
+        from app.agents.chat.nodes.rerank import RERANK_TOP_N, rerank_results
 
         chunks = [{"node_id": str(i), "text": f"t{i}", "rrf_score": 0.1} for i in range(10)]
         scores = list(range(10, 0, -1))  # descending

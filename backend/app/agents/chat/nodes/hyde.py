@@ -50,9 +50,7 @@ async def hyde_expand(state: dict[str, Any]) -> dict[str, Any]:
             ]
         )
         doc = (
-            response.content.strip()
-            if isinstance(response.content, str)
-            else str(response.content)
+            response.content.strip() if isinstance(response.content, str) else str(response.content)
         )
         logger.info("hyde_expanded", route=route, doc_len=len(doc))
         return {"hyde_document": doc}

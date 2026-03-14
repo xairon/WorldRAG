@@ -1,13 +1,12 @@
 """Tests for retrieval upgrade nodes: multi-dense retrieve, dedup, temporal_sort."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from app.agents.chat.nodes.dedup import deduplicate_chunks
-from app.agents.chat.nodes.temporal_sort import temporal_sort
 from app.agents.chat.nodes.retrieve import hybrid_retrieve, rrf_fuse
-
+from app.agents.chat.nodes.temporal_sort import temporal_sort
 
 # ---------------------------------------------------------------------------
 # rrf_fuse

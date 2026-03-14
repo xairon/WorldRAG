@@ -8,12 +8,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import ValidationError
 
-ROUTER_PATCH = (
-    "app.agents.reader.nodes.reader_router.get_langchain_llm"
-)
-GENERATE_PATCH = (
-    "app.agents.reader.nodes.reader_generate.get_langchain_llm"
-)
+ROUTER_PATCH = "app.agents.reader.nodes.reader_router.get_langchain_llm"
+GENERATE_PATCH = "app.agents.reader.nodes.reader_generate.get_langchain_llm"
 
 
 # ── Reader Router ──────────────────────────────────────────────────
@@ -132,22 +128,28 @@ class TestRetrieveChapterContext:
 
         paragraphs = [
             {
-                "index": 0, "type": "narration",
+                "index": 0,
+                "type": "narration",
                 "text": "The sun rose.",
-                "char_start": 0, "char_end": 13,
+                "char_start": 0,
+                "char_end": 13,
             },
             {
-                "index": 1, "type": "dialogue",
+                "index": 1,
+                "type": "dialogue",
                 "text": "Hello!",
-                "char_start": 14, "char_end": 20,
+                "char_start": 14,
+                "char_end": 20,
                 "speaker": "Jake",
             },
         ]
         entities = [
             {
-                "name": "Jake", "labels": ["Character"],
+                "name": "Jake",
+                "labels": ["Character"],
                 "description": "A warrior",
-                "char_start": 14, "char_end": 18,
+                "char_start": 14,
+                "char_end": 18,
                 "mention_text": "Jake",
             },
         ]
@@ -356,7 +358,10 @@ class TestReaderService:
 
             service = ReaderService(mock_driver)
             await service.query(
-                "Q?", "book-1", 1, thread_id="thread-123",
+                "Q?",
+                "book-1",
+                1,
+                thread_id="thread-123",
             )
 
         call_kwargs = mock_graph.ainvoke.call_args
@@ -398,7 +403,9 @@ class TestReaderSchemas:
 
         with pytest.raises(ValidationError):
             ReaderQueryRequest(
-                query="", book_id="book-1", chapter_number=1,
+                query="",
+                book_id="book-1",
+                chapter_number=1,
             )
 
     def test_request_rejects_invalid_chapter(self):
@@ -406,7 +413,9 @@ class TestReaderSchemas:
 
         with pytest.raises(ValidationError):
             ReaderQueryRequest(
-                query="Hi", book_id="book-1", chapter_number=0,
+                query="Hi",
+                book_id="book-1",
+                chapter_number=0,
             )
 
     def test_response_defaults(self):

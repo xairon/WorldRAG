@@ -14,9 +14,7 @@ class TestRouterNode:
         from app.agents.chat.nodes.router import classify_intent
 
         mock_llm = AsyncMock()
-        mock_llm.ainvoke = AsyncMock(
-            return_value=AIMessage(content='{"route": "factual_lookup"}')
-        )
+        mock_llm.ainvoke = AsyncMock(return_value=AIMessage(content='{"route": "factual_lookup"}'))
 
         with patch("app.agents.chat.nodes.router.get_langchain_llm", return_value=mock_llm):
             result = await classify_intent(
@@ -35,9 +33,7 @@ class TestRouterNode:
         from app.agents.chat.nodes.router import classify_intent
 
         mock_llm = AsyncMock()
-        mock_llm.ainvoke = AsyncMock(
-            return_value=AIMessage(content='{"route": "analytical"}')
-        )
+        mock_llm.ainvoke = AsyncMock(return_value=AIMessage(content='{"route": "analytical"}'))
 
         with patch("app.agents.chat.nodes.router.get_langchain_llm", return_value=mock_llm):
             result = await classify_intent(
@@ -56,9 +52,7 @@ class TestRouterNode:
         from app.agents.chat.nodes.router import classify_intent
 
         mock_llm = AsyncMock()
-        mock_llm.ainvoke = AsyncMock(
-            return_value=AIMessage(content='{"route": "conversational"}')
-        )
+        mock_llm.ainvoke = AsyncMock(return_value=AIMessage(content='{"route": "conversational"}'))
 
         with patch("app.agents.chat.nodes.router.get_langchain_llm", return_value=mock_llm):
             result = await classify_intent(

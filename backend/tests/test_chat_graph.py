@@ -98,7 +98,9 @@ def test_route_after_kg_success():
 def test_route_faithfulness_pass():
     from app.agents.chat.graph import _route_after_faithfulness
 
-    assert _route_after_faithfulness({"faithfulness_score": 0.9, "retries": 0}) == "summarize_memory"
+    assert (
+        _route_after_faithfulness({"faithfulness_score": 0.9, "retries": 0}) == "summarize_memory"
+    )
 
 
 def test_route_faithfulness_fail_retry():
@@ -110,7 +112,9 @@ def test_route_faithfulness_fail_retry():
 def test_route_faithfulness_max_retries():
     from app.agents.chat.graph import _route_after_faithfulness
 
-    assert _route_after_faithfulness({"faithfulness_score": 0.3, "retries": 2}) == "summarize_memory"
+    assert (
+        _route_after_faithfulness({"faithfulness_score": 0.3, "retries": 2}) == "summarize_memory"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -128,7 +132,14 @@ def test_route_after_generate_conversational_skips_faithfulness():
 def test_route_after_generate_other_routes_go_to_faithfulness():
     from app.agents.chat.graph import _route_after_generate
 
-    for route in ("factual_lookup", "entity_qa", "relationship_qa", "timeline_qa", "analytical", ""):
+    for route in (
+        "factual_lookup",
+        "entity_qa",
+        "relationship_qa",
+        "timeline_qa",
+        "analytical",
+        "",
+    ):
         assert _route_after_generate({"route": route}) == "faithfulness_check", route
 
     assert _route_after_generate({}) == "faithfulness_check"

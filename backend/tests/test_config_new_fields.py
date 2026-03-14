@@ -1,10 +1,13 @@
 """Tests for new SOTA config fields."""
+
 from app.config import Settings
 
 
 class TestNewConfigFields:
     def test_defaults(self):
+        # _env_file=None prevents loading the project .env so we test code defaults
         s = Settings(
+            _env_file=None,
             neo4j_uri="bolt://x:7687",
             neo4j_password="x",
         )
@@ -16,6 +19,7 @@ class TestNewConfigFields:
 
     def test_overrides(self):
         s = Settings(
+            _env_file=None,
             neo4j_uri="bolt://x:7687",
             neo4j_password="x",
             llm_generation="openrouter:deepseek/deepseek-v3.2",

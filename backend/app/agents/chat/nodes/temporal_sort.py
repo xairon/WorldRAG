@@ -43,6 +43,8 @@ async def temporal_sort(state: dict[str, Any]) -> dict[str, Any]:
         chapter_range=(
             sorted_chunks[0].get("chapter_number", 0),
             sorted_chunks[-1].get("chapter_number", 0),
-        ) if sorted_chunks else (0, 0),
+        )
+        if sorted_chunks
+        else (0, 0),
     )
     return {"reranked_chunks": sorted_chunks}

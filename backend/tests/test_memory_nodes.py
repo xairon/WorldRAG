@@ -7,7 +7,6 @@ from langchain_core.messages import AIMessage, HumanMessage
 
 from app.agents.chat.nodes.memory import _SUMMARY_EVERY_N, load_memory, summarize_memory
 
-
 # ---------------------------------------------------------------------------
 # load_memory
 # ---------------------------------------------------------------------------

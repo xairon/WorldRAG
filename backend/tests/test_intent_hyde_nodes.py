@@ -5,9 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
+from app.agents.chat.nodes.hyde import _HYDE_ROUTES, hyde_expand
 from app.agents.chat.nodes.router import VALID_ROUTES, _parse_route, classify_intent
-from app.agents.chat.nodes.hyde import hyde_expand, _HYDE_ROUTES
-
 
 # ---------------------------------------------------------------------------
 # _parse_route unit tests
@@ -51,13 +50,14 @@ def test_parse_route_all_valid_routes_accepted():
 @pytest.mark.asyncio
 async def test_classify_intent_returns_valid_route():
     mock_llm = MagicMock()
-    mock_llm.ainvoke = AsyncMock(
-        return_value=MagicMock(content='{"route": "factual_lookup"}')
-    )
+    mock_llm.ainvoke = AsyncMock(return_value=MagicMock(content='{"route": "factual_lookup"}'))
 
     with patch("app.agents.chat.nodes.router.get_langchain_llm", return_value=mock_llm):
         result = await classify_intent(
-            {"query": "What level is Jake?", "messages": [HumanMessage(content="What level is Jake?")]}
+            {
+                "query": "What level is Jake?",
+                "messages": [HumanMessage(content="What level is Jake?")],
+            }
         )
 
     assert result["route"] == "factual_lookup"
@@ -67,9 +67,7 @@ async def test_classify_intent_returns_valid_route():
 async def test_classify_intent_includes_history_for_context():
     """Classifier receives conversation history when > 2 messages exist."""
     mock_llm = MagicMock()
-    mock_llm.ainvoke = AsyncMock(
-        return_value=MagicMock(content='{"route": "relationship_qa"}')
-    )
+    mock_llm.ainvoke = AsyncMock(return_value=MagicMock(content='{"route": "relationship_qa"}'))
 
     history = [
         HumanMessage(content="Who is Jake?"),

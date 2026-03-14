@@ -18,10 +18,12 @@ async def classify_reader_intent(state: dict[str, Any]) -> dict[str, Any]:
     llm = get_langchain_llm(settings.llm_chat)
     query = state.get("query") or state["messages"][-1].content
 
-    response = await llm.ainvoke([
-        SystemMessage(content=READER_ROUTER_SYSTEM),
-        HumanMessage(content=query),
-    ])
+    response = await llm.ainvoke(
+        [
+            SystemMessage(content=READER_ROUTER_SYSTEM),
+            HumanMessage(content=query),
+        ]
+    )
 
     try:
         parsed = json.loads(response.content)

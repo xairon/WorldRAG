@@ -51,10 +51,12 @@ async def generate_reader_answer(state: dict[str, Any]) -> dict[str, Any]:
         if kg_context:
             context_text += f"\n\n## Entity Context\n\n{kg_context}"
 
-    response = await llm.ainvoke([
-        SystemMessage(content=system_prompt),
-        HumanMessage(content=f"{context_text}\n\n---\n\nQuestion: {query}"),
-    ])
+    response = await llm.ainvoke(
+        [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=f"{context_text}\n\n---\n\nQuestion: {query}"),
+        ]
+    )
 
     generation = response.content if isinstance(response.content, str) else str(response.content)
 

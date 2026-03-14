@@ -2,21 +2,19 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import FastAPI
-from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 
 from app.api.routes.chat import router
-from app.schemas.chat import FeedbackResponse
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_row(
     *,
@@ -32,7 +30,7 @@ def _make_row(
         "rating": rating,
         "comment": comment,
         "book_id": book_id,
-        "created_at": datetime(2026, 3, 14, 12, 0, 0, tzinfo=timezone.utc),
+        "created_at": datetime(2026, 3, 14, 12, 0, 0, tzinfo=UTC),
     }
 
 
@@ -204,7 +202,6 @@ class TestGetFeedback:
     @pytest.mark.asyncio
     async def test_503_when_pool_unavailable(self):
         from app.api.auth import require_auth
-        from app.api.dependencies import get_postgres
 
         app = FastAPI()
         app.include_router(router, prefix="/api")

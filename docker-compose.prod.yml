@@ -1,0 +1,207 @@
+# WorldRAG — Production stack
+#
+# Ports (all free as of 2026-03-14):
+#   49515  →  Backend API  (FastAPI :8000)
+#   49516  →  Frontend     (Next.js :3000)
+#   49517  →  LangFuse     (:3000)
+#   49518  →  Neo4j Browser (:7474)   — optional, for debugging
+#   49519  →  Neo4j Bolt    (:7687)   — optional, for debugging
+#   Redis / PostgreSQL: internal only (no host exposure)
+#
+# Ollama: reuses existing hubeau-ollama container via external network.
+#         Model qwen3.5:4b is already pulled there.
+#
+# GPU: backend + worker get full access to the RTX A6000 (49 GB VRAM)
+#      for BGE-M3 embeddings, zerank-1-small reranker, DeBERTa NLI.
+
+services:
+
+  # ── Infrastructure ──────────────────────────────────────────────────
+
+  neo4j:
+    image: neo4j:5-community
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:49518:7474"   # Browser (optional, can be removed in prod)
+      - "0.0.0.0:49519:7687"   # Bolt    (optional, can be removed in prod)
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD}
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_dbms_memory_heap_max__size: "4G"
+      NEO4J_dbms_memory_pagecache_size: "2G"
+      NEO4J_dbms_security_procedures_allowlist: "apoc.path.*,apoc.cypher.*,apoc.meta.*"
+    volumes:
+      - neo4j_data:/data
+    mem_limit: 8g
+    healthcheck:
+      test: ["CMD", "neo4j", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - worldrag
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # Not exposed externally — internal use only
+    command: redis-server --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - worldrag
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    # Not exposed externally — internal use only
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init_postgres.sh:/docker-entrypoint-initdb.d/init_postgres.sh:ro
+    mem_limit: 2g
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - worldrag
+
+  langfuse:
+    image: langfuse/langfuse:2
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:49517:3000"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/langfuse
+      NEXTAUTH_URL: http://localhost:49517
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET}
+      SALT: ${LANGFUSE_SALT}
+      TELEMETRY_ENABLED: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    mem_limit: 1g
+    networks:
+      - worldrag
+
+  # ── Application ─────────────────────────────────────────────────────
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:49515:8000"
+    env_file: .env
+    environment:
+      NEO4J_URI: bolt://neo4j:7687
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      POSTGRES_URI: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      LANGFUSE_HOST: http://langfuse:3000
+      # Ollama: use the shared hubeau-ollama container
+      OLLAMA_BASE_URL: http://hubeau-ollama:11434
+      LOCAL_LLM_BACKEND: ollama
+      LLM_AUXILIARY: "local:qwen3.5:4b"
+      # GPU: sentence-transformers models (BGE-M3, zerank, DeBERTa)
+      EMBEDDING_DEVICE: cuda
+      EMBEDDING_BATCH_SIZE: 128
+      # CORS: allow frontend
+      CORS_ORIGINS: '["http://localhost:49516","http://0.0.0.0:49516"]'
+      HF_HOME: /hf_cache
+    volumes:
+      - hf_cache:/hf_cache    # HuggingFace model cache (persisted)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - worldrag
+      - hubeauissuewiki_default  # reach hubeau-ollama
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["python", "-m", "arq", "backend.app.workers.settings.WorkerSettings"]
+    env_file: .env
+    environment:
+      NEO4J_URI: bolt://neo4j:7687
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      POSTGRES_URI: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      LANGFUSE_HOST: http://langfuse:3000
+      OLLAMA_BASE_URL: http://hubeau-ollama:11434
+      LOCAL_LLM_BACKEND: ollama
+      LLM_AUXILIARY: "local:qwen3.5:4b"
+      EMBEDDING_DEVICE: cuda
+      EMBEDDING_BATCH_SIZE: 128
+      HF_HOME: /hf_cache
+    volumes:
+      - hf_cache:/hf_cache
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - worldrag
+      - hubeauissuewiki_default
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: prod
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:49516:3000"
+    environment:
+      BACKEND_URL: http://backend:8000
+      NEXT_PUBLIC_API_URL: http://localhost:49515
+    depends_on:
+      - backend
+    networks:
+      - worldrag
+
+volumes:
+  neo4j_data:
+  redis_data:
+  postgres_data:
+  hf_cache:      # persists ~5 GB of local models across restarts
+
+networks:
+  worldrag:
+    driver: bridge
+  hubeauissuewiki_default:
+    external: true   # join existing network to reach hubeau-ollama

@@ -80,7 +80,9 @@ async def summarize_memory(state: dict[str, Any]) -> dict[str, Any]:
 
     existing_summary = state.get("conversation_summary", "")
     if existing_summary:
-        prompt = f"Previous summary:\n{existing_summary}\n\n---\n\nRecent conversation:\n{history_text}"
+        prompt = (
+            f"Previous summary:\n{existing_summary}\n\n---\n\nRecent conversation:\n{history_text}"
+        )
     else:
         prompt = history_text
 
@@ -93,9 +95,7 @@ async def summarize_memory(state: dict[str, Any]) -> dict[str, Any]:
             ]
         )
         summary = (
-            response.content.strip()
-            if isinstance(response.content, str)
-            else str(response.content)
+            response.content.strip() if isinstance(response.content, str) else str(response.content)
         )
         logger.info("memory_summarized", turn_count=turn_count, summary_len=len(summary))
         return {"conversation_summary": summary}

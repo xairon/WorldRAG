@@ -146,9 +146,7 @@ async def generate_answer(state: dict[str, Any]) -> dict[str, Any]:
     output = _parse_generation_output(raw)
 
     # Backward-compat simple citations (chapter + position only)
-    simple_citations = [
-        {"chapter": c.chapter, "position": c.position} for c in output.citations
-    ]
+    simple_citations = [{"chapter": c.chapter, "position": c.position} for c in output.citations]
 
     logger.info(
         "generate_completed",
