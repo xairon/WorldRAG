@@ -726,6 +726,12 @@ async def extract_graphiti(
 
     Returns 202 immediately with {job_id, mode, book_id}.
     """
+    driver: AsyncDriver = http_request.app.state.neo4j_driver
+    repo = BookRepository(driver)
+    book = await repo.get_book(book_id)
+    if not book:
+        raise NotFoundError("Book not found")
+
     redis = http_request.app.state.redis
     existing_profile = await redis.get(f"saga_profile:{body.saga_id}")
     mode = "guided" if existing_profile else "discovery"

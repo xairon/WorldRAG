@@ -38,7 +38,7 @@ _PATTERN_DEFS: list[dict[str, str]] = [
         "extraction_type": "skill_acquisition",
     },
     {
-        "regex": r"\[Level\s+(\d+)\s*[→→>]+\s*(\d+)\]",
+        "regex": r"\[Level\s+(\d+)\s*[→>]+\s*(\d+)\]",
         "extraction_type": "level_up",
     },
     {
@@ -69,6 +69,30 @@ _NARRATIVE_SYSTEM_KEYWORDS: dict[str, list[str]] = {
     "progression": ["level", "skill", "class", "stat", "xp", "rank", "evolution"],
     "political": ["kingdom", "faction", "house", "court", "alliance", "guild"],
 }
+
+
+def _extract_json_object(text: str) -> dict[str, Any] | None:
+    """Extract the first JSON object from *text* using bracket counting.
+
+    Handles nested braces correctly, unlike a simple greedy regex.
+    Returns the parsed dict or None if no valid JSON object is found.
+    """
+    start = text.find("{")
+    if start == -1:
+        return None
+
+    depth = 0
+    for i in range(start, len(text)):
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                try:
+                    return json.loads(text[start : i + 1])
+                except json.JSONDecodeError:
+                    return None
+    return None
 
 
 def _cluster_entities(entities: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -107,7 +131,13 @@ async def _formalize_clusters_llm(
         label = cluster["label"]
         members = cluster["members"]
         instance_names = [m["name"] for m in members]
-        summaries = [f"- {m['name']}: {m.get('summary', 'N/A')}" for m in members]
+        # Enrich with full entity summaries from entities_by_name when available
+        summaries = []
+        for m in members:
+            name = m["name"]
+            entity = entities_by_name.get(name, m)
+            summary = entity.get("summary") or "N/A"
+            summaries.append(f"- {name}: {summary}")
 
         prompt = (
             f"Voici {len(members)} entités extraites d'un roman, regroupées sous le label '{label}':\n"
@@ -121,12 +151,13 @@ async def _formalize_clusters_llm(
         try:
             response = await llm.ainvoke(prompt)
             content = response.content if hasattr(response, "content") else str(response)
-            # Extract JSON from response (handle markdown code blocks)
-            json_match = re.search(r"\{[^{}]+\}", content, re.DOTALL)
-            if json_match:
-                parsed = json.loads(json_match.group())
-            else:
-                raise ValueError("No JSON object found in LLM response")
+            # Try direct JSON parse first, fall back to bracket-counting extraction
+            try:
+                parsed = json.loads(content)
+            except json.JSONDecodeError:
+                parsed = _extract_json_object(content)
+                if parsed is None:
+                    raise ValueError("No JSON object found in LLM response")
 
             results.append(
                 {

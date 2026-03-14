@@ -63,9 +63,10 @@ class BookIngestionOrchestrator:
 
         for chapter in chapters:
             await self.graphiti.ingest_chapter(
-                chapter=chapter,
+                chapter_text=chapter["text"],
                 book_id=book_id,
                 book_num=book_num,
+                chapter_num=chapter["number"],
                 saga_id=saga_id,
                 entity_types=entity_types,
             )
@@ -109,9 +110,10 @@ class BookIngestionOrchestrator:
 
         for chapter in chapters:
             await self.graphiti.ingest_chapter(
-                chapter=chapter,
+                chapter_text=chapter["text"],
                 book_id=book_id,
                 book_num=book_num,
+                chapter_num=chapter["number"],
                 saga_id=saga_id,
                 entity_types=entity_types,
                 edge_types=edge_types,

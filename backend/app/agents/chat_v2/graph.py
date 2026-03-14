@@ -2,7 +2,7 @@
 
 Nodes
 -----
-1. router          — classify intent → route field
+1. router          — classify intent -> route field
 2. graphiti_search — call GraphitiClient.search()
 3. cypher_lookup   — direct Neo4j MATCH for entity names
 4. direct          — pass-through (conversational, no retrieval)
@@ -12,13 +12,13 @@ Nodes
 
 Edges
 -----
-router → graphiti_search | cypher_lookup | direct   (conditional)
-graphiti_search → context_assembly
-cypher_lookup   → context_assembly
-direct          → context_assembly
-context_assembly → generate
-generate         → faithfulness
-faithfulness     → END (score ≥ 0.6 or retries ≥ 2) | graphiti_search (retry)
+router -> graphiti_search | cypher_lookup | direct   (conditional)
+graphiti_search -> context_assembly
+cypher_lookup   -> context_assembly
+direct          -> context_assembly
+context_assembly -> generate
+generate         -> faithfulness
+faithfulness     -> END (score >= 0.6 or retries >= 2) | graphiti_search (retry)
 """
 
 from __future__ import annotations
@@ -139,6 +139,7 @@ def build_chat_v2_graph(graphiti: Any, neo4j_driver: Any) -> StateGraph:
         """Call GraphitiClient.search() and return raw context list."""
         query: str = state.get("query", "")
         saga_id: str = state.get("saga_id", "")
+        max_chapter: int | None = state.get("max_chapter")
 
         logger.info("chat_v2_graphiti_search", query=query[:120], saga_id=saga_id)
         try:
@@ -146,6 +147,24 @@ def build_chat_v2_graph(graphiti: Any, neo4j_driver: Any) -> StateGraph:
         except Exception:
             logger.warning("chat_v2_graphiti_search_failed", exc_info=True)
             results = []
+
+        # Filter results by max_chapter using NarrativeTemporalMapper
+        if max_chapter is not None and results:
+            from app.services.saga_profile.temporal import NarrativeTemporalMapper
+
+            filtered: list[Any] = []
+            for edge in results:
+                valid_at = getattr(edge, "valid_at", None) or getattr(edge, "created_at", None)
+                if valid_at is not None:
+                    try:
+                        _, chapter_num, _ = NarrativeTemporalMapper.from_datetime(valid_at)
+                        if chapter_num <= max_chapter:
+                            filtered.append(edge)
+                    except (ValueError, TypeError):
+                        filtered.append(edge)  # keep if can't parse
+                else:
+                    filtered.append(edge)  # keep if no timestamp
+            results = filtered
 
         context: list[dict[str, Any]] = []
         for edge in results:
@@ -178,20 +197,25 @@ def build_chat_v2_graph(graphiti: Any, neo4j_driver: Any) -> StateGraph:
     async def cypher_lookup(state: dict[str, Any]) -> dict[str, Any]:
         """Run a direct Neo4j MATCH for entity names matching the query hint."""
         saga_id: str = state.get("saga_id", "")
+        book_id: str = state.get("book_id", "")
         query: str = state.get("query", "")
+        max_chapter: int | None = state.get("max_chapter")
 
-        # Extract hint: last word(s) after keywords like "list skills", "what class"
-        q_lower = query.lower()
         query_hint = query  # default: use full query as hint
+
+        # Build WHERE clause with optional max_chapter spoiler guard
+        where_clause = "WHERE toLower(n.name) CONTAINS toLower($query_hint)"
+        if max_chapter is not None:
+            where_clause += " AND (n.chapter_num IS NULL OR n.chapter_num <= $max_chapter)"
 
         cypher = (
             "MATCH (n:Entity {group_id: $saga_id}) "
-            "WHERE toLower(n.name) CONTAINS toLower($query_hint) "
+            f"{where_clause} "
             "RETURN n.name AS name, n.summary AS summary, labels(n) AS labels "
             "LIMIT 20"
         )
 
-        logger.info("chat_v2_cypher_lookup", saga_id=saga_id, query_hint=query_hint[:120])
+        logger.info("chat_v2_cypher_lookup", saga_id=saga_id, book_id=book_id, query_hint=query_hint[:120])
 
         context: list[dict[str, Any]] = []
         try:
@@ -200,6 +224,7 @@ def build_chat_v2_graph(graphiti: Any, neo4j_driver: Any) -> StateGraph:
                     cypher,
                     saga_id=saga_id,
                     query_hint=query_hint,
+                    max_chapter=max_chapter,
                 )
                 records = await result.data()
                 for rec in records:
@@ -244,7 +269,7 @@ def build_chat_v2_graph(graphiti: Any, neo4j_driver: Any) -> StateGraph:
                 source = item.get("source", "")
                 target = item.get("target", "")
                 if source and target:
-                    lines.append(f"[{source} → {target}] {fact}")
+                    lines.append(f"[{source} -> {target}] {fact}")
                 elif source:
                     lines.append(f"[{source}] {fact}")
                 else:
@@ -319,9 +344,9 @@ def build_chat_v2_graph(graphiti: Any, neo4j_driver: Any) -> StateGraph:
         """Lightweight faithfulness check (real NLI wired later).
 
         Scoring rules:
-        - If context is empty AND route is not "direct" → score 0.3
+        - If context is empty AND route is not "direct" -> score 0.3
           (answer may be hallucinated — no grounding available)
-        - Otherwise → score 0.8
+        - Otherwise -> score 0.8
           (context was present, assume acceptable grounding)
         """
         route: str = state.get("route", "graphiti_search")
@@ -394,7 +419,7 @@ def build_chat_v2_graph(graphiti: Any, neo4j_driver: Any) -> StateGraph:
     builder.add_edge("context_assembly", "generate")
     builder.add_edge("generate", "faithfulness")
 
-    # Faithfulness: pass → END, fail → retry via graphiti_search
+    # Faithfulness: pass -> END, fail -> retry via graphiti_search
     builder.add_conditional_edges(
         "faithfulness",
         _route_after_faithfulness,

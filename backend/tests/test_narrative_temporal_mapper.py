@@ -1,13 +1,13 @@
 """Tests for NarrativeTemporalMapper — maps (book, chapter, scene) ↔ datetime."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
 from app.services.saga_profile import NarrativeTemporalMapper
 
 
-EPOCH = datetime(2000, 1, 1)
+EPOCH = datetime(2000, 1, 1, tzinfo=timezone.utc)
 BOOK_OFFSET_DAYS = 10_000
 
 

@@ -26,8 +26,26 @@ if TYPE_CHECKING:
     import asyncpg
     from neo4j import AsyncDriver
 
+    from app.services.chat_service_v2 import ChatServiceV2
+
 logger = get_logger(__name__)
 router = APIRouter(prefix="/chat", tags=["chat"])
+
+
+def _get_chat_service_v2(
+    request: Request, driver: AsyncDriver, checkpointer: object | None
+) -> ChatServiceV2:
+    """Return a cached ChatServiceV2 from app.state, creating it on first call."""
+    from app.services.chat_service_v2 import ChatServiceV2
+
+    existing = getattr(request.app.state, "chat_service_v2", None)
+    if existing is not None:
+        return existing
+
+    graphiti = getattr(request.app.state, "graphiti", None)
+    service = ChatServiceV2(graphiti, driver, checkpointer=checkpointer)
+    request.app.state.chat_service_v2 = service
+    return service
 
 
 @router.post("/query", dependencies=[Depends(require_auth)], response_model=ChatResponse)
@@ -47,10 +65,7 @@ async def chat_query(
     """
     checkpointer = getattr(http_request.app.state, "checkpointer", None)
     if settings.graphiti_enabled:
-        from app.services.chat_service_v2 import ChatServiceV2
-
-        graphiti = getattr(http_request.app.state, "graphiti", None)
-        service_v2 = ChatServiceV2(graphiti, driver, checkpointer=checkpointer)
+        service_v2 = _get_chat_service_v2(http_request, driver, checkpointer)
         return await service_v2.query(
             query=request.query,
             book_id=request.book_id,
@@ -105,10 +120,7 @@ async def chat_stream(
     """
     checkpointer = getattr(request.app.state, "checkpointer", None)
     if settings.graphiti_enabled:
-        from app.services.chat_service_v2 import ChatServiceV2
-
-        graphiti = getattr(request.app.state, "graphiti", None)
-        service_v2 = ChatServiceV2(graphiti, driver, checkpointer=checkpointer)
+        service_v2 = _get_chat_service_v2(request, driver, checkpointer)
 
         async def event_generator_v2():
             async for event in service_v2.query_stream(

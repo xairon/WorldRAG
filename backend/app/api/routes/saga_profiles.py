@@ -36,7 +36,9 @@ async def list_saga_profiles(
     redis: Redis = Depends(_get_redis),
 ) -> SagaProfileListResponse:
     """List all saga profiles stored in Redis."""
-    keys: list[str] = await redis.keys(f"{REDIS_PREFIX}*")
+    keys: list[str] = []
+    async for key in redis.scan_iter(match=f"{REDIS_PREFIX}*"):
+        keys.append(key)
     items: list[SagaProfileListItem] = []
 
     for key in keys:

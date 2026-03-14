@@ -23,6 +23,27 @@ def _make_job_mock(job_id: str = "graphiti:book-123") -> MagicMock:
     return job
 
 
+def _make_neo4j_driver_mock():
+    """Build a mock Neo4j AsyncDriver that supports BookRepository.get_book().
+
+    Returns a driver whose session().run() returns a record with a book dict,
+    making BookRepository.get_book() succeed.
+    """
+    book_record = {"b": {"id": "book-123", "title": "Test Book", "status": "completed"}}
+
+    result_mock = AsyncMock()
+    result_mock.data = AsyncMock(return_value=[book_record])
+
+    session_mock = AsyncMock()
+    session_mock.run = AsyncMock(return_value=result_mock)
+    session_mock.__aenter__ = AsyncMock(return_value=session_mock)
+    session_mock.__aexit__ = AsyncMock(return_value=False)
+
+    driver = MagicMock()
+    driver.session = MagicMock(return_value=session_mock)
+    return driver
+
+
 def _create_app(
     *,
     redis_get_return=None,
@@ -32,8 +53,8 @@ def _create_app(
     app = FastAPI()
     app.include_router(router)
 
-    # Neo4j driver mock (required by other routes imported at module level)
-    app.state.neo4j_driver = AsyncMock()
+    # Neo4j driver mock that supports BookRepository.get_book()
+    app.state.neo4j_driver = _make_neo4j_driver_mock()
 
     # arq pool mock
     arq_pool = AsyncMock()

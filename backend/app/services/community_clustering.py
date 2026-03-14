@@ -27,33 +27,41 @@ async def run_community_clustering(driver: AsyncDriver, saga_id: str) -> dict[st
     """Run Leiden on Graphiti entities, generate LLM summaries, store as :Community nodes.
 
     Steps:
-    1. Project in-memory graph via GDS (Entity nodes + RELATES_TO edges).
+    1. Project in-memory graph via GDS Cypher projection filtered by group_id.
     2. Run Leiden algorithm — writes community_id property on each Entity node.
-    3. Fetch communities with ≥2 members.
+    3. Fetch communities with >=2 members.
     4. For each community: call LLM to summarize, then MERGE a :Community node.
     5. Drop GDS projection.
 
     On any failure: attempt cleanup, return error dict (never raises).
     """
+    projection_name = f"saga-community-{saga_id}"
     try:
         async with driver.session() as session:
-            # 1. Project graph via GDS
-            await session.run("""
-                CALL gds.graph.project('saga-community',
-                    { Entity: { properties: ['group_id'] } },
-                    { RELATES_TO: { orientation: 'UNDIRECTED' } }
+            # 1. Project graph via GDS — scoped to saga via Cypher projection
+            await session.run(
+                """
+                CALL gds.graph.project.cypher($projection_name,
+                    'MATCH (n:Entity {group_id: $saga_id}) RETURN id(n) AS id, labels(n) AS labels',
+                    'MATCH (a:Entity {group_id: $saga_id})-[r:RELATES_TO]-(b:Entity {group_id: $saga_id}) RETURN id(a) AS source, id(b) AS target, type(r) AS type'
                 )
-            """)
+                """,
+                projection_name=projection_name,
+                saga_id=saga_id,
+            )
 
             # 2. Run Leiden
-            await session.run("""
-                CALL gds.leiden.write('saga-community', {
+            await session.run(
+                """
+                CALL gds.leiden.write($projection_name, {
                     writeProperty: 'community_id',
                     includeIntermediateCommunities: false
                 })
-            """)
+                """,
+                projection_name=projection_name,
+            )
 
-            # 3. Fetch communities (≥2 members)
+            # 3. Fetch communities (>=2 members)
             result = await session.run("""
                 MATCH (n:Entity {group_id: $saga_id})
                 WHERE n.community_id IS NOT NULL
@@ -79,7 +87,10 @@ async def run_community_clustering(driver: AsyncDriver, saga_id: str) -> dict[st
                 )
 
             # 5. Drop GDS projection
-            await session.run("CALL gds.graph.drop('saga-community', false)")
+            await session.run(
+                "CALL gds.graph.drop($projection_name, false)",
+                projection_name=projection_name,
+            )
 
             logger.info(
                 "community_clustering_complete",
@@ -88,20 +99,22 @@ async def run_community_clustering(driver: AsyncDriver, saga_id: str) -> dict[st
             )
             return {"communities_found": len(communities), "saga_id": saga_id}
 
-    except Exception as e:
+    except Exception:
         logger.warning(
             "community_clustering_failed",
             saga_id=saga_id,
-            error=str(e),
             exc_info=True,
         )
         # Best-effort cleanup: drop the projection if it was created
         try:
             async with driver.session() as session:
-                await session.run("CALL gds.graph.drop('saga-community', false)")
+                await session.run(
+                    "CALL gds.graph.drop($projection_name, false)",
+                    projection_name=projection_name,
+                )
         except Exception:
             pass
-        return {"communities_found": 0, "saga_id": saga_id, "error": str(e)}
+        return {"communities_found": 0, "saga_id": saga_id, "error": "community_clustering_failed"}
 
 
 async def _summarize_community(names: list[str], summaries: list[str]) -> str:

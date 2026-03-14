@@ -18,7 +18,7 @@ class NarrativeTemporalMapper:
     slot within that window, and each scene a per-second slot within the day.
     """
 
-    EPOCH: datetime = datetime(2000, 1, 1)
+    EPOCH: datetime = datetime(2000, 1, 1, tzinfo=timezone.utc)
     BOOK_OFFSET_DAYS: int = 10_000  # ~27 years per book
 
     @staticmethod

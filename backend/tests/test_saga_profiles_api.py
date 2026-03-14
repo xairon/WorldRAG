@@ -44,12 +44,18 @@ def _build_app(mock_redis: AsyncMock) -> FastAPI:
     return app
 
 
+async def _async_iter(items):
+    """Helper to create an async iterator from a list."""
+    for item in items:
+        yield item
+
+
 def _make_redis(*, get_value: str | None = None, keys_value: list[str] | None = None) -> AsyncMock:
     redis = AsyncMock()
     redis.get = AsyncMock(return_value=get_value)
     redis.set = AsyncMock(return_value=True)
     redis.delete = AsyncMock(return_value=1)
-    redis.keys = AsyncMock(return_value=keys_value or [])
+    redis.scan_iter = lambda match=None: _async_iter(keys_value or [])
     return redis
 
 
@@ -115,7 +121,7 @@ class TestGetSagaProfile:
 class TestListSagaProfiles:
     def test_empty_list(self, mock_redis: AsyncMock) -> None:
         """GET / returns 200 with total=0 when no saga profiles exist."""
-        mock_redis.keys = AsyncMock(return_value=[])
+        mock_redis.scan_iter = lambda match=None: _async_iter([])
         app = _build_app(mock_redis)
         from app.api.auth import require_auth
 
@@ -131,7 +137,7 @@ class TestListSagaProfiles:
 
     def test_list_returns_all_profiles(self, mock_redis: AsyncMock) -> None:
         """GET / returns summary items for each key found in Redis."""
-        mock_redis.keys = AsyncMock(return_value=[f"saga_profile:{SAGA_ID}"])
+        mock_redis.scan_iter = lambda match=None: _async_iter([f"saga_profile:{SAGA_ID}"])
         mock_redis.get = AsyncMock(return_value=PROFILE_JSON)
         app = _build_app(mock_redis)
         from app.api.auth import require_auth

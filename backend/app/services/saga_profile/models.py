@@ -1,6 +1,8 @@
 """Pydantic data models for SagaProfile — schema-level description of a novel saga's KG ontology."""
 
-from pydantic import BaseModel
+from typing import Literal
+
+from pydantic import BaseModel, Field
 
 
 class InducedEntityType(BaseModel):
@@ -11,7 +13,7 @@ class InducedEntityType(BaseModel):
     description: str
     instances_found: list[str] = []
     typical_attributes: list[str] = []
-    confidence: float  # 0.0–1.0
+    confidence: float = Field(ge=0.0, le=1.0)  # 0.0–1.0
 
 
 class InducedRelationType(BaseModel):
@@ -20,7 +22,7 @@ class InducedRelationType(BaseModel):
     relation_name: str  # snake_case
     source_type: str
     target_type: str
-    cardinality: str  # "1:1", "1:N", "N:N"
+    cardinality: str = Field(pattern=r"^[1N]:[1N]$")  # "1:1", "1:N", "N:1", "N:N"
     temporal: bool
     description: str
 
@@ -31,7 +33,7 @@ class InducedPattern(BaseModel):
     pattern_regex: str
     extraction_type: str
     example: str
-    confidence: float  # 0.0–1.0
+    confidence: float = Field(ge=0.0, le=1.0)  # 0.0–1.0
 
 
 class SagaProfile(BaseModel):
@@ -46,4 +48,4 @@ class SagaProfile(BaseModel):
     relation_types: list[InducedRelationType]
     text_patterns: list[InducedPattern]
     narrative_systems: list[str] = []
-    estimated_complexity: str = "medium"  # low, medium, high
+    estimated_complexity: Literal["low", "medium", "high"] = "medium"

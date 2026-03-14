@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -241,7 +241,7 @@ class TestIngestChapter:
         reference_time = call_kwargs.kwargs.get("reference_time")
         assert reference_time is not None
         # NarrativeTemporalMapper.to_datetime(2, 5) => EPOCH + timedelta(days=10_005)
-        expected = datetime(2000, 1, 1) + timedelta(days=10_005)
+        expected = datetime(2000, 1, 1, tzinfo=timezone.utc) + timedelta(days=10_005)
         assert reference_time == expected
 
     @pytest.mark.asyncio
