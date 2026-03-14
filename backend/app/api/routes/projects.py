@@ -181,12 +181,7 @@ async def list_books(slug: str, request: Request) -> JSONResponse:
     if existing is None:
         return JSONResponse(status_code=404, content={"detail": f"Project '{slug}' not found"})
     files = await svc.repo.list_files(str(existing["id"]))
-    serialized = []
-    for f in files:
-        item = {}
-        for k, v in f.items():
-            item[k] = v.isoformat() if hasattr(v, "isoformat") else (str(v) if not isinstance(v, (str, int, float, bool, type(None))) else v)
-        serialized.append(item)
+    serialized = [_serialize_project(f) for f in files]
     return JSONResponse(status_code=200, content=serialized)
 
 
@@ -253,14 +248,7 @@ async def upload_book(
     if file_row is None:
         return JSONResponse(status_code=500, content={"detail": "Failed to store book file"})
 
-    # Serialize datetimes in file_row
-    result = {}
-    for k, v in file_row.items():
-        if hasattr(v, "isoformat"):
-            result[k] = v.isoformat()
-        else:
-            result[k] = v
-    return JSONResponse(status_code=201, content=result)
+    return JSONResponse(status_code=201, content=_serialize_project(file_row))
 
 
 @router.post("/{slug}/extract", dependencies=[Depends(require_auth)], status_code=202)
