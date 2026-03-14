@@ -10,6 +10,7 @@ from functools import lru_cache
 
 import instructor
 from anthropic import AsyncAnthropic
+from langchain_ollama import ChatOllama
 from openai import AsyncOpenAI
 from pydantic import SecretStr
 
@@ -169,6 +170,24 @@ def get_langchain_llm(spec: str | None = None):
             )
             return primary.with_fallbacks([fallback])
         return primary
+
+    elif provider == "openrouter":
+        from langchain_openai import ChatOpenAI
+
+        if not settings.openrouter_api_key:
+            raise ValueError("OPENROUTER_API_KEY required for openrouter provider")
+        return ChatOpenAI(
+            model=model,
+            base_url="https://openrouter.ai/api/v1",
+            api_key=SecretStr(settings.openrouter_api_key),
+            temperature=0,
+        )
+
+    elif provider == "local":
+        return ChatOllama(
+            model=model,
+            base_url=settings.ollama_base_url,
+        )
 
     else:
         logger.warning("langchain_unknown_provider", provider=provider, fallback="openai")
