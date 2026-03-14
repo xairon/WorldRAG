@@ -455,18 +455,8 @@ WorldRAG/
 ## Testing
 
 ```bash
-# All new KG v2 tests (121 tests)
-uv run python -m pytest backend/tests/test_saga_profile_models.py \
-  backend/tests/test_narrative_temporal_mapper.py \
-  backend/tests/test_pydantic_generator.py \
-  backend/tests/test_graphiti_client.py \
-  backend/tests/test_graphiti_ingest.py \
-  backend/tests/test_saga_profile_inducer.py \
-  backend/tests/test_chat_v2_pipeline.py \
-  backend/tests/test_saga_profiles_api.py \
-  backend/tests/test_extract_graphiti_endpoint.py \
-  backend/tests/test_chat_service_v2.py \
-  backend/tests/test_community_clustering.py -v
+# Run all tests
+uv run python -m pytest backend/tests/ -v
 
 # Linting
 uv run ruff check backend/ --fix

@@ -257,7 +257,24 @@ class TestGetStats:
         assert result["slug"] == PROJECT_SLUG
 
 
+async def _noop_to_thread(fn, *args, **kwargs):
+    """Replacement for asyncio.to_thread in tests — just call fn directly."""
+    return fn(*args, **kwargs)
+
+
 class TestStoreBookFile:
+    @staticmethod
+    def _make_path_mocks():
+        """Create mock objects for Path that pass the C2 path traversal check."""
+        mock_file = MagicMock()
+        mock_dir = MagicMock()
+        # file_path.resolve() must start with file_dir.resolve()
+        mock_dir.resolve = MagicMock(return_value=MagicMock(__str__=lambda s: "/data/projects/slug"))
+        mock_file.resolve = MagicMock(return_value=MagicMock(__str__=lambda s: "/data/projects/slug/book1.epub"))
+        mock_dir.__truediv__ = MagicMock(return_value=mock_file)
+        mock_dir.exists = MagicMock(return_value=True)
+        return mock_file, mock_dir
+
     async def test_writes_file_to_disk(self):
         file_row = {
             "id": FILE_ID,
@@ -274,15 +291,13 @@ class TestStoreBookFile:
         )
         content = b"hello"
         with patch("app.services.project_service.Path") as mock_path:
-            mock_file = MagicMock()
-            mock_dir = MagicMock()
-            mock_dir.__truediv__ = MagicMock(return_value=mock_file)
-            mock_dir.exists = MagicMock(return_value=True)
+            mock_file, mock_dir = self._make_path_mocks()
             mock_path.return_value.__truediv__ = MagicMock(return_value=mock_dir)
             mock_file.write_bytes = MagicMock()
-            await svc.store_book_file(
-                PROJECT_SLUG, "book1.epub", content, 1, "application/epub+zip"
-            )
+            with patch("app.services.project_service.asyncio.to_thread", side_effect=_noop_to_thread):
+                await svc.store_book_file(
+                    PROJECT_SLUG, "book1.epub", content, 1, "application/epub+zip"
+                )
             mock_file.write_bytes.assert_called_once_with(content)
 
     async def test_calls_add_file_record(self):
@@ -296,13 +311,12 @@ class TestStoreBookFile:
             repo_add_file=file_row,
         )
         with patch("app.services.project_service.Path") as mock_path:
-            mock_file = MagicMock()
-            mock_dir = MagicMock()
-            mock_dir.__truediv__ = MagicMock(return_value=mock_file)
+            mock_file, mock_dir = self._make_path_mocks()
             mock_path.return_value.__truediv__ = MagicMock(return_value=mock_dir)
-            await svc.store_book_file(
-                PROJECT_SLUG, "book1.epub", b"data", 1, "application/epub+zip"
-            )
+            with patch("app.services.project_service.asyncio.to_thread", side_effect=_noop_to_thread):
+                await svc.store_book_file(
+                    PROJECT_SLUG, "book1.epub", b"data", 1, "application/epub+zip"
+                )
         svc._repo.add_file.assert_awaited_once()
 
     async def test_returns_file_record(self):
@@ -316,11 +330,10 @@ class TestStoreBookFile:
             repo_add_file=file_row,
         )
         with patch("app.services.project_service.Path") as mock_path:
-            mock_file = MagicMock()
-            mock_dir = MagicMock()
-            mock_dir.__truediv__ = MagicMock(return_value=mock_file)
+            mock_file, mock_dir = self._make_path_mocks()
             mock_path.return_value.__truediv__ = MagicMock(return_value=mock_dir)
-            result = await svc.store_book_file(
-                PROJECT_SLUG, "book1.epub", b"data", 1, "application/epub+zip"
-            )
+            with patch("app.services.project_service.asyncio.to_thread", side_effect=_noop_to_thread):
+                result = await svc.store_book_file(
+                    PROJECT_SLUG, "book1.epub", b"data", 1, "application/epub+zip"
+                )
         assert result == file_row

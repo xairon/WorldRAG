@@ -69,7 +69,7 @@ export default function ProjectGraphPage() {
   const hasData = graphData.nodes.length > 0
 
   return (
-    <div className="relative h-[600px] rounded-lg overflow-hidden border bg-background/50">
+    <div className="relative h-[calc(100vh-16rem)] rounded-lg overflow-hidden border bg-background/50">
       {hasData ? (
         <SigmaGraph
           data={graphData}

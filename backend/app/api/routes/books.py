@@ -732,6 +732,14 @@ async def extract_graphiti(
     if not book:
         raise NotFoundError("Book not found")
 
+    # H8: Validate book status before enqueue (same check as extract_book)
+    current_status = book.get("status", "")
+    if current_status not in ("completed", "extracted", "partial", "embedded"):
+        raise ConflictError(
+            f"Book status is '{current_status}'. "
+            "Extraction requires ingestion to be completed first."
+        )
+
     redis = http_request.app.state.redis
     existing_profile = await redis.get(f"saga_profile:{body.saga_id}")
     mode = "guided" if existing_profile else "discovery"

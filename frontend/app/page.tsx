@@ -24,14 +24,16 @@ const item = {
 export default function DashboardPage() {
   const { projects, setProjects, setLoading, loading } = useProjectStore()
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const fetchProjects = useCallback(async () => {
     setLoading(true)
+    setError(null)
     try {
       const res = await listProjects()
       setProjects(res.projects)
     } catch {
-      // silently handle — empty state will show
+      setError("Failed to load projects. Please try again.")
     } finally {
       setLoading(false)
     }
@@ -74,8 +76,25 @@ export default function DashboardPage() {
         </p>
       </motion.div>
 
+      {/* Error state */}
+      {error && (
+        <motion.div variants={item}>
+          <Card className="border-destructive/50 bg-destructive/5">
+            <CardContent className="flex flex-col items-center justify-center py-8 gap-3">
+              <p className="text-sm text-destructive font-medium">{error}</p>
+              <button
+                onClick={fetchProjects}
+                className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+              >
+                Retry
+              </button>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
+
       {/* Project grid */}
-      {projects.length === 0 ? (
+      {!error && projects.length === 0 ? (
         <motion.div variants={item}>
           <Card className="border-dashed">
             <CardContent className="flex flex-col items-center justify-center py-16">
@@ -96,7 +115,7 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
         </motion.div>
-      ) : (
+      ) : !error ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {projects.map((project: Project) => (
             <motion.div key={project.id} variants={item}>
@@ -129,7 +148,7 @@ export default function DashboardPage() {
             </Card>
           </motion.div>
         </div>
-      )}
+      ) : null}
 
       <CreateProjectDialog
         open={dialogOpen}

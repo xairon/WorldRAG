@@ -38,23 +38,23 @@ export function deleteProject(slug: string): Promise<void> {
   return apiFetch(`/projects/${slug}`, { method: "DELETE" })
 }
 
+// H10: Return type matches what the backend actually returns (project_file row)
 export function uploadBookToProject(
   slug: string,
   file: File,
   bookNum: number = 1,
-): Promise<{ file_id: string; book_id: string; chapters_found: number }> {
+): Promise<Record<string, unknown>> {
   const formData = new FormData()
   formData.append("file", file)
   formData.append("book_num", String(bookNum))
   return apiFetch(`/projects/${slug}/books`, { method: "POST", body: formData })
 }
 
+// H9: Removed bookId parameter — backend extracts per-project, not per-book
 export function triggerExtraction(
   slug: string,
-  bookId?: string,
 ): Promise<{ job_id: string; mode: string }> {
-  const params = bookId ? `?book_id=${bookId}` : ""
-  return apiFetch(`/projects/${slug}/extract${params}`, { method: "POST" })
+  return apiFetch(`/projects/${slug}/extract`, { method: "POST" })
 }
 
 export function getProjectStats(slug: string): Promise<Record<string, unknown>> {

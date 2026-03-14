@@ -57,8 +57,9 @@ export default function ProjectBooksPage() {
       setUploading(true)
       try {
         const bookNum = books.length + 1
+        // H10: Backend returns a project_file row, not chapters_found
         const result = await uploadBookToProject(params.slug, file, bookNum)
-        toast.success(`Uploaded: ${result.chapters_found} chapters found`)
+        toast.success(`Uploaded: ${result.filename ?? file.name}`)
         fetchBooks()
       } catch {
         toast.error("Upload failed")
@@ -71,10 +72,10 @@ export default function ProjectBooksPage() {
 
   const handleExtract = useCallback(
     async (bookId: string | null) => {
-      const id = bookId ?? undefined
       setExtractingId(bookId)
       try {
-        const result = await triggerExtraction(params.slug, id)
+        // H9: triggerExtraction extracts per-project, bookId not used
+        const result = await triggerExtraction(params.slug)
         toast.success(`Extraction started (${result.mode} mode)`)
       } catch {
         toast.error("Extraction failed to start")

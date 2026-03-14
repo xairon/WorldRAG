@@ -51,7 +51,7 @@ class NarrativeTemporalMapper:
         """Recover the narrative position from a datetime.
 
         Args:
-            dt: A naive datetime previously produced by to_datetime.
+            dt: A timezone-aware datetime previously produced by to_datetime.
 
         Returns:
             A (book_num, chapter_num, scene_order) tuple.

@@ -199,7 +199,7 @@ async def get_feedback(
     """Retrieve all feedback records for a conversation thread."""
     rows = await pool.fetch(
         """
-        SELECT id, thread_id, rating, comment, book_id, created_at
+        SELECT id, thread_id, message_id, rating, comment, book_id, created_at
         FROM chat_feedback
         WHERE thread_id = $1
         ORDER BY created_at DESC

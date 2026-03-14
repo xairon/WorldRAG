@@ -526,7 +526,10 @@ async def process_book_graphiti(
     Discovery Mode if saga_profile_json is None, Guided Mode otherwise.
     After Discovery Mode, auto-runs SagaProfileInducer and stores result in Redis.
     """
-    graphiti = ctx["graphiti"]
+    # C4: Graceful error when Graphiti is not in worker context
+    graphiti = ctx.get("graphiti")
+    if graphiti is None:
+        raise ValueError("Graphiti is not enabled. Set GRAPHITI_ENABLED=true.")
     neo4j_driver = ctx["neo4j_driver"]
     dlq = ctx.get("dlq")
 

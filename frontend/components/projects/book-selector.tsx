@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { listProjectBooks, type ProjectBook } from "@/lib/api/projects"
 
 interface BookSelectorProps {
@@ -11,19 +11,22 @@ interface BookSelectorProps {
 
 export function BookSelector({ slug, value, onChange }: BookSelectorProps) {
   const [books, setBooks] = useState<ProjectBook[]>([])
+  // H15: Track auto-selection with a ref to prevent infinite re-render
+  const autoSelectedRef = useRef(false)
 
   useEffect(() => {
     listProjectBooks(slug)
       .then((result) => {
         const extracted = result.filter((b) => b.book_id)
         setBooks(extracted)
-        // Auto-select first if none selected
-        if (!value && extracted.length > 0 && extracted[0].book_id) {
+        // Auto-select first if none selected (only once)
+        if (!autoSelectedRef.current && extracted.length > 0 && extracted[0].book_id) {
           onChange(extracted[0].book_id)
+          autoSelectedRef.current = true
         }
       })
       .catch(() => {})
-  }, [slug, value, onChange])
+  }, [slug]) // H15: only slug dependency — removed value and onChange
 
   if (books.length <= 1) return null
 

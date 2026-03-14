@@ -6,6 +6,7 @@ and the local filesystem (uploaded book files).
 
 from __future__ import annotations
 
+import asyncio
 import json
 import shutil
 from pathlib import Path
@@ -97,10 +98,13 @@ class ProjectService:
             books_count = await self._repo.count_books(slug)
             profile_raw = await self._redis.get(f"saga_profile:{slug}")
             has_profile = profile_raw is not None
+            # H11: entity_count defaults to 0 in list view to avoid N+1 Neo4j queries.
+            # TODO: Add a batch query or materialized count for entity_count in list_projects.
             enriched.append({
                 **row,
                 "books_count": books_count,
                 "has_profile": has_profile,
+                "entity_count": 0,
             })
         return enriched
 
@@ -139,9 +143,14 @@ class ProjectService:
         await self._redis.delete(f"saga_profile:{slug}")
 
         # 3. Neo4j: entities and communities belonging to this project
+        # C7: Scope deletes by label to avoid unbounded property scan
         async with self._neo4j.session() as session:
             await session.run(
-                "MATCH (n {group_id: $slug}) DETACH DELETE n",
+                "MATCH (n:Entity {group_id: $slug}) DETACH DELETE n",
+                {"slug": slug},
+            )
+            await session.run(
+                "MATCH (n:Episodic {group_id: $slug}) DETACH DELETE n",
                 {"slug": slug},
             )
             await session.run(
@@ -242,8 +251,16 @@ class ProjectService:
             raise ValueError(f"Invalid filename: {filename!r}")
 
         project_dir = Path(settings.project_data_dir) / slug
+        file_dir = project_dir
         file_path = project_dir / safe_name
-        file_path.write_bytes(file_content)
+
+        # C2: Path traversal check — ensure resolved path stays within project dir
+        resolved = file_path.resolve()
+        if not str(resolved).startswith(str(file_dir.resolve())):
+            raise ValueError(f"Path traversal detected: {filename!r}")
+
+        # C3: Use asyncio.to_thread to avoid blocking file I/O in async context
+        await asyncio.to_thread(file_path.write_bytes, file_content)
         logger.info(
             "book_file_written",
             slug=slug,

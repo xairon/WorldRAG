@@ -62,7 +62,7 @@ export default function ProjectChatPage() {
   }
 
   return (
-    <div className="flex h-[600px] rounded-lg border bg-background/50 overflow-hidden">
+    <div className="flex h-[calc(100vh-16rem)] rounded-lg border bg-background/50 overflow-hidden">
       <ThreadSidebar />
 
       <div className="flex flex-1 flex-col min-w-0 p-4">
@@ -99,15 +99,15 @@ export default function ProjectChatPage() {
             className="flex-1"
           />
           {isStreaming ? (
-            <Button type="button" variant="outline" onClick={stop}>
+            <Button type="button" variant="outline" onClick={stop} aria-label="Stop generation">
               <StopCircle className="h-4 w-4" />
             </Button>
           ) : (
-            <Button type="submit" disabled={!bookId || !input.trim()}>
+            <Button type="submit" disabled={!bookId || !input.trim()} aria-label="Send message">
               <Send className="h-4 w-4" />
             </Button>
           )}
-          <Button type="button" variant="ghost" size="sm" onClick={handleClear} disabled={isStreaming || messages.length <= 1}>
+          <Button type="button" variant="ghost" size="sm" onClick={handleClear} disabled={isStreaming || messages.length <= 1} aria-label="Clear conversation">
             <Trash2 className="h-4 w-4" />
           </Button>
         </form>

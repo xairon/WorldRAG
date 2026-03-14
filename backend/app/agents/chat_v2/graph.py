@@ -241,17 +241,23 @@ def build_chat_v2_graph(graphiti: Any, neo4j_driver: Any) -> StateGraph:
 
         query_hint = query  # default: use full query as hint
 
-        # Build WHERE clause with optional max_chapter spoiler guard
-        where_clause = "WHERE toLower(n.name) CONTAINS toLower($query_hint)"
+        # C5: Use two static queries instead of string concatenation to avoid
+        # any risk of Cypher injection (all clauses are fixed strings).
         if max_chapter is not None:
-            where_clause += " AND (n.chapter_num IS NULL OR n.chapter_num <= $max_chapter)"
-
-        cypher = (
-            "MATCH (n:Entity {group_id: $saga_id}) "
-            f"{where_clause} "
-            "RETURN n.name AS name, n.summary AS summary, labels(n) AS labels "
-            "LIMIT 20"
-        )
+            cypher = (
+                "MATCH (n:Entity {group_id: $saga_id}) "
+                "WHERE toLower(n.name) CONTAINS toLower($query_hint) "
+                "AND (n.chapter_num IS NULL OR n.chapter_num <= $max_chapter) "
+                "RETURN n.name AS name, n.summary AS summary, labels(n) AS labels "
+                "LIMIT 20"
+            )
+        else:
+            cypher = (
+                "MATCH (n:Entity {group_id: $saga_id}) "
+                "WHERE toLower(n.name) CONTAINS toLower($query_hint) "
+                "RETURN n.name AS name, n.summary AS summary, labels(n) AS labels "
+                "LIMIT 20"
+            )
 
         logger.info("chat_v2_cypher_lookup", saga_id=saga_id, book_id=book_id, query_hint=query_hint[:120])
 
@@ -441,7 +447,8 @@ def build_chat_v2_graph(graphiti: Any, neo4j_driver: Any) -> StateGraph:
             }
 
         truncated_ctx = context_text[:_CTX_MAX_CHARS]
-        pairs = [(claim, truncated_ctx) for claim in claims]
+        # M33: NLI pair order is (premise, hypothesis) = (context, claim)
+        pairs = [(truncated_ctx, claim) for claim in claims]
 
         try:
             from app.llm.local_models import get_nli_model

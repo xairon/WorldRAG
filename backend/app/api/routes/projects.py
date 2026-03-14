@@ -217,9 +217,17 @@ async def upload_book(
             content={"detail": f"Unsupported format: {suffix}. Allowed: {', '.join(allowed)}"},
         )
 
+    # C1: Check Content-Length header BEFORE reading file into memory
+    MAX_FILE_SIZE = 100 * 1024 * 1024  # 100 MB
+    content_length = request.headers.get("content-length")
+    if content_length and int(content_length) > MAX_FILE_SIZE:
+        return JSONResponse(
+            status_code=413,
+            content={"detail": f"File too large (max {MAX_FILE_SIZE // (1024 * 1024)}MB)"},
+        )
+
     content = await file.read()
 
-    MAX_FILE_SIZE = 100 * 1024 * 1024  # 100 MB
     if len(content) > MAX_FILE_SIZE:
         return JSONResponse(
             status_code=413,
@@ -275,12 +283,15 @@ async def extract_project(slug: str, request: Request) -> JSONResponse:
     existing_profile = await redis.get(f"saga_profile:{slug}")
     mode = "guided" if existing_profile else "discovery"
 
+    # H18: book_num=1 is a default; the worker processes chapters sequentially
+    # from file records. Multi-book projects should determine book_num from
+    # the project_files table. This is acceptable for single-book extraction.
     job = await arq_pool.enqueue_job(
         "process_book_graphiti",
         slug,
         slug,  # saga_id = slug
         existing.get("name", slug),  # saga_name
-        1,  # book_num default
+        1,  # book_num default — see comment above
         existing_profile,
         _queue_name="worldrag:arq",
         _job_id=f"graphiti-project:{slug}",
