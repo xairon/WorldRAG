@@ -60,6 +60,28 @@ class Citation(BaseModel):
     position: int | None = None
 
 
+class GeneratedCitation(BaseModel):
+    """Rich citation produced by the structured generation node."""
+
+    chapter: int
+    position: int | None = None
+    claim: str = ""       # the specific claim being cited
+    source_span: str = "" # exact text from the chunk (Phase 2 verification)
+
+
+class GenerationOutput(BaseModel):
+    """Structured output from the generation node.
+
+    Stored in state["generation_output"] as a dict.
+    state["generation"] is kept for backward compatibility (= answer).
+    """
+
+    answer: str
+    citations: list[GeneratedCitation] = []
+    entities_mentioned: list[str] = []
+    confidence: float = 0.0  # filled by nli_check post-generation
+
+
 class ChatResponse(BaseModel):
     """Response schema for a chat query."""
 
@@ -70,3 +92,5 @@ class ChatResponse(BaseModel):
     chunks_after_rerank: int = 0
     thread_id: str | None = None
     citations: list[Citation] = []
+    confidence: float = 0.0          # NLI faithfulness score
+    entities_mentioned: list[str] = []  # entities referenced in the answer

@@ -208,7 +208,8 @@ class ChatService:
         result = await self._graph.ainvoke(state_input, config=config)
 
         # Map graph output to ChatResponse
-        answer = result.get("generation", "") or "I wasn't able to generate an answer."
+        gen_output = result.get("generation_output", {})
+        answer = gen_output.get("answer") or result.get("generation", "") or "I wasn't able to generate an answer."
 
         sources: list[SourceChunk] = []
         if include_sources:
@@ -268,6 +269,8 @@ class ChatService:
             chunks_after_rerank=len(result.get("reranked_chunks", [])),
             thread_id=thread_id,
             citations=citations,
+            confidence=gen_output.get("confidence", result.get("faithfulness_score", 0.0)),
+            entities_mentioned=gen_output.get("entities_mentioned", []),
         )
 
     async def query_stream(

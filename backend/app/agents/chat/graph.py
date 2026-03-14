@@ -58,14 +58,22 @@ def _route_after_generate(state: dict[str, Any]) -> str:
 
 
 def _route_after_faithfulness(state: dict[str, Any]) -> str:
-    """After faithfulness check: pass, retry, or give up."""
-    score = state.get("faithfulness_score", 0.0)
+    """After faithfulness check: read faithfulness_passed, retry, or give up."""
+    passed = state.get("faithfulness_passed", False)
+    # Fallback: legacy score-based check for tests that don't set faithfulness_passed
+    if not passed:
+        score = state.get("faithfulness_score", 0.0)
+        passed = score >= FAITHFULNESS_THRESHOLD
     retries = state.get("retries", 0)
 
-    if score >= FAITHFULNESS_THRESHOLD:
+    if passed:
         return "summarize_memory"
     if retries >= MAX_RETRIES:
-        logger.warning("faithfulness_max_retries", score=score, retries=retries)
+        logger.warning(
+            "faithfulness_max_retries",
+            score=state.get("faithfulness_score", 0.0),
+            retries=retries,
+        )
         return "summarize_memory"
     return "rewrite_query"
 
