@@ -19,6 +19,40 @@ from app.services.saga_profile.temporal import NarrativeTemporalMapper
 logger = get_logger(__name__)
 
 
+def _build_default_llm_client() -> Any:
+    """Build a Graphiti-compatible LLM client from app settings.
+
+    Uses Gemini via OpenAI-compatible API (generativelanguage.googleapis.com).
+    Falls back to OpenAI if GEMINI_API_KEY is not set.
+    """
+    from app.config import settings
+
+    try:
+        from graphiti_core.llm_client.config import LLMConfig
+        from graphiti_core.llm_client.openai_client import OpenAIClient
+
+        if settings.gemini_api_key:
+            config = LLMConfig(
+                api_key=settings.gemini_api_key,
+                model="gemini-2.5-flash",
+                base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+                small_model="gemini-2.5-flash",
+            )
+            logger.info("graphiti_llm_configured", provider="gemini")
+            return OpenAIClient(config=config)
+
+        if settings.openai_api_key:
+            config = LLMConfig(api_key=settings.openai_api_key, model="gpt-4o-mini")
+            logger.info("graphiti_llm_configured", provider="openai")
+            return OpenAIClient(config=config)
+
+        logger.warning("graphiti_no_llm_key", detail="Set GEMINI_API_KEY or OPENAI_API_KEY")
+        return None
+    except Exception:
+        logger.warning("graphiti_llm_config_failed", exc_info=True)
+        return None
+
+
 class GraphitiClient:
     """Thin wrapper around :class:`graphiti_core.Graphiti`.
 
@@ -48,6 +82,11 @@ class GraphitiClient:
                 override. If *None* Graphiti uses its default embedder.
         """
         user, password = neo4j_auth
+
+        # Auto-configure LLM client from app settings if not provided
+        if llm_client is None:
+            llm_client = _build_default_llm_client()
+
         self._client: Graphiti = Graphiti(
             uri=neo4j_uri,
             user=user,
