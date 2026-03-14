@@ -208,6 +208,15 @@ async def upload_book(
     if not file.filename:
         return JSONResponse(status_code=422, content={"detail": "No filename provided"})
 
+    # Duplicate check: reject if same filename already exists in project
+    existing_files = await svc.repo.list_files(str(existing["id"]))
+    for ef in existing_files:
+        if ef.get("filename") == file.filename:
+            return JSONResponse(
+                status_code=409,
+                content={"detail": f"File '{file.filename}' already uploaded to this project"},
+            )
+
     suffix = Path(file.filename).suffix.lower()
     allowed = {".epub", ".pdf", ".txt"}
     if suffix not in allowed:

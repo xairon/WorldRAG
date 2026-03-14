@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useParams } from "next/navigation"
-import { Upload, Play, BookOpen, FileText, Loader2 } from "lucide-react"
+import { Upload, Play, BookOpen, FileText, Loader2, Trash2, AlertCircle } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -33,7 +33,7 @@ export default function ProjectBooksPage() {
   const [books, setBooks] = useState<ProjectBook[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
-  const [extractingId, setExtractingId] = useState<string | null>(null)
+  const [extracting, setExtracting] = useState(false)
 
   const fetchBooks = useCallback(async () => {
     try {
@@ -54,15 +54,23 @@ export default function ProjectBooksPage() {
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0]
       if (!file) return
+
+      // Reset input so same file can be selected again
+      e.target.value = ""
+
       setUploading(true)
       try {
         const bookNum = books.length + 1
-        // H10: Backend returns a project_file row, not chapters_found
-        const result = await uploadBookToProject(params.slug, file, bookNum)
-        toast.success(`Uploaded: ${result.filename ?? file.name}`)
-        fetchBooks()
-      } catch {
-        toast.error("Upload failed")
+        await uploadBookToProject(params.slug, file, bookNum)
+        toast.success(`"${file.name}" uploaded successfully`)
+        await fetchBooks()
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Upload failed"
+        if (message.includes("409") || message.includes("already")) {
+          toast.error("This file has already been uploaded")
+        } else {
+          toast.error(message)
+        }
       } finally {
         setUploading(false)
       }
@@ -70,21 +78,21 @@ export default function ProjectBooksPage() {
     [params.slug, books.length, fetchBooks],
   )
 
-  const handleExtract = useCallback(
-    async (bookId: string | null) => {
-      setExtractingId(bookId)
-      try {
-        // H9: triggerExtraction extracts per-project, bookId not used
-        const result = await triggerExtraction(params.slug)
-        toast.success(`Extraction started (${result.mode} mode)`)
-      } catch {
-        toast.error("Extraction failed to start")
-      } finally {
-        setExtractingId(null)
-      }
-    },
-    [params.slug],
-  )
+  const handleExtract = useCallback(async () => {
+    setExtracting(true)
+    try {
+      const result = await triggerExtraction(params.slug)
+      toast.success(
+        result.mode === "discovery"
+          ? "Extraction started — this is the first book, ontology will be auto-discovered"
+          : "Extraction started — using discovered ontology from first book"
+      )
+    } catch {
+      toast.error("Extraction failed to start")
+    } finally {
+      setExtracting(false)
+    }
+  }, [params.slug])
 
   if (loading) {
     return (
@@ -94,12 +102,33 @@ export default function ProjectBooksPage() {
     )
   }
 
+  const hasBooks = books.length > 0
+
   return (
     <div className="space-y-6">
+      {/* Step indicator */}
+      {!hasBooks && (
+        <Card className="border-primary/20 bg-primary/5">
+          <CardContent className="py-4">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="h-5 w-5 text-primary mt-0.5 shrink-0" />
+              <div className="text-sm">
+                <p className="font-medium">Getting started</p>
+                <p className="text-muted-foreground mt-1">
+                  1. Upload an EPUB file below<br />
+                  2. Click "Start Extraction" to build the knowledge graph<br />
+                  3. Explore the graph and chat in the other tabs
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Book list */}
-      {books.length > 0 && (
+      {hasBooks && (
         <div className="space-y-3">
-          {books.map((book) => (
+          {books.map((book, idx) => (
             <Card key={book.id} className="transition-colors hover:border-primary/20">
               <CardContent className="flex items-center gap-4 py-4">
                 <div className="rounded-lg bg-muted/50 p-2.5">
@@ -109,42 +138,20 @@ export default function ProjectBooksPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-sm truncate">
-                      {book.filename}
+                      {book.filename.replace(/\.[^.]+$/, "")}
                     </span>
                     <Badge variant="outline" className="text-[10px] shrink-0">
-                      Book {book.book_num}
+                      Book {idx + 1}
                     </Badge>
                   </div>
                   <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
                     <span>{formatFileSize(book.file_size)}</span>
                     <span>{formatDate(book.uploaded_at)}</span>
-                    {book.book_id ? (
-                      <Badge
-                        variant="secondary"
-                        className="text-[10px] bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
-                      >
-                        Parsed
-                      </Badge>
-                    ) : (
-                      <Badge variant="secondary" className="text-[10px]">
-                        Pending
-                      </Badge>
-                    )}
+                    <Badge variant="secondary" className="text-[10px]">
+                      Uploaded
+                    </Badge>
                   </div>
                 </div>
-
-                {book.book_id && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleExtract(book.book_id)}
-                    disabled={extractingId === book.book_id}
-                    className="shrink-0"
-                  >
-                    <Play className="h-3.5 w-3.5 mr-1.5" />
-                    {extractingId === book.book_id ? "Starting..." : "Extract"}
-                  </Button>
-                )}
               </CardContent>
             </Card>
           ))}
@@ -159,12 +166,10 @@ export default function ProjectBooksPage() {
           </div>
           <div className="text-center">
             <p className="text-sm font-medium">
-              {books.length === 0
-                ? "Upload the first book"
-                : `Add book ${books.length + 1} to the saga`}
+              {!hasBooks ? "Upload the first book of the saga" : `Add book ${books.length + 1}`}
             </p>
             <p className="text-xs text-muted-foreground mt-1">
-              EPUB, PDF, or TXT
+              EPUB, PDF, or TXT — max 100 MB
             </p>
           </div>
           <label className="cursor-pointer">
@@ -185,18 +190,28 @@ export default function ProjectBooksPage() {
         </CardContent>
       </Card>
 
-      {/* Extract all button */}
-      {books.some((b) => b.book_id) && (
-        <div className="flex justify-end">
-          <Button
-            onClick={() => handleExtract(null)}
-            disabled={extractingId !== null}
-            size="sm"
-          >
-            <Play className="h-4 w-4 mr-2" />
-            Extract All Books
-          </Button>
-        </div>
+      {/* Extract button */}
+      {hasBooks && (
+        <Card className="bg-primary/5 border-primary/20">
+          <CardContent className="flex items-center justify-between py-4">
+            <div>
+              <p className="text-sm font-medium">Build Knowledge Graph</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {books.length === 1
+                  ? "Discovery mode — WorldRAG will analyze the book and discover the universe's ontology"
+                  : `Guided mode — uses the ontology discovered from book 1 to extract ${books.length} books`}
+              </p>
+            </div>
+            <Button
+              onClick={handleExtract}
+              disabled={extracting}
+              className="shrink-0"
+            >
+              <Play className="h-4 w-4 mr-2" />
+              {extracting ? "Starting..." : "Start Extraction"}
+            </Button>
+          </CardContent>
+        </Card>
       )}
     </div>
   )
