@@ -31,7 +31,7 @@ async def rerank_results(state: dict[str, Any]) -> dict[str, Any]:
         return {"reranked_chunks": []}
 
     reranker = get_local_reranker()
-    texts = [chunk["text"] for chunk in fused]
+    texts = [chunk.get("text") or "" for chunk in fused]
 
     loop = asyncio.get_running_loop()
     ranked = await loop.run_in_executor(
@@ -42,7 +42,9 @@ async def rerank_results(state: dict[str, Any]) -> dict[str, Any]:
     # Filter to top-N and attach relevance_score
     top = ranked[:RERANK_TOP_N]
     result = [
-        {**fused[r["corpus_id"]], "relevance_score": float(r["score"])} for r in top
+        {**fused[r["corpus_id"]], "relevance_score": float(r["score"])}
+        for r in top
+        if r["corpus_id"] < len(fused)
     ]
 
     logger.info(

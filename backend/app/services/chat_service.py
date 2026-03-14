@@ -114,6 +114,9 @@ class ChatService:
     _shared_embedder: Any = None
     _shared_driver: Any = None  # Track driver identity for invalidation (N5 fix)
     _shared_checkpointer: Any = None
+    # Note: asyncio is single-threaded (cooperative). The entire __init__ block
+    # has no await points, so the check-and-set of _compiled_graph is atomic
+    # within the event loop — no lock needed.
 
     def __init__(self, driver: AsyncDriver, checkpointer: Any = None) -> None:
         self.repo = Neo4jRepository(driver)
@@ -209,7 +212,11 @@ class ChatService:
 
         # Map graph output to ChatResponse
         gen_output = result.get("generation_output", {})
-        answer = gen_output.get("answer") or result.get("generation", "") or "I wasn't able to generate an answer."
+        answer = (
+            gen_output.get("answer")
+            or result.get("generation", "")
+            or "I wasn't able to generate an answer."
+        )
 
         sources: list[SourceChunk] = []
         if include_sources:

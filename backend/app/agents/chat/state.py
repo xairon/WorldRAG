@@ -44,6 +44,7 @@ class ChatAgentState(TypedDict, total=False):
     # -- Generation --
     context: str
     generation: str
+    generation_output: dict[str, Any]  # structured output (answer, citations, entities, confidence)
     citations: list[dict[str, Any]]
 
     # -- Quality control --

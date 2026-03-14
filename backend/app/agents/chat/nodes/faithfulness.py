@@ -22,6 +22,7 @@ Adaptive thresholds (route → minimum score to pass):
 from __future__ import annotations
 
 import asyncio
+import copy
 import math
 import re
 from typing import Any
@@ -124,28 +125,26 @@ async def check_faithfulness(state: dict[str, Any]) -> dict[str, Any]:
     try:
         nli_model = get_nli_model()
         loop = asyncio.get_running_loop()
-        raw_scores = await loop.run_in_executor(
-            None, lambda: nli_model.predict(pairs).tolist()
-        )
+        raw_scores = await loop.run_in_executor(None, lambda: nli_model.predict(pairs).tolist())
         claim_scores, has_contradiction = _nli_scores_to_faithfulness(raw_scores)
         faith_score = sum(claim_scores) / len(claim_scores)
         passed = faith_score >= threshold and not has_contradiction
-        reason = (
-            f"NLI score {faith_score:.2f} (threshold {threshold})"
-            + (" — contradiction detected" if has_contradiction else "")
+        reason = f"NLI score {faith_score:.2f} (threshold {threshold})" + (
+            " — contradiction detected" if has_contradiction else ""
         )
     except Exception:  # noqa: BLE001
         logger.warning("faithfulness_nli_failed", route=route, exc_info=True)
         # Default to neutral (0.5) on error — neither pass nor fail forcefully
         faith_score = 0.5
-        passed = 0.5 >= threshold
+        passed = threshold <= 0.5
         has_contradiction = False
         reason = "NLI model error, defaulting to 0.5"
 
-    # Update generation_output confidence if present
+    # Update generation_output confidence if present (deep copy to avoid shared state)
     gen_output = state.get("generation_output", {})
     if isinstance(gen_output, dict):
-        gen_output = {**gen_output, "confidence": faith_score}
+        gen_output = copy.deepcopy(gen_output)
+        gen_output["confidence"] = faith_score
 
     logger.info(
         "faithfulness_check_completed",

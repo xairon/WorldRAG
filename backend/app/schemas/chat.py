@@ -68,8 +68,8 @@ class GeneratedCitation(BaseModel):
 
     chapter: int
     position: int | None = None
-    claim: str = ""       # the specific claim being cited
-    source_span: str = "" # exact text from the chunk (Phase 2 verification)
+    claim: str = ""  # the specific claim being cited
+    source_span: str = ""  # exact text from the chunk (Phase 2 verification)
 
 
 class GenerationOutput(BaseModel):
@@ -100,6 +100,7 @@ class FeedbackResponse(BaseModel):
 
     id: int
     thread_id: str
+    message_id: str | None = None
     rating: int
     comment: str | None = None
     book_id: str | None = None
@@ -116,5 +117,5 @@ class ChatResponse(BaseModel):
     chunks_after_rerank: int = 0
     thread_id: str | None = None
     citations: list[Citation] = []
-    confidence: float = 0.0          # NLI faithfulness score
+    confidence: float = 0.0  # NLI faithfulness score
     entities_mentioned: list[str] = []  # entities referenced in the answer

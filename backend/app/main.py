@@ -111,12 +111,32 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     try:
         pg_pool = await asyncpg.create_pool(settings.postgres_uri, min_size=2, max_size=10)
         logger.info("postgres_connected", host=_safe_host(settings.postgres_uri))
-        # Run migrations (idempotent — all statements use IF NOT EXISTS)
+        # Migration tracking table (bootstrap — always safe to run)
+        await pg_pool.execute(
+            """
+            CREATE TABLE IF NOT EXISTS schema_migrations (
+                filename TEXT PRIMARY KEY,
+                applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            """
+        )
+        # Run only new migrations
         migrations_dir = Path(__file__).resolve().parents[2] / "scripts" / "migrations"
         if migrations_dir.exists():
             for sql_file in sorted(migrations_dir.glob("*.sql")):
+                already_applied = await pg_pool.fetchval(
+                    "SELECT 1 FROM schema_migrations WHERE filename = $1",
+                    sql_file.name,
+                )
+                if already_applied:
+                    continue
                 sql = sql_file.read_text(encoding="utf-8")
-                await pg_pool.execute(sql)
+                async with pg_pool.acquire() as conn, conn.transaction():
+                    await conn.execute(sql)
+                    await conn.execute(
+                        "INSERT INTO schema_migrations (filename) VALUES ($1)",
+                        sql_file.name,
+                    )
                 logger.info("postgres_migration_applied", file=sql_file.name)
     except (ConnectionError, OSError) as e:
         logger.warning(

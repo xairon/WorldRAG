@@ -127,7 +127,7 @@ async def submit_feedback(
         """
         INSERT INTO chat_feedback (thread_id, message_id, rating, comment, book_id)
         VALUES ($1, $2, $3, $4, $5)
-        RETURNING id, thread_id, rating, comment, book_id, created_at
+        RETURNING id, thread_id, message_id, rating, comment, book_id, created_at
         """,
         body.thread_id,
         body.message_id,
