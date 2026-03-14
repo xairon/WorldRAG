@@ -111,6 +111,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     try:
         pg_pool = await asyncpg.create_pool(settings.postgres_uri, min_size=2, max_size=10)
         logger.info("postgres_connected", host=_safe_host(settings.postgres_uri))
+        # Run migrations (idempotent — all statements use IF NOT EXISTS)
+        migrations_dir = Path(__file__).resolve().parents[2] / "scripts" / "migrations"
+        if migrations_dir.exists():
+            for sql_file in sorted(migrations_dir.glob("*.sql")):
+                sql = sql_file.read_text(encoding="utf-8")
+                await pg_pool.execute(sql)
+                logger.info("postgres_migration_applied", file=sql_file.name)
     except (ConnectionError, OSError) as e:
         logger.warning(
             "postgres_connection_failed", host=_safe_host(settings.postgres_uri), error=str(e)

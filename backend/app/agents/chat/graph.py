@@ -29,17 +29,23 @@ MAX_RETRIES = 2
 
 
 def _route_after_router(state: dict[str, Any]) -> str:
-    """Conditional edge after router: dispatch to the right path.
+    """Conditional edge after router: dispatch based on 6 intent routes.
 
-    Maps 6 intent routes to the 3 existing graph paths.
-    Full 6-path topology is wired in Task 18 (graph rewire).
+    Phase 1 topology (implemented):
+    - factual_lookup  → kg_query → context_assembly → generate → faithfulness
+    - entity_qa / relationship_qa / analytical → query_transform → hyde → retrieve → rerank → dedup → context → generate → faithfulness
+    - timeline_qa     → same as above + temporal_sort (no-op for other routes)
+    - conversational  → generate (direct, no retrieval)
+
+    Phase 2 additions (not yet built):
+    - analytical: decompose_query → sequential_sub_retrieve → merge_contexts
     """
     route = state.get("route", "entity_qa")
     if route == "factual_lookup":
         return "kg_query"
     if route == "conversational":
         return "generate"
-    # entity_qa, relationship_qa, timeline_qa, analytical → hybrid RAG
+    # entity_qa, relationship_qa, timeline_qa, analytical → hybrid RAG path
     return "query_transform"
 
 

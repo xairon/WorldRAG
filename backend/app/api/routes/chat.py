@@ -16,12 +16,13 @@ from fastapi import APIRouter, Depends, Query, Request
 from sse_starlette.sse import EventSourceResponse
 
 from app.api.auth import require_auth
-from app.api.dependencies import get_neo4j
+from app.api.dependencies import get_neo4j, get_postgres
 from app.core.logging import get_logger
-from app.schemas.chat import ChatRequest, ChatResponse
+from app.schemas.chat import ChatRequest, ChatResponse, FeedbackRequest, FeedbackResponse
 from app.services.chat_service import ChatService
 
 if TYPE_CHECKING:
+    import asyncpg
     from neo4j import AsyncDriver
 
 logger = get_logger(__name__)
@@ -104,3 +105,62 @@ async def chat_stream(
             yield event
 
     return EventSourceResponse(event_generator())
+
+
+@router.post(
+    "/feedback",
+    dependencies=[Depends(require_auth)],
+    response_model=FeedbackResponse,
+    status_code=201,
+)
+async def submit_feedback(
+    body: FeedbackRequest,
+    pool: asyncpg.Pool = Depends(get_postgres),
+) -> FeedbackResponse:
+    """Submit a thumbs-up / thumbs-down rating for a chat answer.
+
+    ``thread_id`` links the rating back to the conversation.
+    ``rating`` must be ``1`` (positive) or ``-1`` (negative).
+    ``comment`` is optional free-text feedback.
+    """
+    row = await pool.fetchrow(
+        """
+        INSERT INTO chat_feedback (thread_id, message_id, rating, comment, book_id)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING id, thread_id, rating, comment, book_id, created_at
+        """,
+        body.thread_id,
+        body.message_id,
+        body.rating,
+        body.comment,
+        body.book_id,
+    )
+    logger.info(
+        "chat_feedback_submitted",
+        thread_id=body.thread_id,
+        rating=body.rating,
+        has_comment=bool(body.comment),
+    )
+    return FeedbackResponse(**dict(row))
+
+
+@router.get(
+    "/feedback/{thread_id}",
+    dependencies=[Depends(require_auth)],
+    response_model=list[FeedbackResponse],
+)
+async def get_feedback(
+    thread_id: str,
+    pool: asyncpg.Pool = Depends(get_postgres),
+) -> list[FeedbackResponse]:
+    """Retrieve all feedback records for a conversation thread."""
+    rows = await pool.fetch(
+        """
+        SELECT id, thread_id, rating, comment, book_id, created_at
+        FROM chat_feedback
+        WHERE thread_id = $1
+        ORDER BY created_at DESC
+        """,
+        thread_id,
+    )
+    return [FeedbackResponse(**dict(row)) for row in rows]

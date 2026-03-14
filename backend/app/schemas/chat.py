@@ -6,6 +6,9 @@ Vector search → Rerank → Graph context → LLM generation.
 
 from __future__ import annotations
 
+from datetime import datetime
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -80,6 +83,27 @@ class GenerationOutput(BaseModel):
     citations: list[GeneratedCitation] = []
     entities_mentioned: list[str] = []
     confidence: float = 0.0  # filled by nli_check post-generation
+
+
+class FeedbackRequest(BaseModel):
+    """Request schema for submitting answer feedback."""
+
+    thread_id: str = Field(..., min_length=1, max_length=200, pattern=r"^[\w\-.:]+$")
+    rating: Literal[1, -1] = Field(..., description="1 = thumbs up, -1 = thumbs down")
+    comment: str | None = Field(default=None, max_length=2000)
+    message_id: str | None = Field(default=None, max_length=200)
+    book_id: str | None = Field(default=None, max_length=200)
+
+
+class FeedbackResponse(BaseModel):
+    """Response schema for a feedback record."""
+
+    id: int
+    thread_id: str
+    rating: int
+    comment: str | None = None
+    book_id: str | None = None
+    created_at: datetime
 
 
 class ChatResponse(BaseModel):

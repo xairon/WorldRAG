@@ -57,6 +57,16 @@ async def get_ontology(request: Request) -> OntologyLoader:
     return request.app.state.ontology
 
 
+async def get_postgres(request: Request):
+    """Get asyncpg connection pool from app state."""
+    pool = getattr(request.app.state, "pg_pool", None)
+    if pool is None:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=503, detail="Database not available")
+    return pool
+
+
 async def get_neo4j_session(request: Request) -> AsyncGenerator:
     """Get a Neo4j async session (auto-closed)."""
     driver: AsyncDriver = request.app.state.neo4j_driver
