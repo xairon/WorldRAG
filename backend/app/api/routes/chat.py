@@ -20,7 +20,6 @@ from app.api.dependencies import get_neo4j, get_postgres
 from app.config import settings
 from app.core.logging import get_logger
 from app.schemas.chat import ChatRequest, ChatResponse, FeedbackRequest, FeedbackResponse
-from app.services.chat_service import ChatService
 
 if TYPE_CHECKING:
     import asyncpg
@@ -73,6 +72,8 @@ async def chat_query(
             max_chapter=request.max_chapter,
             thread_id=request.thread_id,
         )
+    from app.services.chat_service import ChatService
+
     service = ChatService(driver, checkpointer=checkpointer)
     return await service.query(
         query=request.query,
@@ -133,6 +134,8 @@ async def chat_stream(
                 yield event
 
         return EventSourceResponse(event_generator_v2())
+
+    from app.services.chat_service import ChatService
 
     service = ChatService(driver, checkpointer=checkpointer)
 
