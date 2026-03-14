@@ -3086,28 +3086,28 @@ git commit -m "feat(frontend): add confidence indicator badge"
 
 ## Final Verification
 
-- [ ] **Step 1: Run full backend test suite**
+- [x] **Step 1: Run full backend test suite**
 
 ```bash
 cd backend && python -m pytest tests/ -x -v
 ```
 Expected: All tests pass.
 
-- [ ] **Step 2: Run ruff linter**
+- [x] **Step 2: Run ruff linter**
 
 ```bash
 cd backend && python -m ruff check . --fix && python -m ruff format .
 ```
 Expected: Clean.
 
-- [ ] **Step 3: Run frontend build**
+- [x] **Step 3: Run frontend build**
 
 ```bash
 cd frontend && npm run build
 ```
 Expected: Build succeeds.
 
-- [ ] **Step 4: Final commit if any fixes needed**
+- [x] **Step 4: Final commit if any fixes needed**
 
 ```bash
 git add -A

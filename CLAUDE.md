@@ -16,8 +16,8 @@ WorldRAG is a SOTA Knowledge Graph construction system for fiction novel univers
 - **Monitoring**: LangFuse (self-hosted) + structlog
 - **Task Queue**: arq + Redis
 - **Embeddings**: VoyageAI (voyage-3.5) via batch pipeline
-- **Reranker**: Cohere (rerank-v3.5) — built, not yet wired to query
-- **Checkpointing**: PostgreSQL (LangGraph AsyncPostgresSaver) — connected, not yet used
+- **Reranker**: zerank-1-small (local CrossEncoder, sentence-transformers) — wired to chat pipeline
+- **Checkpointing**: PostgreSQL (LangGraph AsyncPostgresSaver) — active in chat pipeline
 
 ## Key Commands
 
@@ -64,12 +64,13 @@ WorldRAG/
 │   ├── schemas/          # Pydantic models
 │   ├── repositories/     # Neo4j data access (base, book_repo, entity_repo)
 │   ├── services/         # Business logic + extraction pipeline + embedding
-│   ├── agents/           # LangGraph graphs (extraction done; reader, chat TODO)
+│   ├── agents/           # LangGraph graphs (extraction done; chat done; reader TODO)
 │   ├── prompts/          # LLM prompt templates
 │   └── workers/          # arq task queue (extraction + embedding tasks)
 ├── frontend/             # Next.js frontend (app/, lib/, components/, hooks/, stores/)
 ├── ontology/             # YAML ontology definitions (core, genre, series)
 ├── scripts/              # Neo4j init, migrations, seed data
+│   ├── migrations/       # PostgreSQL Alembic migrations
 └── docker-compose.yml    # Infrastructure (Neo4j, Redis, PostgreSQL, LangFuse)
 ```
 
@@ -123,6 +124,13 @@ Embed (arq worker — async)
 
 ## What's Done vs TODO
 
-**Done**: Full extraction pipeline (LangGraph 4-pass + regex), 11 entity types, 3-tier dedup, reconciler, embedding pipeline (VoyageAI), arq workers, book ingestion API, graph explorer API, admin API (costs + DLQ), ontology loader, frontend (books + Sigma.js graph explorer), Docker Compose, ~586 tests.
+**Done**: Full extraction pipeline (LangGraph 4-pass + regex), 11 entity types, 3-tier dedup, reconciler, embedding pipeline (VoyageAI), arq workers, book ingestion API, graph explorer API, admin API (costs + DLQ), ontology loader, frontend (books + Sigma.js graph explorer + chat UI), Docker Compose, 810 tests.
 
-**TODO**: Chat/RAG query API (hybrid retrieval: vector → rerank → LLM), Chat + Reader LangGraph agents, functional chat frontend, LangGraph PostgreSQL checkpointing.
+**Also done**:
+- ~~Chat/RAG query API~~ ✅ Done (hybrid retrieval: vector → rerank → LLM)
+- ~~Chat LangGraph agent (17 nodes, 6 routes, NLI faithfulness)~~ ✅ Done
+- ~~Chat frontend (thread sidebar, citations, confidence badge, feedback)~~ ✅ Done
+- ~~LangGraph PostgreSQL checkpointing~~ ✅ Done
+- ~~Chat feedback API (PostgreSQL)~~ ✅ Done
+
+**Remaining**: Reader LangGraph agent (summarization, highlights), Frontend polish, Production deployment config.
