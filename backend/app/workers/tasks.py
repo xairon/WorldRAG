@@ -612,6 +612,11 @@ async def process_book_graphiti(
             patterns=len(profile.text_patterns),
         )
 
+        # Run community clustering
+        from app.services.community_clustering import run_community_clustering
+        clustering_result = await run_community_clustering(neo4j_driver, saga_id=saga_id)
+        logger.info("community_clustering_done", **clustering_result)
+
     result = {
         "book_id": book_id,
         "saga_id": saga_id,
