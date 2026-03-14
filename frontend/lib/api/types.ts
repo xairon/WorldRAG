@@ -124,6 +124,9 @@ export interface ChatResponse {
   related_entities: RelatedEntity[]
   chunks_retrieved: number
   chunks_after_rerank: number
+  thread_id?: string
+  confidence?: number
+  entities_mentioned?: string[]
 }
 
 // ── Admin / DLQ ────────────────────────────────────────────────────────────

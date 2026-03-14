@@ -16,6 +16,7 @@ interface ChatState {
   setThreadId: (id: string | null) => void
   addThread: (thread: ChatThread) => void
   removeThread: (id: string) => void
+  updateThreadTitle: (id: string, title: string) => void
   clearThreads: () => void
 }
 
@@ -32,6 +33,12 @@ export const useChatStore = create<ChatState>()(
         set((s) => ({
           threads: s.threads.filter((t) => t.id !== id),
           threadId: s.threadId === id ? null : s.threadId,
+        })),
+      updateThreadTitle: (id, title) =>
+        set((s) => ({
+          threads: s.threads.map((t) =>
+            t.id === id ? { ...t, title, updatedAt: new Date().toISOString() } : t,
+          ),
         })),
       clearThreads: () => set({ threads: [], threadId: null }),
     }),

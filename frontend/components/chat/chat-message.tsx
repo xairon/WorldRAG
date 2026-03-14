@@ -2,14 +2,19 @@
 
 import { Bot, User, Info, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { SourceCard } from "./source-card"
+import { CitationHighlight } from "./citation-highlight"
+import { SourcePanel } from "./source-panel"
+import { ConfidenceBadge } from "./confidence-badge"
+import { FeedbackButtons } from "./feedback-buttons"
 import type { ChatMessage as ChatMessageType } from "@/hooks/use-chat-stream"
 
 interface ChatMessageProps {
   message: ChatMessageType
+  threadId?: string
+  bookId?: string
 }
 
-export function ChatMessage({ message: msg }: ChatMessageProps) {
+export function ChatMessage({ message: msg, threadId, bookId }: ChatMessageProps) {
   const isUser = msg.role === "user"
   const isSystem = msg.role === "system"
   const isAssistant = msg.role === "assistant"
@@ -47,6 +52,10 @@ export function ChatMessage({ message: msg }: ChatMessageProps) {
         {/* Content */}
         {msg.isStreaming && !msg.content ? (
           <span className="text-muted-foreground">Searching Knowledge Graph...</span>
+        ) : isAssistant ? (
+          <div className="whitespace-pre-wrap">
+            <CitationHighlight text={msg.content} />
+          </div>
         ) : (
           <div className="whitespace-pre-wrap">{msg.content}</div>
         )}
@@ -56,12 +65,23 @@ export function ChatMessage({ message: msg }: ChatMessageProps) {
           <span className="inline-block w-1.5 h-4 bg-primary animate-pulse rounded-sm ml-0.5 align-text-bottom" />
         )}
 
-        {/* Sources */}
+        {/* Confidence badge + feedback (only for completed assistant messages) */}
+        {isAssistant && !msg.isStreaming && msg.content && (
+          <div className="mt-2 flex items-center gap-2">
+            {msg.confidence != null && <ConfidenceBadge score={msg.confidence} />}
+            {threadId && (
+              <FeedbackButtons
+                messageId={msg.id}
+                threadId={threadId}
+                bookId={bookId}
+              />
+            )}
+          </div>
+        )}
+
+        {/* Collapsible sources */}
         {isAssistant && msg.sources && msg.sources.length > 0 && (
-          <SourceCard
-            sources={msg.sources}
-            relatedEntities={msg.relatedEntities}
-          />
+          <SourcePanel chunks={msg.sources} />
         )}
       </div>
     </div>

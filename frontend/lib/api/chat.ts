@@ -34,6 +34,7 @@ export interface ChatStreamSourcesEvent {
   related_entities: RelatedEntity[]
   chunks_retrieved: number
   chunks_after_rerank: number
+  confidence?: number
 }
 
 export interface ChatStreamCallbacks {
@@ -134,4 +135,19 @@ export function chatStream(
   })()
 
   return controller
+}
+
+export interface FeedbackPayload {
+  thread_id: string
+  rating: 1 | -1
+  message_id?: string
+  book_id?: string
+  comment?: string
+}
+
+export async function submitFeedback(data: FeedbackPayload): Promise<{ id: number }> {
+  return apiFetch("/chat/feedback", {
+    method: "POST",
+    body: JSON.stringify(data),
+  })
 }

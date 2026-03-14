@@ -14,6 +14,7 @@ export interface ChatMessage {
   relatedEntities?: RelatedEntity[]
   chunksRetrieved?: number
   chunksAfterRerank?: number
+  confidence?: number
   isStreaming?: boolean
 }
 
@@ -86,6 +87,7 @@ export function useChatStream(): UseChatStreamReturn {
                     relatedEntities: data.related_entities,
                     chunksRetrieved: data.chunks_retrieved,
                     chunksAfterRerank: data.chunks_after_rerank,
+                    confidence: data.confidence,
                   }
                 : m,
             ),
