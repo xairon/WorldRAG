@@ -23,7 +23,8 @@ FROM python:3.12-slim AS runtime
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/* \
-    && groupadd -r worldrag && useradd -r -g worldrag -d /app worldrag
+    && groupadd -r worldrag && useradd -r -g worldrag -d /app worldrag \
+    && mkdir -p /data/projects && chown worldrag:worldrag /data/projects
 
 WORKDIR /app
 
