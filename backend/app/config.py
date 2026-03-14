@@ -97,6 +97,9 @@ class Settings(BaseSettings):
     extraction_language: str = "fr"
     ontology_version: str = "3.0.0"
 
+    # --- KG v2 (Graphiti) ---
+    graphiti_enabled: bool = False  # Toggle Graphiti pipeline
+
     # --- Derived ---
     debug: bool = False
 
