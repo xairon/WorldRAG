@@ -36,7 +36,6 @@ from app.schemas.pipeline import (  # noqa: TC001 — runtime use by FastAPI
 )
 from app.schemas.saga_profile import ExtractGraphitiRequest
 from app.services.chunking import chunk_chapter
-from app.services.extraction.regex_extractor import RegexExtractor
 from app.services.ingestion import extract_epub_metadata, ingest_file
 
 if TYPE_CHECKING:
