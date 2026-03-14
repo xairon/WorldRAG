@@ -284,3 +284,54 @@ async def extract_project(slug: str, request: Request) -> JSONResponse:
         status_code=202,
         content={"job_id": job_id, "mode": mode, "slug": slug},
     )
+
+
+# ── KG Export ─────────────────────────────────────────────────────────
+
+
+@router.get("/{slug}/export/cypher", dependencies=[Depends(require_auth)])
+async def export_cypher(slug: str, request: Request) -> JSONResponse:
+    """Export the project's KG as Cypher CREATE statements."""
+    svc = _get_service(request)
+    if await svc.get_project(slug) is None:
+        return JSONResponse(status_code=404, content={"detail": "Project not found"})
+
+    from app.services.kg_export import export_cypher as do_export
+
+    driver = request.app.state.neo4j_driver
+    cypher = await do_export(driver, saga_id=slug)
+    return JSONResponse(
+        status_code=200,
+        content={"format": "cypher", "slug": slug, "data": cypher},
+    )
+
+
+@router.get("/{slug}/export/jsonld", dependencies=[Depends(require_auth)])
+async def export_jsonld(slug: str, request: Request) -> JSONResponse:
+    """Export the project's KG as JSON-LD."""
+    svc = _get_service(request)
+    if await svc.get_project(slug) is None:
+        return JSONResponse(status_code=404, content={"detail": "Project not found"})
+
+    from app.services.kg_export import export_json_ld as do_export
+
+    driver = request.app.state.neo4j_driver
+    data = await do_export(driver, saga_id=slug)
+    return JSONResponse(status_code=200, content=data)
+
+
+@router.get("/{slug}/export/csv", dependencies=[Depends(require_auth)])
+async def export_csv(slug: str, request: Request) -> JSONResponse:
+    """Export the project's KG as CSV (entities + relationships)."""
+    svc = _get_service(request)
+    if await svc.get_project(slug) is None:
+        return JSONResponse(status_code=404, content={"detail": "Project not found"})
+
+    from app.services.kg_export import export_csv as do_export
+
+    driver = request.app.state.neo4j_driver
+    data = await do_export(driver, saga_id=slug)
+    return JSONResponse(
+        status_code=200,
+        content={"format": "csv", "slug": slug, **data},
+    )
