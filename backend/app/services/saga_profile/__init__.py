@@ -6,10 +6,12 @@ from app.services.saga_profile.models import (
     InducedRelationType,
     SagaProfile,
 )
+from app.services.saga_profile.temporal import NarrativeTemporalMapper
 
 __all__ = [
     "InducedEntityType",
     "InducedRelationType",
     "InducedPattern",
     "SagaProfile",
+    "NarrativeTemporalMapper",
 ]
