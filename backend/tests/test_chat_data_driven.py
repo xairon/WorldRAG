@@ -354,7 +354,7 @@ class TestRouterMultiTurn:
 
         mock_llm = AsyncMock()
         mock_llm.ainvoke = AsyncMock(
-            return_value=MagicMock(content="hybrid_rag"),
+            return_value=MagicMock(content="entity_qa"),
         )
 
         history = [
@@ -389,7 +389,7 @@ class TestRouterMultiTurn:
 
         mock_llm = AsyncMock()
         mock_llm.ainvoke = AsyncMock(
-            return_value=MagicMock(content="kg_query"),
+            return_value=MagicMock(content="factual_lookup"),
         )
 
         state = {
@@ -413,7 +413,7 @@ class TestRouterMultiTurn:
 
         mock_llm = AsyncMock()
         mock_llm.ainvoke = AsyncMock(
-            return_value=MagicMock(content="direct"),
+            return_value=MagicMock(content="conversational"),
         )
 
         state = {"query": "Hello", "messages": []}
@@ -424,7 +424,7 @@ class TestRouterMultiTurn:
         ):
             result = await classify_intent(state)
 
-        assert result["route"] == "direct"
+        assert result["route"] == "conversational"
         call_args = mock_llm.ainvoke.call_args[0][0]
         # System + current query
         assert len(call_args) == 2
@@ -441,7 +441,7 @@ class TestRouterMultiTurn:
 
         mock_llm = AsyncMock()
         mock_llm.ainvoke = AsyncMock(
-            return_value=MagicMock(content="kg_query"),
+            return_value=MagicMock(content="factual_lookup"),
         )
 
         # Exactly 2 messages: user + assistant (the typical 2nd-turn scenario)
@@ -472,7 +472,7 @@ class TestRouterMultiTurn:
 
         mock_llm = AsyncMock()
         mock_llm.ainvoke = AsyncMock(
-            return_value=MagicMock(content="hybrid_rag"),
+            return_value=MagicMock(content="entity_qa"),
         )
 
         history = [
@@ -503,7 +503,7 @@ class TestRouterMultiTurn:
 
         mock_llm = AsyncMock()
         mock_llm.ainvoke = AsyncMock(
-            return_value=MagicMock(content="hybrid_rag"),
+            return_value=MagicMock(content="entity_qa"),
         )
 
         history = []
@@ -545,7 +545,7 @@ class TestGenerateDirectRoute:
 
         state = {
             "query": "Hello!",
-            "route": "direct",
+            "route": "conversational",
             "context": "",
             "max_chapter": None,
         }
@@ -578,7 +578,7 @@ class TestGenerateDirectRoute:
 
         state = {
             "query": "What can you do?",
-            "route": "direct",
+            "route": "conversational",
             "context": "## Source Passages\nSome context that should be ignored.",
             "max_chapter": 50,
         }
@@ -611,7 +611,7 @@ class TestGenerateSpoilerGuard:
             "query": "Who is Jake?",
             "context": "Jake is a hunter in chapter 5.",
             "max_chapter": 30,
-            "route": "hybrid_rag",
+            "route": "entity_qa",
         }
 
         with patch(
@@ -638,7 +638,7 @@ class TestGenerateSpoilerGuard:
             "query": "test",
             "context": "some context",
             "max_chapter": None,
-            "route": "hybrid_rag",
+            "route": "entity_qa",
         }
 
         with patch(
@@ -722,7 +722,8 @@ class TestRerankNoMutate:
     """Verify that rerank fallback doesn't mutate input state dicts."""
 
     @pytest.mark.asyncio
-    async def test_fallback_does_not_mutate_fused_results(self):
+    async def test_rerank_does_not_mutate_fused_results(self):
+        """zerank reranker must not mutate the original fused_results dicts."""
         from app.agents.chat.nodes.rerank import rerank_results
 
         original_chunks = [
@@ -730,26 +731,31 @@ class TestRerankNoMutate:
             {"node_id": "b", "text": "t2", "rrf_score": 0.4, "extra": "data2"},
             {"node_id": "c", "text": "t3", "rrf_score": 0.3, "extra": "data3"},
         ]
-        # Deep copy to verify originals aren't touched
         frozen = copy.deepcopy(original_chunks)
 
         state = {"query": "test", "fused_results": original_chunks}
 
-        with patch(
-            "app.agents.chat.nodes.rerank._get_reranker",
-            return_value=None,
-        ):
+        # Mock zerank reranker to return sorted by index
+        mock_reranker = MagicMock()
+        mock_reranker.rank = MagicMock(
+            return_value=[
+                {"corpus_id": 0, "score": 1.0},
+                {"corpus_id": 1, "score": 0.8},
+                {"corpus_id": 2, "score": 0.5},
+            ]
+        )
+
+        with patch("app.agents.chat.nodes.rerank.get_local_reranker", return_value=mock_reranker):
             result = await rerank_results(state)
 
-        # Result should have relevance_score, but originals should NOT
+        # Original dicts must not be mutated
         for chunk in original_chunks:
             assert chunk == frozen[original_chunks.index(chunk)]
             assert "relevance_score" not in chunk
 
-        # Result dicts are new objects
+        # Result dicts are new objects with relevance_score
         for reranked in result["reranked_chunks"]:
             assert "relevance_score" in reranked
-            assert reranked["relevance_score"] == reranked.get("rrf_score", 0.0)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -802,7 +808,7 @@ class TestKGQueryDataDriven:
             result = await kg_search(state, repo=mock_repo)
 
         # Should NOT fall back to hybrid_rag
-        assert "route" not in result or result.get("route") != "hybrid_rag"
+        assert "route" not in result or result.get("route") != "entity_qa"
         assert len(result["kg_entities"]) == 2
 
         # Jake's entity should have his relationships attached
@@ -945,7 +951,7 @@ class TestKGQueryDataDriven:
                 repo=AsyncMock(),
             )
 
-        assert result["route"] == "hybrid_rag"
+        assert result["route"] == "entity_qa"
         assert result["kg_entities"] == []
 
     @pytest.mark.asyncio
@@ -1372,6 +1378,6 @@ class TestKGQueryLuceneQuoting:
                 repo=mock_repo,
             )
 
-        assert result["route"] == "hybrid_rag"
+        assert result["route"] == "entity_qa"
         # repo should NOT have been called for entity search
         mock_repo.execute_read.assert_not_called()

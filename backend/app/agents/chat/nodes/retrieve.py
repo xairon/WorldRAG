@@ -163,6 +163,7 @@ async def hybrid_retrieve(
     query_embedding: list[float],
     book_id: str,
     *,
+    extra_dense_embeddings: list[list[float]] | None = None,
     extra_bm25_queries: list[str] | None = None,
     top_k_per_arm: int = 30,
     final_top_k: int = 15,
@@ -171,31 +172,46 @@ async def hybrid_retrieve(
     sparse_weight: float = 1.0,
     graph_weight: float = 0.5,
 ) -> list[dict[str, Any]]:
-    """Run 3-arm hybrid retrieval with RRF fusion.
+    """Run multi-arm hybrid retrieval with RRF fusion.
 
-    If extra_bm25_queries are provided (from multi-query transform),
-    each variant is run as an additional BM25 arm and fused together
-    before the main RRF fusion (C2 audit fix).
+    Dense arms: primary embedding + extra_dense_embeddings (multi-query + HyDE).
+    Sparse arms: primary BM25 + extra_bm25_queries (multi-query variants).
+    Graph arm: entity_fulltext → GROUNDED_IN → Chunk traversal.
+
+    All arms are run in parallel, then fused via RRF.
     """
-    # Build sparse search tasks: primary + multi-query variants
+    # Dense tasks: primary embedding + extra embeddings (query variants + HyDE)
+    dense_tasks = [_dense_search(repo, query_embedding, book_id, top_k_per_arm, max_chapter)]
+    for emb in extra_dense_embeddings or []:
+        dense_tasks.append(_dense_search(repo, emb, book_id, top_k_per_arm, max_chapter))
+
+    # Sparse tasks: primary BM25 + multi-query variants
     sparse_tasks = [_sparse_search(repo, query_text, book_id, top_k_per_arm, max_chapter)]
     for variant in extra_bm25_queries or []:
-        sparse_tasks.append(
-            _sparse_search(repo, variant, book_id, top_k_per_arm, max_chapter),
-        )
+        sparse_tasks.append(_sparse_search(repo, variant, book_id, top_k_per_arm, max_chapter))
 
     all_tasks = [
-        _dense_search(repo, query_embedding, book_id, top_k_per_arm, max_chapter),
+        *dense_tasks,
         *sparse_tasks,
         _graph_search(repo, query_text, book_id, top_k_per_arm, max_chapter),
     ]
     results = await asyncio.gather(*all_tasks)
 
-    dense_results = results[0]
-    sparse_result_lists = results[1 : 1 + len(sparse_tasks)]
+    dense_result_lists = results[: len(dense_tasks)]
+    sparse_result_lists = results[len(dense_tasks) : len(dense_tasks) + len(sparse_tasks)]
     graph_results = results[-1]
 
-    # Fuse all sparse lists into one via RRF (equal weight per variant)
+    # Fuse all dense results into one via RRF
+    if len(dense_result_lists) > 1:
+        dense_results = rrf_fuse(
+            dense_result_lists,
+            weights=[1.0] * len(dense_result_lists),
+            top_k=top_k_per_arm,
+        )
+    else:
+        dense_results = dense_result_lists[0]
+
+    # Fuse all sparse results into one via RRF
     if len(sparse_result_lists) > 1:
         sparse_results = rrf_fuse(
             sparse_result_lists,
@@ -207,10 +223,11 @@ async def hybrid_retrieve(
 
     logger.info(
         "hybrid_retrieval_completed",
+        dense_arms=len(dense_tasks),
+        sparse_arms=len(sparse_tasks),
         dense_count=len(dense_results),
         sparse_count=len(sparse_results),
         graph_count=len(graph_results),
-        bm25_variants=len(sparse_tasks),
         book_id=book_id,
     )
 

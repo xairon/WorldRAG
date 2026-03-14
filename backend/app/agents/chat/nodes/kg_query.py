@@ -42,10 +42,10 @@ async def kg_search(
         query_type = parsed.get("query_type", "entity_lookup")
     except (json.JSONDecodeError, KeyError):
         logger.warning("kg_query_parse_failed", raw=response.content[:200])
-        return {"route": "hybrid_rag", "kg_cypher_result": [], "kg_entities": []}
+        return {"route": "entity_qa", "kg_cypher_result": [], "kg_entities": []}
 
     if not entity_names:
-        return {"route": "hybrid_rag", "kg_cypher_result": [], "kg_entities": []}
+        return {"route": "entity_qa", "kg_cypher_result": [], "kg_entities": []}
 
     # Step 2: Search entities via fulltext index (C4: escape Lucene specials)
     # Filter by book_id via GROUNDED_IN → Chunk → Chapter to avoid cross-book
@@ -55,7 +55,7 @@ async def kg_search(
     escaped_names = [_escape_lucene(name) for name in entity_names]
     escaped_names = [n for n in escaped_names if n.strip()]
     if not escaped_names:
-        return {"route": "hybrid_rag", "kg_cypher_result": [], "kg_entities": []}
+        return {"route": "entity_qa", "kg_cypher_result": [], "kg_entities": []}
 
     def _quote_if_multi_word(term: str) -> str:
         """Wrap multi-word terms in double quotes for Lucene phrase matching."""
@@ -88,7 +88,7 @@ async def kg_search(
 
     if not entities:
         logger.info("kg_query_no_entities_found", query=query)
-        return {"route": "hybrid_rag", "kg_cypher_result": [], "kg_entities": []}
+        return {"route": "entity_qa", "kg_cypher_result": [], "kg_entities": []}
 
     # Step 3: Expand relationships for found entities
     # Pair each entity name with its own label to avoid UNWIND cross-product (N2 fix)

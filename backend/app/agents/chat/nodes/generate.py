@@ -32,8 +32,8 @@ async def generate_answer(state: dict[str, Any]) -> dict[str, Any]:
     max_chapter = state.get("max_chapter")
     route = state.get("route", "hybrid_rag")
 
-    # Direct route: use a lightweight prompt without context (I1 audit fix)
-    if route == "direct":
+    # Conversational route: use a lightweight prompt without context (I1 audit fix)
+    if route in ("direct", "conversational"):
         llm = get_langchain_llm(settings.llm_chat)
         response = await llm.ainvoke(
             [

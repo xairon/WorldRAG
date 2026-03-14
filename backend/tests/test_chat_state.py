@@ -27,7 +27,17 @@ def test_state_has_required_keys():
         "faithfulness_reason",
         "faithfulness_grounded",
         "faithfulness_relevant",
+        "faithfulness_passed",
         "retries",
+        # memory fields (Chunk 2)
+        "conversation_summary",
+        "entity_memory",
+        "turn_count",
+        # query expansion (Chunk 2)
+        "hyde_document",
+        "sub_questions",
+        # retrieval (Chunk 2)
+        "deduplicated_chunks",
         "book_id",
         "max_chapter",
     ]

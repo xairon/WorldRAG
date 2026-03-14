@@ -10,11 +10,13 @@ class TestRouterNode:
     """Tests for the router node."""
 
     @pytest.mark.asyncio
-    async def test_routes_entity_question_to_kg_query(self):
+    async def test_routes_entity_question_to_factual_lookup(self):
         from app.agents.chat.nodes.router import classify_intent
 
         mock_llm = AsyncMock()
-        mock_llm.ainvoke = AsyncMock(return_value=AIMessage(content="kg_query"))
+        mock_llm.ainvoke = AsyncMock(
+            return_value=AIMessage(content='{"route": "factual_lookup"}')
+        )
 
         with patch("app.agents.chat.nodes.router.get_langchain_llm", return_value=mock_llm):
             result = await classify_intent(
@@ -26,14 +28,16 @@ class TestRouterNode:
                 }
             )
 
-        assert result["route"] == "kg_query"
+        assert result["route"] == "factual_lookup"
 
     @pytest.mark.asyncio
-    async def test_routes_narrative_to_hybrid_rag(self):
+    async def test_routes_narrative_to_analytical(self):
         from app.agents.chat.nodes.router import classify_intent
 
         mock_llm = AsyncMock()
-        mock_llm.ainvoke = AsyncMock(return_value=AIMessage(content="hybrid_rag"))
+        mock_llm.ainvoke = AsyncMock(
+            return_value=AIMessage(content='{"route": "analytical"}')
+        )
 
         with patch("app.agents.chat.nodes.router.get_langchain_llm", return_value=mock_llm):
             result = await classify_intent(
@@ -45,14 +49,16 @@ class TestRouterNode:
                 }
             )
 
-        assert result["route"] == "hybrid_rag"
+        assert result["route"] == "analytical"
 
     @pytest.mark.asyncio
-    async def test_routes_greeting_to_direct(self):
+    async def test_routes_greeting_to_conversational(self):
         from app.agents.chat.nodes.router import classify_intent
 
         mock_llm = AsyncMock()
-        mock_llm.ainvoke = AsyncMock(return_value=AIMessage(content="direct"))
+        mock_llm.ainvoke = AsyncMock(
+            return_value=AIMessage(content='{"route": "conversational"}')
+        )
 
         with patch("app.agents.chat.nodes.router.get_langchain_llm", return_value=mock_llm):
             result = await classify_intent(
@@ -64,10 +70,10 @@ class TestRouterNode:
                 }
             )
 
-        assert result["route"] == "direct"
+        assert result["route"] == "conversational"
 
     @pytest.mark.asyncio
-    async def test_defaults_to_hybrid_rag_on_unknown(self):
+    async def test_defaults_to_entity_qa_on_unknown(self):
         from app.agents.chat.nodes.router import classify_intent
 
         mock_llm = AsyncMock()
@@ -83,7 +89,7 @@ class TestRouterNode:
                 }
             )
 
-        assert result["route"] == "hybrid_rag"
+        assert result["route"] == "entity_qa"
 
 
 class TestQueryTransformNode:

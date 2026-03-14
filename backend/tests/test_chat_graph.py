@@ -13,10 +13,15 @@ def test_graph_has_all_nodes():
 
     node_names = set(graph.nodes.keys())
     expected = {
+        "load_memory",
+        "summarize_memory",
         "router",
         "query_transform",
+        "hyde_expand",
         "retrieve",
         "rerank",
+        "dedup_chunks",
+        "temporal_sort",
         "context_assembly",
         "generate",
         "faithfulness_check",
@@ -37,22 +42,28 @@ def test_graph_compiles():
     assert compiled is not None
 
 
-def test_route_after_router_kg():
+# ---------------------------------------------------------------------------
+# _route_after_router: 6-route → 3-path mapping
+# ---------------------------------------------------------------------------
+
+
+def test_route_after_router_factual_lookup():
     from app.agents.chat.graph import _route_after_router
 
-    assert _route_after_router({"route": "kg_query"}) == "kg_query"
+    assert _route_after_router({"route": "factual_lookup"}) == "kg_query"
 
 
-def test_route_after_router_direct():
+def test_route_after_router_conversational():
     from app.agents.chat.graph import _route_after_router
 
-    assert _route_after_router({"route": "direct"}) == "generate"
+    assert _route_after_router({"route": "conversational"}) == "generate"
 
 
-def test_route_after_router_hybrid():
+def test_route_after_router_hybrid_routes():
     from app.agents.chat.graph import _route_after_router
 
-    assert _route_after_router({"route": "hybrid_rag"}) == "query_transform"
+    for route in ("entity_qa", "relationship_qa", "timeline_qa", "analytical"):
+        assert _route_after_router({"route": route}) == "query_transform", route
 
 
 def test_route_after_router_default():
@@ -61,22 +72,33 @@ def test_route_after_router_default():
     assert _route_after_router({}) == "query_transform"
 
 
-def test_route_after_kg_fallback():
+# ---------------------------------------------------------------------------
+# _route_after_kg_query: fallback on empty results
+# ---------------------------------------------------------------------------
+
+
+def test_route_after_kg_fallback_on_empty_entities():
     from app.agents.chat.graph import _route_after_kg_query
 
-    assert _route_after_kg_query({"route": "hybrid_rag"}) == "query_transform"
+    assert _route_after_kg_query({"kg_entities": []}) == "query_transform"
+    assert _route_after_kg_query({}) == "query_transform"
 
 
 def test_route_after_kg_success():
     from app.agents.chat.graph import _route_after_kg_query
 
-    assert _route_after_kg_query({"route": "kg_query"}) == "context_assembly"
+    assert _route_after_kg_query({"kg_entities": [{"name": "Jake"}]}) == "context_assembly"
+
+
+# ---------------------------------------------------------------------------
+# _route_after_faithfulness: now routes to summarize_memory (not END)
+# ---------------------------------------------------------------------------
 
 
 def test_route_faithfulness_pass():
     from app.agents.chat.graph import _route_after_faithfulness
 
-    assert _route_after_faithfulness({"faithfulness_score": 0.9, "retries": 0}) == "end"
+    assert _route_after_faithfulness({"faithfulness_score": 0.9, "retries": 0}) == "summarize_memory"
 
 
 def test_route_faithfulness_fail_retry():
@@ -88,27 +110,27 @@ def test_route_faithfulness_fail_retry():
 def test_route_faithfulness_max_retries():
     from app.agents.chat.graph import _route_after_faithfulness
 
-    assert _route_after_faithfulness({"faithfulness_score": 0.3, "retries": 2}) == "end"
+    assert _route_after_faithfulness({"faithfulness_score": 0.3, "retries": 2}) == "summarize_memory"
 
 
 # ---------------------------------------------------------------------------
-# N1 regression: _route_after_generate skips faithfulness for direct route
+# _route_after_generate: conversational skips faithfulness
 # ---------------------------------------------------------------------------
 
 
-def test_route_after_generate_direct_skips_faithfulness():
-    """N1 fix: direct route goes straight to END, skipping faithfulness."""
+def test_route_after_generate_conversational_skips_faithfulness():
+    """conversational route goes straight to summarize_memory, skipping faithfulness."""
     from app.agents.chat.graph import _route_after_generate
 
-    assert _route_after_generate({"route": "direct"}) == "end"
+    assert _route_after_generate({"route": "conversational"}) == "summarize_memory"
 
 
-def test_route_after_generate_hybrid_goes_to_faithfulness():
-    """N1 fix: non-direct routes still pass through faithfulness check."""
+def test_route_after_generate_other_routes_go_to_faithfulness():
     from app.agents.chat.graph import _route_after_generate
 
-    assert _route_after_generate({"route": "hybrid_rag"}) == "faithfulness_check"
-    assert _route_after_generate({"route": "kg_query"}) == "faithfulness_check"
+    for route in ("factual_lookup", "entity_qa", "relationship_qa", "timeline_qa", "analytical", ""):
+        assert _route_after_generate({"route": route}) == "faithfulness_check", route
+
     assert _route_after_generate({}) == "faithfulness_check"
 
 
@@ -121,13 +143,12 @@ def test_route_faithfulness_missing_score_defaults_to_rewrite():
     """N3 fix: empty state (no score) defaults to 0.0 → triggers rewrite, not pass."""
     from app.agents.chat.graph import _route_after_faithfulness
 
-    # No faithfulness_score key at all → default 0.0 < threshold → rewrite
     assert _route_after_faithfulness({}) == "rewrite_query"
     assert _route_after_faithfulness({"retries": 0}) == "rewrite_query"
 
 
 def test_route_faithfulness_missing_score_with_max_retries_ends():
-    """N3 fix: missing score + max retries → end (give up)."""
+    """N3 fix: missing score + max retries → summarize_memory (give up)."""
     from app.agents.chat.graph import _route_after_faithfulness
 
-    assert _route_after_faithfulness({"retries": 2}) == "end"
+    assert _route_after_faithfulness({"retries": 2}) == "summarize_memory"

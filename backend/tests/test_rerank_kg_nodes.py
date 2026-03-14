@@ -6,21 +6,29 @@ import pytest
 from langchain_core.messages import AIMessage
 
 
+def _make_mock_reranker(scores: list[float]):
+    """Return a mock zerank CrossEncoder whose rank() returns scores sorted desc (real API)."""
+    from unittest.mock import MagicMock
+
+    mock = MagicMock()
+    ranked = sorted(
+        [{"corpus_id": i, "score": s} for i, s in enumerate(scores)],
+        key=lambda x: x["score"],
+        reverse=True,
+    )
+    mock.rank = MagicMock(return_value=ranked)
+    return mock
+
+
 class TestRerankNode:
-    """Tests for the rerank node."""
+    """Tests for the zerank rerank node."""
 
     @pytest.mark.asyncio
-    async def test_rerank_with_cohere(self):
+    async def test_rerank_with_zerank(self):
         from app.agents.chat.nodes.rerank import rerank_results
-        from app.llm.reranker import RerankResult
 
-        mock_reranker = AsyncMock()
-        mock_reranker.rerank = AsyncMock(
-            return_value=[
-                RerankResult(index=1, text="relevant", relevance_score=0.95),
-                RerankResult(index=0, text="less relevant", relevance_score=0.6),
-            ]
-        )
+        # second chunk scores higher → should come first
+        mock_reranker = _make_mock_reranker([0.6, 0.95])
 
         state = {
             "query": "test",
@@ -30,39 +38,33 @@ class TestRerankNode:
             ],
         }
 
-        with patch("app.agents.chat.nodes.rerank._get_reranker", return_value=mock_reranker):
+        with patch("app.agents.chat.nodes.rerank.get_local_reranker", return_value=mock_reranker):
             result = await rerank_results(state)
 
         assert len(result["reranked_chunks"]) == 2
         assert result["reranked_chunks"][0]["node_id"] == "b"
-        assert result["reranked_chunks"][0]["relevance_score"] == 0.95
-
-    @pytest.mark.asyncio
-    async def test_rerank_without_cohere_uses_rrf_order(self):
-        from app.agents.chat.nodes.rerank import rerank_results
-
-        state = {
-            "query": "test",
-            "fused_results": [
-                {"node_id": "a", "text": "t1", "rrf_score": 0.5},
-                {"node_id": "b", "text": "t2", "rrf_score": 0.4},
-            ],
-        }
-
-        with patch("app.agents.chat.nodes.rerank._get_reranker", return_value=None):
-            result = await rerank_results(state)
-
-        assert len(result["reranked_chunks"]) == 2
-        assert result["reranked_chunks"][0]["node_id"] == "a"
+        assert result["reranked_chunks"][0]["relevance_score"] == pytest.approx(0.95)
 
     @pytest.mark.asyncio
     async def test_rerank_empty_fused(self):
         from app.agents.chat.nodes.rerank import rerank_results
 
-        with patch("app.agents.chat.nodes.rerank._get_reranker", return_value=None):
-            result = await rerank_results({"query": "test", "fused_results": []})
-
+        result = await rerank_results({"query": "test", "fused_results": []})
         assert result["reranked_chunks"] == []
+
+    @pytest.mark.asyncio
+    async def test_rerank_returns_top_n(self):
+        from app.agents.chat.nodes.rerank import rerank_results, RERANK_TOP_N
+
+        chunks = [{"node_id": str(i), "text": f"t{i}", "rrf_score": 0.1} for i in range(10)]
+        scores = list(range(10, 0, -1))  # descending
+        mock_reranker = _make_mock_reranker(scores)
+
+        state = {"query": "test", "fused_results": chunks}
+        with patch("app.agents.chat.nodes.rerank.get_local_reranker", return_value=mock_reranker):
+            result = await rerank_results(state)
+
+        assert len(result["reranked_chunks"]) == RERANK_TOP_N
 
 
 class TestKGQueryNode:
@@ -138,5 +140,5 @@ class TestKGQueryNode:
                 repo=mock_repo,
             )
 
-        assert result["route"] == "hybrid_rag"
+        assert result["route"] == "entity_qa"
         assert result["kg_cypher_result"] == []

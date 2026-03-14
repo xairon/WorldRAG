@@ -51,7 +51,20 @@ class ChatAgentState(TypedDict, total=False):
     faithfulness_reason: str
     faithfulness_grounded: bool
     faithfulness_relevant: bool
+    faithfulness_passed: bool
     retries: Annotated[int, operator.add]
+
+    # -- Multi-turn memory --
+    conversation_summary: str  # LLM-compressed history (updated every 5 turns)
+    entity_memory: list[dict[str, Any]]  # entities tracked across turns
+    turn_count: int  # number of human turns in this conversation
+
+    # -- Query expansion --
+    hyde_document: str  # hypothetical document for HyDE
+    sub_questions: list[str]  # decomposed sub-questions for analytical route
+
+    # -- Retrieval --
+    deduplicated_chunks: list[dict[str, Any]]  # chunks after cosine dedup
 
     # -- Scope --
     book_id: str
