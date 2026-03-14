@@ -251,6 +251,7 @@ class ProjectService:
             raise ValueError(f"Invalid filename: {filename!r}")
 
         project_dir = Path(settings.project_data_dir) / slug
+        project_dir.mkdir(parents=True, exist_ok=True)
         file_dir = project_dir
         file_path = project_dir / safe_name
 
