@@ -53,6 +53,38 @@ def _build_default_llm_client() -> Any:
         return None
 
 
+def _build_default_embedder() -> Any:
+    """Build a Graphiti-compatible embedder from app settings.
+
+    Uses Gemini embedding via OpenAI-compatible API, or OpenAI if available.
+    """
+    from app.config import settings
+
+    try:
+        from graphiti_core.embedder.openai import OpenAIEmbedder, OpenAIEmbedderConfig
+
+        if settings.gemini_api_key:
+            config = OpenAIEmbedderConfig(
+                api_key=settings.gemini_api_key,
+                base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+                embedding_model="text-embedding-004",
+                embedding_dim=768,
+            )
+            logger.info("graphiti_embedder_configured", provider="gemini")
+            return OpenAIEmbedder(config=config)
+
+        if settings.openai_api_key:
+            config = OpenAIEmbedderConfig(api_key=settings.openai_api_key)
+            logger.info("graphiti_embedder_configured", provider="openai")
+            return OpenAIEmbedder(config=config)
+
+        logger.warning("graphiti_no_embedder_key")
+        return None
+    except Exception:
+        logger.warning("graphiti_embedder_config_failed", exc_info=True)
+        return None
+
+
 class GraphitiClient:
     """Thin wrapper around :class:`graphiti_core.Graphiti`.
 
@@ -83,9 +115,11 @@ class GraphitiClient:
         """
         user, password = neo4j_auth
 
-        # Auto-configure LLM client from app settings if not provided
+        # Auto-configure from app settings if not provided
         if llm_client is None:
             llm_client = _build_default_llm_client()
+        if embedder is None:
+            embedder = _build_default_embedder()
 
         self._client: Graphiti = Graphiti(
             uri=neo4j_uri,
