@@ -4,46 +4,28 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
   Network,
-  BookOpen,
-  MessageSquare,
-  LayoutDashboard,
-  Telescope,
-  Search,
-  Users,
+  FolderOpen,
+  Settings,
   Menu,
   X,
+  ArrowLeft,
+  BookOpen,
+  MessageSquare,
+  Brain,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useUIStore } from "@/stores/ui-store"
+import { useProjectStore } from "@/stores/project-store"
 import { motion } from "motion/react"
-
-const NAV_SECTIONS = [
-  {
-    label: "Reader",
-    items: [
-      { href: "/library", label: "Library", icon: BookOpen },
-      { href: "/chat", label: "Chat", icon: MessageSquare },
-    ],
-  },
-  {
-    label: "Explorer",
-    items: [
-      { href: "/graph", label: "Graph", icon: Network },
-      { href: "/search", label: "Search", icon: Search },
-      { href: "/characters", label: "Characters", icon: Users },
-    ],
-  },
-  {
-    label: "Pipeline",
-    items: [
-      { href: "/pipeline", label: "Dashboard", icon: Telescope },
-    ],
-  },
-]
 
 export function Sidebar() {
   const pathname = usePathname()
   const { mobileSidebarOpen, toggleSidebar } = useUIStore()
+  const { currentProject } = useProjectStore()
+
+  // Detect if we're inside a project
+  const projectMatch = pathname.match(/^\/projects\/([^/]+)/)
+  const currentSlug = projectMatch?.[1] ?? null
 
   return (
     <>
@@ -74,38 +56,75 @@ export function Sidebar() {
       >
         <div className="flex h-14 items-center gap-2 border-b border-[var(--glass-border)] px-5">
           <Network className="h-5 w-5 text-[var(--primary)]" />
-          <span className="font-display text-base font-bold tracking-tight">
+          <Link href="/" className="font-display text-base font-bold tracking-tight">
             World<span className="text-[var(--primary)]">RAG</span>
-          </span>
+          </Link>
         </div>
 
-        <nav aria-label="Main navigation" className="mt-4 flex flex-col gap-6 px-3">
-          {/* Dashboard */}
-          <NavItem href="/" label="Dashboard" icon={LayoutDashboard} active={pathname === "/"} />
+        <nav aria-label="Main navigation" className="mt-4 flex flex-col gap-1 px-3">
+          {currentSlug ? (
+            <>
+              {/* Back to projects */}
+              <Link
+                href="/"
+                className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors mb-3"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                All Projects
+              </Link>
 
-          {NAV_SECTIONS.map((section) => (
-            <div key={section.label}>
-              <div className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
-                {section.label}
+              {/* Project name */}
+              <div className="px-3 mb-3">
+                <div className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 mb-1">
+                  Project
+                </div>
+                <div className="text-sm font-medium truncate">
+                  {currentProject?.name ?? currentSlug}
+                </div>
               </div>
-              <div className="flex flex-col gap-0.5">
-                {section.items.map(({ href, label, icon }) => (
-                  <NavItem
-                    key={href}
-                    href={href}
-                    label={label}
-                    icon={icon}
-                    active={pathname.startsWith(href)}
-                  />
-                ))}
-              </div>
-            </div>
-          ))}
+
+              {/* Project tabs as nav items */}
+              <NavItem
+                href={`/projects/${currentSlug}`}
+                label="Books"
+                icon={BookOpen}
+                active={pathname === `/projects/${currentSlug}` || pathname === `/projects/${currentSlug}/`}
+              />
+              <NavItem
+                href={`/projects/${currentSlug}/graph`}
+                label="Graph"
+                icon={Network}
+                active={pathname.startsWith(`/projects/${currentSlug}/graph`)}
+              />
+              <NavItem
+                href={`/projects/${currentSlug}/chat`}
+                label="Chat"
+                icon={MessageSquare}
+                active={pathname.startsWith(`/projects/${currentSlug}/chat`)}
+              />
+              <NavItem
+                href={`/projects/${currentSlug}/profile`}
+                label="Profile"
+                icon={Brain}
+                active={pathname.startsWith(`/projects/${currentSlug}/profile`)}
+              />
+            </>
+          ) : (
+            <>
+              {/* Dashboard */}
+              <NavItem
+                href="/"
+                label="Projects"
+                icon={FolderOpen}
+                active={pathname === "/"}
+              />
+            </>
+          )}
         </nav>
 
         <div className="absolute bottom-4 left-0 right-0 px-5">
           <div className="glass rounded-lg p-3 text-xs text-muted-foreground">
-            <div className="mb-0.5 font-medium text-foreground">WorldRAG v0.2</div>
+            <div className="mb-0.5 font-medium text-foreground">WorldRAG v2.0</div>
             Fiction Knowledge Graph Platform
           </div>
         </div>
