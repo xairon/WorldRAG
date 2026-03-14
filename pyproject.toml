@@ -56,6 +56,10 @@ dependencies = [
     "transformers>=4.40",
     "accelerate>=0.30",
     "langchain-ollama>=0.3",
+    # KG v2 — Graphiti + KGGen
+    "graphiti-core>=0.5",
+    "kg-gen>=0.1",
+    "leidenalg>=0.10",
 ]
 
 [project.optional-dependencies]
