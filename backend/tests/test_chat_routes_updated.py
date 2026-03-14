@@ -13,10 +13,13 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from app.api.routes.chat import router
+from app.config import settings
 from app.schemas.chat import ChatResponse
 
 
 def _create_app() -> FastAPI:
+    # Ensure v1 chat service is used (not v2 which needs Graphiti)
+    settings.graphiti_enabled = False
     """Build a minimal FastAPI app with the chat router and mocked state."""
     app = FastAPI()
     app.include_router(router)
