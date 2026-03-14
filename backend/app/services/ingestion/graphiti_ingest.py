@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from app.core.logging import get_logger
 from app.services.saga_profile.pydantic_generator import (
-    _UNIVERSAL_TYPES,
+    UNIVERSAL_TYPES,
     saga_profile_to_graphiti_edges,
     saga_profile_to_graphiti_types,
 )
@@ -50,7 +50,7 @@ class BookIngestionOrchestrator:
             book_num: Ordinal position of the book within the saga.
             saga_id: Identifier of the parent saga.
         """
-        entity_types = dict(_UNIVERSAL_TYPES)
+        entity_types = dict(UNIVERSAL_TYPES)
 
         logger.info(
             "ingestion.discovery.start",

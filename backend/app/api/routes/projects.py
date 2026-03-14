@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from fastapi import APIRouter, Depends, Request, UploadFile
+from fastapi import APIRouter, Depends, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
 
 from app.api.auth import require_auth
@@ -191,7 +191,7 @@ async def upload_book(
     slug: str,
     file: UploadFile,
     request: Request,
-    book_num: int = 1,
+    book_num: int = Form(default=1),
 ) -> JSONResponse:
     """Upload an EPUB/PDF/TXT file to a project and run ingestion pipeline.
 
@@ -218,6 +218,14 @@ async def upload_book(
         )
 
     content = await file.read()
+
+    MAX_FILE_SIZE = 100 * 1024 * 1024  # 100 MB
+    if len(content) > MAX_FILE_SIZE:
+        return JSONResponse(
+            status_code=413,
+            content={"detail": f"File too large (max {MAX_FILE_SIZE // (1024 * 1024)}MB)"},
+        )
+
     mime_type = file.content_type or "application/octet-stream"
 
     file_row = await svc.store_book_file(

@@ -40,6 +40,11 @@ class ProjectService:
         self._neo4j = neo4j_driver
         self._repo = ProjectRepository(pool)
 
+    @property
+    def repo(self) -> ProjectRepository:
+        """Public accessor for the repository (used by route handlers)."""
+        return self._repo
+
     # --- Create ---
 
     async def create_project(
@@ -140,7 +145,7 @@ class ProjectService:
                 {"slug": slug},
             )
             await session.run(
-                "MATCH (c:Community {project_slug: $slug}) DETACH DELETE c",
+                "MATCH (c:Community {saga_id: $slug}) DETACH DELETE c",
                 {"slug": slug},
             )
 
@@ -171,7 +176,7 @@ class ProjectService:
         community_count = 0
         async with self._neo4j.session() as session:
             entity_result = await session.run(
-                "MATCH (n {group_id: $slug}) RETURN count(n) AS count",
+                "MATCH (n:Entity {group_id: $slug}) RETURN count(n) AS count",
                 {"slug": slug},
             )
             entity_records = await entity_result.data()
@@ -179,7 +184,7 @@ class ProjectService:
                 entity_count = entity_records[0].get("count", 0)
 
             community_result = await session.run(
-                "MATCH (c:Community {project_slug: $slug}) RETURN count(c) AS count",
+                "MATCH (c:Community {saga_id: $slug}) RETURN count(c) AS count",
                 {"slug": slug},
             )
             community_records = await community_result.data()
@@ -230,13 +235,19 @@ class ProjectService:
         Returns:
             Created project_file row dict, or None.
         """
+        from pathlib import PurePosixPath
+
+        safe_name = PurePosixPath(filename).name
+        if not safe_name or safe_name.startswith("."):
+            raise ValueError(f"Invalid filename: {filename!r}")
+
         project_dir = Path(settings.project_data_dir) / slug
-        file_path = project_dir / filename
+        file_path = project_dir / safe_name
         file_path.write_bytes(file_content)
         logger.info(
             "book_file_written",
             slug=slug,
-            filename=filename,
+            filename=safe_name,
             size=len(file_content),
         )
 
@@ -246,7 +257,7 @@ class ProjectService:
 
         return await self._repo.add_file(
             project_id,
-            filename,
+            safe_name,
             str(file_path),
             len(file_content),
             mime_type,

@@ -19,6 +19,10 @@ logger = get_logger(__name__)
 class ProjectRepository:
     """Repository for project and project_file CRUD operations backed by PostgreSQL."""
 
+    ALLOWED_UPDATE_COLUMNS: frozenset[str] = frozenset({
+        "name", "description", "cover_image",
+    })
+
     def __init__(self, pool: asyncpg.Pool) -> None:
         self._pool = pool
 
@@ -97,6 +101,11 @@ class ProjectRepository:
         non_null = {k: v for k, v in fields.items() if v is not None}
         if not non_null:
             return await self.get_by_slug(slug)
+
+        # Validate column names against allowlist to prevent SQL injection
+        invalid_cols = set(non_null.keys()) - self.ALLOWED_UPDATE_COLUMNS
+        if invalid_cols:
+            raise ValueError(f"Disallowed update columns: {invalid_cols}")
 
         set_clauses = []
         params: list[Any] = []

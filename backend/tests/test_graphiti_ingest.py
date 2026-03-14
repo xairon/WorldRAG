@@ -12,7 +12,7 @@ from app.services.saga_profile.models import (
     InducedRelationType,
     SagaProfile,
 )
-from app.services.saga_profile.pydantic_generator import _UNIVERSAL_TYPES
+from app.services.saga_profile.pydantic_generator import UNIVERSAL_TYPES
 
 
 # ---------------------------------------------------------------------------
@@ -96,7 +96,7 @@ class TestDiscoveryMode:
 
         for call_args in mock_graphiti.ingest_chapter.call_args_list:
             entity_types = call_args.kwargs.get("entity_types", call_args.args[0] if call_args.args else None)
-            assert set(entity_types.keys()) == set(_UNIVERSAL_TYPES.keys()), (
+            assert set(entity_types.keys()) == set(UNIVERSAL_TYPES.keys()), (
                 f"Expected universal types only, got: {set(entity_types.keys())}"
             )
 
@@ -186,7 +186,7 @@ class TestGuidedMode:
 
         for call_args in mock_graphiti.ingest_chapter.call_args_list:
             entity_types = call_args.kwargs.get("entity_types", call_args.args[0] if call_args.args else None)
-            assert set(_UNIVERSAL_TYPES.keys()).issubset(set(entity_types.keys()))
+            assert set(UNIVERSAL_TYPES.keys()).issubset(set(entity_types.keys()))
 
     async def test_passes_edge_types(
         self, orchestrator, mock_graphiti, sample_chapters, minimal_profile
@@ -252,4 +252,4 @@ class TestGuidedMode:
 
         first_call = mock_graphiti.ingest_chapter.call_args_list[0]
         entity_types = first_call.kwargs.get("entity_types")
-        assert len(entity_types) > len(_UNIVERSAL_TYPES)
+        assert len(entity_types) > len(UNIVERSAL_TYPES)

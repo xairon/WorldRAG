@@ -101,7 +101,7 @@ class Settings(BaseSettings):
     graphiti_enabled: bool = False  # Toggle Graphiti pipeline
 
     # --- Projects ---
-    project_data_dir: str = "/data/projects"
+    project_data_dir: str = "./data/projects"
 
     # --- Derived ---
     debug: bool = False

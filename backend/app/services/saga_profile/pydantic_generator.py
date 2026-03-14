@@ -37,7 +37,7 @@ class Concept(BaseModel):
     concept_type: str | None = None
 
 
-_UNIVERSAL_TYPES: dict[str, type[BaseModel]] = {
+UNIVERSAL_TYPES: dict[str, type[BaseModel]] = {
     "Character": Character,
     "Location": Location,
     "Object": Object,
@@ -59,7 +59,7 @@ def saga_profile_to_graphiti_types(profile: SagaProfile) -> dict[str, type[BaseM
     ``str | None`` fields.  An induced type whose name matches a universal type
     will override the universal entry (the caller decides on naming discipline).
     """
-    types: dict[str, type[BaseModel]] = dict(_UNIVERSAL_TYPES)
+    types: dict[str, type[BaseModel]] = dict(UNIVERSAL_TYPES)
 
     for induced in profile.entity_types:
         field_definitions: dict[str, tuple[type, Field]] = {  # type: ignore[type-arg]
