@@ -57,6 +57,11 @@ class Settings(BaseSettings):
 
     # --- User-facing ---
     llm_chat: str = "gemini:gemini-2.5-flash"
+    llm_generation: str = "gemini:gemini-2.5-flash-lite"
+    llm_auxiliary: str = "local:Qwen/Qwen3.5-4B"
+    openrouter_api_key: str = ""
+    local_llm_backend: str = "ollama"  # ollama|transformers
+    ollama_base_url: str = "http://localhost:11434"
 
     # --- Embeddings (local sentence-transformers) ---
     embedding_model: str = "BAAI/bge-m3"
