@@ -60,3 +60,16 @@ export function triggerExtraction(
 export function getProjectStats(slug: string): Promise<Record<string, unknown>> {
   return apiFetch(`/projects/${slug}/stats`)
 }
+
+export interface ProjectBook {
+  id: string
+  filename: string
+  file_size: number
+  book_id: string | null
+  book_num: number
+  uploaded_at: string
+}
+
+export function listProjectBooks(slug: string): Promise<ProjectBook[]> {
+  return apiFetch(`/projects/${slug}/books`)
+}

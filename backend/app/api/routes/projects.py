@@ -169,6 +169,23 @@ async def get_project_stats(slug: str, request: Request) -> JSONResponse:
     return JSONResponse(status_code=200, content=stats)
 
 
+@router.get("/{slug}/books", dependencies=[Depends(require_auth)])
+async def list_books(slug: str, request: Request) -> JSONResponse:
+    """List all books (files) in a project."""
+    svc = _get_service(request)
+    existing = await svc.get_project(slug)
+    if existing is None:
+        return JSONResponse(status_code=404, content={"detail": f"Project '{slug}' not found"})
+    files = await svc.repo.list_files(str(existing["id"]))
+    serialized = []
+    for f in files:
+        item = {}
+        for k, v in f.items():
+            item[k] = v.isoformat() if hasattr(v, "isoformat") else (str(v) if not isinstance(v, (str, int, float, bool, type(None))) else v)
+        serialized.append(item)
+    return JSONResponse(status_code=200, content=serialized)
+
+
 @router.post("/{slug}/books", dependencies=[Depends(require_auth)])
 async def upload_book(
     slug: str,
