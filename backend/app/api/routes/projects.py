@@ -51,10 +51,14 @@ def _serialize_project(row: dict[str, Any]) -> dict[str, Any]:
     embedded directly in a JSONResponse without hitting the default
     serialiser which does not handle datetime.
     """
+    from uuid import UUID
+
     result = {}
     for k, v in row.items():
         if hasattr(v, "isoformat"):
             result[k] = v.isoformat()
+        elif isinstance(v, UUID):
+            result[k] = str(v)
         else:
             result[k] = v
     return result
