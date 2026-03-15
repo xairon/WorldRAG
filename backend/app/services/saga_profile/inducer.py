@@ -471,4 +471,4 @@ class SagaProfileInducer:
         )
         async with self.driver.session() as session:
             result = await session.run(query, saga_id=saga_id)
-            return result.data()
+            return await result.data()
