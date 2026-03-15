@@ -26,7 +26,7 @@ export function ExtractionAction({
     case "ready":
       return (
         <Button onClick={onStart} disabled={disabled}>
-          {isFirstBook && !hasProfile ? "Configure & Extract" : "Start extraction"}
+          Start extraction
         </Button>
       )
     case "extracting":

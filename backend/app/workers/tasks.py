@@ -545,6 +545,29 @@ async def process_book_graphiti(
         mode="guided" if saga_profile_json else "discovery",
     )
 
+    # Progress callback: publish to Redis pub/sub for SSE consumers
+    dlq_redis = ctx.get("dlq_redis")
+    chapters_done = 0
+
+    async def _publish_progress(status: str, entities: int = 0) -> None:
+        if dlq_redis is not None:
+            import json
+
+            await dlq_redis.publish(
+                f"worldrag:progress:{book_id}",
+                json.dumps(
+                    {
+                        "chapter": chapters_done,
+                        "total": len(chapters),
+                        "status": status,
+                        "entities_found": entities,
+                        "chapters_done": chapters_done,
+                    }
+                ),
+            )
+
+    await _publish_progress("started")
+
     from app.services.ingestion.graphiti_ingest import BookIngestionOrchestrator
 
     orchestrator = BookIngestionOrchestrator(graphiti=graphiti)
@@ -563,9 +586,13 @@ async def process_book_graphiti(
                     saga_id=saga_id,
                     profile=profile,
                 )
+                chapters_done += 1
+                await _publish_progress("progress", chapters_done)
             except Exception as exc:
                 logger.exception("graphiti_chapter_failed", chapter=ch["number"])
                 failed_chapters.append(ch["number"])
+                chapters_done += 1
+                await _publish_progress("progress", chapters_done)
                 if dlq:
                     await dlq.push_failure(
                         book_id=book_id,
@@ -582,9 +609,13 @@ async def process_book_graphiti(
                     book_num=book_num,
                     saga_id=saga_id,
                 )
+                chapters_done += 1
+                await _publish_progress("progress", chapters_done)
             except Exception as exc:
                 logger.exception("graphiti_chapter_failed", chapter=ch["number"])
                 failed_chapters.append(ch["number"])
+                chapters_done += 1
+                await _publish_progress("progress", chapters_done)
                 if dlq:
                     await dlq.push_failure(
                         book_id=book_id,
@@ -619,6 +650,8 @@ async def process_book_graphiti(
         from app.services.community_clustering import run_community_clustering
         clustering_result = await run_community_clustering(neo4j_driver, saga_id=saga_id)
         logger.info("community_clustering_done", **clustering_result)
+
+    await _publish_progress("done", chapters_done)
 
     result = {
         "book_id": book_id,
