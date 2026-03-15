@@ -12,7 +12,6 @@ import { useBookStore } from "@/stores/book-store"
 import { useGraphStore } from "@/stores/graph-store"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { GraphControls } from "@/components/graph/graph-controls"
 import { NodeDetailPanel } from "@/components/graph/node-detail-panel"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -23,7 +22,7 @@ const SigmaGraph = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="flex h-full w-full items-center justify-center glass rounded-2xl">
+      <div className="flex h-full w-full items-center justify-center rounded-2xl bg-card border">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     ),
@@ -167,13 +166,13 @@ function GraphExplorerContent() {
           height="100%"
         />
       ) : !loading ? (
-        /* Empty state - centered glass card */
+        /* Empty state */
         <div className="flex h-full w-full items-center justify-center">
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.4, ease: [0.25, 0.4, 0.25, 1] as const }}
-            className="glass rounded-2xl px-8 py-10 text-center max-w-sm"
+            className="rounded-2xl bg-card border px-8 py-10 text-center max-w-sm"
           >
             <p className="text-muted-foreground text-sm">
               {bookId ? "No entities found. Try running extraction first." : "Select a book to explore its knowledge graph."}
@@ -187,19 +186,19 @@ function GraphExplorerContent() {
         </div>
       )}
 
-      {/* Floating glass header bar - book selector + search + stats */}
+      {/* Floating header bar - book selector + search + stats */}
       <motion.div
         custom={0}
         variants={floatingPanelVariants}
         initial="hidden"
         animate="visible"
-        className="absolute left-4 right-4 top-4 z-20 flex flex-wrap items-center gap-3 glass rounded-2xl px-4 py-3"
+        className="absolute left-4 right-4 top-4 z-20 flex flex-wrap items-center gap-3 rounded-2xl bg-card border px-4 py-3"
       >
         <select
           aria-label="Select book"
           value={bookId}
           onChange={(e) => setBookId(e.target.value)}
-          className="glass rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+          className="rounded-lg bg-card border px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
         >
           <option value="">All books</option>
           {books.map((b) => (
@@ -239,7 +238,7 @@ function GraphExplorerContent() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.2 }}
-            className="absolute left-4 right-4 top-[4.5rem] z-30 glass rounded-2xl p-3 max-h-48 overflow-y-auto"
+            className="absolute left-4 right-4 top-[4.5rem] z-30 rounded-2xl bg-card border p-3 max-h-48 overflow-y-auto"
           >
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs text-muted-foreground">{searchResults.length} results</span>
@@ -252,7 +251,7 @@ function GraphExplorerContent() {
                 <button
                   key={r.id}
                   onClick={() => handleSearchResultClick(r)}
-                  className="w-full text-left rounded-lg px-2 py-1.5 text-xs hover:bg-[var(--glass-bg-hover)] transition-colors flex items-center gap-2"
+                  className="w-full text-left rounded-lg px-2 py-1.5 text-xs hover:bg-muted transition-colors flex items-center gap-2"
                 >
                   <span className="truncate font-medium text-foreground">{r.name}</span>
                   <span className="text-muted-foreground ml-auto text-[10px]">{r.labels?.[0]}</span>
@@ -262,17 +261,6 @@ function GraphExplorerContent() {
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Floating left filter panel */}
-      <motion.div
-        custom={1}
-        variants={floatingPanelVariants}
-        initial="hidden"
-        animate="visible"
-        className="absolute left-4 top-20 z-10 w-56 hidden lg:block"
-      >
-        <GraphControls totalChapters={totalChapters} />
-      </motion.div>
 
       {/* Floating detail panel - right side slide-in */}
       <AnimatePresence>
@@ -300,7 +288,7 @@ function GraphExplorerContent() {
         variants={floatingPanelVariants}
         initial="hidden"
         animate="visible"
-        className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 glass rounded-full px-2 py-1.5 flex items-center gap-1"
+        className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 rounded-full bg-card border px-2 py-1.5 flex items-center gap-1"
       >
         <Tooltip>
           <TooltipTrigger asChild>
@@ -318,7 +306,7 @@ function GraphExplorerContent() {
           </TooltipTrigger>
           <TooltipContent>Zoom out</TooltipContent>
         </Tooltip>
-        <div className="w-px h-4 bg-[var(--glass-border)]" />
+        <div className="w-px h-4 bg-border" />
         <Tooltip>
           <TooltipTrigger asChild>
             <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground" onClick={resetZoom}>
