@@ -84,6 +84,13 @@
   --sidebar-accent-foreground: #1e1b4b;
   --sidebar-border: rgba(0, 0, 0, 0.06);
   --sidebar-ring: #7c3aed;
+  --success: oklch(0.723 0.191 149.58);
+  --warning: oklch(0.795 0.184 86.05);
+  --info: oklch(0.623 0.214 259.53);
+  --transition-fast: 150ms ease;
+  --transition-normal: 200ms ease;
+  --card-hover-scale: 1.02;
+  --card-hover-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
 }
 
 /* ─── Dark theme ─── */
@@ -119,6 +126,7 @@
   --sidebar-accent-foreground: #e2e8f0;
   --sidebar-border: rgba(255, 255, 255, 0.08);
   --sidebar-ring: #7c3aed;
+  --card-hover-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
 }
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }
