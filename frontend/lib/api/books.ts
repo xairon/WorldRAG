@@ -1,5 +1,5 @@
 import { apiFetch } from "./client"
-import type { BookInfo, BookDetail, IngestionResult, ExtractionResult, DLQEntry } from "./types"
+import type { BookInfo, BookDetail, ChapterInfo, IngestionResult, ExtractionResult, DLQEntry } from "./types"
 
 export function listBooks(): Promise<BookInfo[]> {
   return apiFetch("/books")
@@ -7,6 +7,30 @@ export function listBooks(): Promise<BookInfo[]> {
 
 export function getBook(id: string): Promise<BookDetail> {
   return apiFetch(`/books/${id}`)
+}
+
+export async function getBookDetail(bookId: string): Promise<BookDetail> {
+  return apiFetch<BookDetail>(`/books/${bookId}`)
+}
+
+export async function getChapterText(
+  bookId: string,
+  chapterNumber: number,
+): Promise<{ book_id: string; chapter_number: number; title: string; text: string; word_count: number }> {
+  return apiFetch(`/reader/books/${bookId}/chapters/${chapterNumber}/text`)
+}
+
+export async function getChapterParagraphs(
+  bookId: string,
+  chapterNumber: number,
+): Promise<{
+  book_id: string
+  chapter_number: number
+  title: string
+  paragraphs: { index: number; type: string; text: string; html: string; char_start: number; char_end: number; speaker?: string; word_count: number }[]
+  total_words: number
+}> {
+  return apiFetch(`/reader/books/${bookId}/chapters/${chapterNumber}/paragraphs`)
 }
 
 export function getBookStats(id: string): Promise<Record<string, unknown>> {
@@ -27,8 +51,8 @@ export function extractBook(
   })
 }
 
-export function deleteBook(id: string): Promise<{ deleted: boolean }> {
-  return apiFetch(`/books/${id}`, { method: "DELETE" })
+export async function deleteBook(bookId: string): Promise<void> {
+  await apiFetch(`/books/${bookId}`, { method: "DELETE" })
 }
 
 export interface BookJobStatus {
