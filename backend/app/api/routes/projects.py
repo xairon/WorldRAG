@@ -465,15 +465,20 @@ async def extract_project(slug: str, request: Request) -> JSONResponse:
     existing_profile = await redis.get(f"saga_profile:{slug}")
     mode = "guided" if existing_profile else "discovery"
 
-    # H18: book_num=1 is a default; the worker processes chapters sequentially
-    # from file records. Multi-book projects should determine book_num from
-    # the project_files table. This is acceptable for single-book extraction.
+    # Resolve actual book_id(s) from project_files
+    books = await svc.list_project_books(slug)
+    book_ids = [b["book_id"] for b in books if b.get("book_id")]
+    if not book_ids:
+        return JSONResponse(status_code=400, content={"detail": "No parsed books in project"})
+
+    # Use first book's Neo4j ID for extraction
+    book_id = book_ids[0]
     job = await arq_pool.enqueue_job(
         "process_book_graphiti",
-        slug,
+        book_id,
         slug,  # saga_id = slug
         existing.get("name", slug),  # saga_name
-        1,  # book_num default — see comment above
+        1,  # book_num
         existing_profile,
         _queue_name="worldrag:arq",
         _job_id=f"graphiti-project:{slug}",
