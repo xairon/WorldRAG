@@ -314,12 +314,52 @@ async def extract_epub_metadata(file_path: Path) -> dict[str, Any]:
             with contextlib.suppress(ValueError, TypeError):
                 metadata["order_in_series"] = int(float(attrs.get("content", "0")))
 
+    # Extract cover image
+    import ebooklib
+    cover_image: bytes | None = None
+    cover_mime: str | None = None
+
+    # Method 1: OPF meta name="cover" → item id → image data
+    for _val, attrs in opf_meta:
+        if attrs.get("name") == "cover":
+            cover_id = attrs.get("content")
+            if cover_id:
+                for item in book.get_items():
+                    if item.get_id() == cover_id:
+                        cover_image = item.get_content()
+                        cover_mime = item.media_type
+                        break
+            break
+
+    # Method 2: item with properties="cover-image" (EPUB3)
+    if cover_image is None:
+        for item in book.get_items_of_type(ebooklib.ITEM_IMAGE):
+            props = getattr(item, "properties", []) or []
+            if "cover-image" in props:
+                cover_image = item.get_content()
+                cover_mime = item.media_type
+                break
+
+    # Method 3: first image with "cover" in filename
+    if cover_image is None:
+        for item in book.get_items_of_type(ebooklib.ITEM_IMAGE):
+            name = (item.get_name() or "").lower()
+            if "cover" in name:
+                cover_image = item.get_content()
+                cover_mime = item.media_type
+                break
+
+    if cover_image:
+        metadata["cover_image"] = cover_image
+        metadata["cover_mime"] = cover_mime
+
     logger.info(
         "epub_metadata_extracted",
         file=str(file_path),
         title=metadata.get("title"),
         author=metadata.get("author"),
         language=metadata.get("language"),
+        has_cover=cover_image is not None,
     )
     return metadata
 

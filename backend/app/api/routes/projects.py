@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, Form, Request, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from app.api.auth import require_auth
 from app.core.logging import get_logger
@@ -280,6 +280,21 @@ async def upload_book(
         book_series = epub_meta.get("series_name")
         book_order = epub_meta.get("order_in_series")
 
+        # Save cover image if extracted
+        cover_url = None
+        cover_bytes = epub_meta.pop("cover_image", None)
+        cover_mime = epub_meta.pop("cover_mime", None)
+        if cover_bytes and cover_mime:
+            ext = {"image/jpeg": ".jpg", "image/png": ".png", "image/gif": ".gif"}.get(cover_mime, ".jpg")
+            cover_dir = file_path.parent / "covers"
+            cover_dir.mkdir(exist_ok=True)
+            cover_filename = f"cover{ext}"
+            cover_path = cover_dir / cover_filename
+            cover_path.write_bytes(cover_bytes)
+            # URL relative to project data dir: /data/projects/{slug}/covers/cover.jpg
+            cover_url = f"/api/projects/{slug}/covers/{cover_filename}"
+            logger.info("cover_extracted", slug=slug, cover_path=str(cover_path))
+
         # Create book in Neo4j
         book_id = await repo.create_book(
             title=book_title,
@@ -344,6 +359,35 @@ async def upload_book(
         pass
 
     return JSONResponse(status_code=201, content=_serialize_project(file_row))
+
+
+@router.get("/{slug}/covers/{filename}")
+async def get_cover(slug: str, filename: str, request: Request) -> Response:
+    """Serve a book cover image."""
+    from pathlib import Path as _P
+
+    svc = _get_service(request)
+    existing = await svc.get_project(slug)
+    if existing is None:
+        return JSONResponse(status_code=404, content={"detail": "Project not found"})
+
+    project_dir = _P(f"/data/projects/{slug}")
+    cover_path = project_dir / "covers" / filename
+
+    if not cover_path.exists() or not cover_path.is_file():
+        return JSONResponse(status_code=404, content={"detail": "Cover not found"})
+
+    # Security: ensure path doesn't escape covers dir
+    try:
+        cover_path.resolve().relative_to(project_dir.resolve())
+    except ValueError:
+        return JSONResponse(status_code=403, content={"detail": "Forbidden"})
+
+    mime = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "gif": "image/gif"}
+    ext = cover_path.suffix.lstrip(".").lower()
+    content_type = mime.get(ext, "application/octet-stream")
+
+    return Response(content=cover_path.read_bytes(), media_type=content_type)
 
 
 @router.post("/{slug}/extract", dependencies=[Depends(require_auth)], status_code=202)
