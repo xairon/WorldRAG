@@ -13,6 +13,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { apiFetch } from "@/lib/api/client"
 import { Plus } from "lucide-react"
+import { toast } from "sonner"
 
 export function CreateProjectDialog() {
   const [open, setOpen] = useState(false)
@@ -21,22 +22,27 @@ export function CreateProjectDialog() {
   const [loading, setLoading] = useState(false)
   const router = useRouter()
 
+  function toSlug(s: string): string {
+    return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 100)
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!name.trim()) return
     setLoading(true)
     try {
+      const slug = toSlug(name)
       const res = await apiFetch<{ slug: string }>("/projects", {
         method: "POST",
-        body: JSON.stringify({ name: name.trim(), description: description.trim() }),
+        body: JSON.stringify({ name: name.trim(), slug, description: description.trim() }),
       })
       setOpen(false)
       setName("")
       setDescription("")
       router.push(`/projects/${res.slug}`)
       router.refresh()
-    } catch {
-      // TODO: show error toast
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to create project")
     } finally {
       setLoading(false)
     }
@@ -64,6 +70,9 @@ export function CreateProjectDialog() {
               placeholder="My Novel Universe"
               required
             />
+            {name.trim() && (
+              <p className="text-xs text-muted-foreground font-mono">{toSlug(name)}</p>
+            )}
           </div>
           <div className="space-y-2">
             <label htmlFor="project-desc" className="text-sm font-medium">Description</label>
