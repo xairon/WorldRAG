@@ -4,14 +4,17 @@
 
 function getApiBase() {
   if (typeof window === "undefined") {
-    return process.env.BACKEND_URL ?? "http://localhost:8000"
+    // Server-side: direct to backend container with /api prefix
+    const base = process.env.BACKEND_URL ?? "http://localhost:8000"
+    return `${base}/api`
   }
+  // Client-side: Next.js rewrite proxy handles /api → backend
   return "/api"
 }
 
 /** Base URL for direct fetch / SSE streams (not routed through apiFetch) */
 export const API_BASE = typeof window === "undefined"
-  ? (process.env.BACKEND_URL ?? "http://localhost:8000")
+  ? `${process.env.BACKEND_URL ?? "http://localhost:8000"}/api`
   : "/api"
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
