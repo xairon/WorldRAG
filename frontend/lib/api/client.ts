@@ -9,6 +9,11 @@ function getApiBase() {
   return "/api"
 }
 
+/** Base URL for direct fetch / SSE streams (not routed through apiFetch) */
+export const API_BASE = typeof window === "undefined"
+  ? (process.env.BACKEND_URL ?? "http://localhost:8000")
+  : "/api"
+
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const headers: HeadersInit = { ...(init?.headers as Record<string, string>) }
   if (!(init?.body instanceof FormData)) {

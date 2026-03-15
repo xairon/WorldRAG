@@ -11,3 +11,7 @@ export function formatNumber(n: number): string {
 
 // Re-export from constants for backwards compat during migration
 export { ENTITY_COLORS, ENTITY_HEX, STATUS_CONFIG, mapBackendStatus, getEntityHex } from "./constants"
+
+import { ENTITY_HEX as _ENTITY_HEX } from "./constants"
+/** @deprecated Use ENTITY_HEX instead */
+export const LABEL_COLORS = _ENTITY_HEX
