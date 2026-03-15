@@ -20,10 +20,11 @@ interface BookInfo {
 interface ChapterInfo {
   number: number
   title: string
-  words: number
-  entity_count: number
+  words?: number
+  word_count?: number
+  entity_count?: number
   status: string
-  entities: { type: string; count: number }[]
+  entities?: { type: string; count: number }[]
 }
 
 interface ExtractionDashboardProps {
@@ -56,10 +57,10 @@ export function ExtractionDashboard({
       chapters.map((ch) => ({
         number: ch.number,
         title: ch.title,
-        words: ch.words,
-        entityCount: ch.entity_count,
+        words: ch.words ?? ch.word_count ?? 0,
+        entityCount: ch.entity_count ?? 0,
         status: ch.status,
-        entities: ch.entities,
+        entities: ch.entities ?? [],
       })),
     [chapters],
   )
@@ -67,7 +68,7 @@ export function ExtractionDashboard({
   const donutData = useMemo(() => {
     const totals: Record<string, number> = {}
     for (const ch of chapters) {
-      for (const e of ch.entities) {
+      for (const e of ch.entities ?? []) {
         totals[e.type] = (totals[e.type] ?? 0) + e.count
       }
     }
@@ -75,7 +76,7 @@ export function ExtractionDashboard({
   }, [chapters])
 
   const totalEntities = useMemo(
-    () => chapters.reduce((sum, ch) => sum + ch.entity_count, 0),
+    () => chapters.reduce((sum, ch) => sum + (ch.entity_count ?? 0), 0),
     [chapters],
   )
 
