@@ -14,7 +14,7 @@ interface TopBarProps {
 
 export function TopBar({ breadcrumbs, drawer }: TopBarProps) {
   return (
-    <header className="sticky top-0 z-30 flex h-12 items-center gap-3 border-b bg-background px-4">
+    <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b bg-background px-4">
       {drawer && <MobileDrawer {...drawer} />}
       <nav className="flex items-center gap-1.5 text-sm min-w-0 flex-1">
         {breadcrumbs?.map((crumb, i) => (

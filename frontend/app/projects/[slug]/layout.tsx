@@ -48,6 +48,7 @@ export default async function ProjectLayout({
     id: b.book_id ?? b.id,
     title: b.original_filename?.replace(/\.(epub|pdf|txt)$/i, "") ?? "Untitled",
     status: b.status ?? "pending",
+    cover_image: (b as { cover_image?: string | null }).cover_image ?? null,
   }))
 
   return (
@@ -56,7 +57,7 @@ export default async function ProjectLayout({
       <div className="flex-1 flex flex-col min-w-0">
         <TopBar
           breadcrumbs={[
-            { label: "Projects", href: "/projects" },
+            { label: "Projects", href: "/" },
             { label: project.name },
           ]}
           drawer={{ slug, projectName: project.name, books: sidebarBooks }}
