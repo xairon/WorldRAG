@@ -21,7 +21,8 @@ export default async function BookDetailPage({
   const data = await fetchBook(bookId)
   if (!data) return notFound()
 
-  const coverUrl = `/api/books/${bookId}/cover`
+  // Only pass cover URL if book has a known cover (from metadata enrichment)
+  const coverUrl = data.book.status !== "pending" ? `/api/books/${bookId}/cover` : null
 
   return (
     <div className="p-6 max-w-5xl">

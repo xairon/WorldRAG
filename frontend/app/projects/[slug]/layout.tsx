@@ -10,8 +10,10 @@ interface ProjectResponse {
 interface BookFile {
   id: string
   book_id: string
-  original_filename: string
+  filename: string
+  original_filename?: string
   status: string
+  cover_image?: string | null
 }
 
 async function getProject(slug: string): Promise<ProjectResponse | null> {
@@ -46,9 +48,9 @@ export default async function ProjectLayout({
 
   const sidebarBooks = books.map((b) => ({
     id: b.book_id ?? b.id,
-    title: b.original_filename?.replace(/\.(epub|pdf|txt)$/i, "") ?? "Untitled",
+    title: (b.original_filename ?? b.filename)?.replace(/\.(epub|pdf|txt)$/i, "")?.replace(/ -- .*/g, "") ?? "Untitled",
     status: b.status ?? "pending",
-    cover_image: (b as { cover_image?: string | null }).cover_image ?? null,
+    cover_image: b.cover_image ?? null,
   }))
 
   return (

@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { ThemeToggle } from "@/components/shared/theme-toggle"
 import { MobileDrawer } from "./mobile-drawer"
 
@@ -8,7 +9,7 @@ interface TopBarProps {
   drawer?: {
     slug: string
     projectName: string
-    books: { id: string; title: string; status: string }[]
+    books: { id: string; title: string; status: string; cover_image?: string | null }[]
   }
 }
 
@@ -21,7 +22,7 @@ export function TopBar({ breadcrumbs, drawer }: TopBarProps) {
           <span key={i} className="flex items-center gap-1.5 min-w-0">
             {i > 0 && <span className="text-muted-foreground">&rsaquo;</span>}
             {crumb.href ? (
-              <a href={crumb.href} className="text-muted-foreground hover:text-foreground truncate">{crumb.label}</a>
+              <Link href={crumb.href} className="text-muted-foreground hover:text-foreground truncate">{crumb.label}</Link>
             ) : (
               <span className="truncate font-medium">{crumb.label}</span>
             )}
