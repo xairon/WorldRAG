@@ -1,70 +1,68 @@
-"use client"
-import { useEffect } from "react"
-import { useParams, usePathname } from "next/navigation"
-import Link from "next/link"
-import { getProject } from "@/lib/api/projects"
-import { useProjectStore } from "@/stores/project-store"
-import { BookOpen, Network, MessageSquare, Brain } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { apiFetch } from "@/lib/api/client"
+import { AppSidebar } from "@/components/layout/app-sidebar"
+import { TopBar } from "@/components/layout/top-bar"
 
-const tabs = [
-  { label: "Books", href: "", icon: BookOpen },
-  { label: "Graph", href: "/graph", icon: Network },
-  { label: "Chat", href: "/chat", icon: MessageSquare },
-  { label: "Profile", href: "/profile", icon: Brain },
-]
+interface ProjectResponse {
+  slug: string
+  name: string
+}
 
-export default function ProjectLayout({ children }: { children: React.ReactNode }) {
-  const params = useParams<{ slug: string }>()
-  const pathname = usePathname()
-  const { currentProject, setCurrentProject } = useProjectStore()
+interface BookFile {
+  id: string
+  book_id: string
+  original_filename: string
+  status: string
+}
 
-  useEffect(() => {
-    getProject(params.slug).then(setCurrentProject).catch(() => {})
-  }, [params.slug, setCurrentProject])
+async function getProject(slug: string): Promise<ProjectResponse | null> {
+  try {
+    return await apiFetch<ProjectResponse>(`/projects/${slug}`)
+  } catch {
+    return null
+  }
+}
 
-  const slug = params.slug
+async function getBooks(slug: string): Promise<BookFile[]> {
+  try {
+    return await apiFetch<BookFile[]>(`/projects/${slug}/books`)
+  } catch {
+    return []
+  }
+}
+
+export default async function ProjectLayout({
+  children,
+  params,
+}: {
+  children: React.ReactNode
+  params: Promise<{ slug: string }>
+}) {
+  const { slug } = await params
+  const [project, books] = await Promise.all([getProject(slug), getBooks(slug)])
+
+  if (!project) {
+    return <div className="p-8">Project not found</div>
+  }
+
+  const sidebarBooks = books.map((b) => ({
+    id: b.book_id ?? b.id,
+    title: b.original_filename?.replace(/\.(epub|pdf|txt)$/i, "") ?? "Untitled",
+    status: b.status ?? "pending",
+  }))
 
   return (
-    <div className="space-y-6">
-      {/* Project header */}
-      <div>
-        <h1 className="font-display text-3xl font-light tracking-tight">
-          {currentProject?.name ?? slug}
-        </h1>
-        {currentProject?.description && (
-          <p className="text-muted-foreground mt-1 text-sm">{currentProject.description}</p>
-        )}
+    <div className="flex min-h-screen">
+      <AppSidebar slug={slug} projectName={project.name} books={sidebarBooks} />
+      <div className="flex-1 flex flex-col min-w-0">
+        <TopBar
+          breadcrumbs={[
+            { label: "Projects", href: "/projects" },
+            { label: project.name },
+          ]}
+          drawer={{ slug, projectName: project.name, books: sidebarBooks }}
+        />
+        <main className="flex-1">{children}</main>
       </div>
-
-      {/* Tab bar */}
-      <nav className="flex gap-1 border-b border-border">
-        {tabs.map((tab) => {
-          const href = `/projects/${slug}${tab.href}`
-          const isActive = tab.href === ""
-            ? pathname === `/projects/${slug}` || pathname === `/projects/${slug}/`
-            : pathname.startsWith(href)
-          const Icon = tab.icon
-          return (
-            <Link
-              key={tab.label}
-              href={href}
-              className={cn(
-                "flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors",
-                isActive
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
-              )}
-            >
-              <Icon className="h-4 w-4" />
-              {tab.label}
-            </Link>
-          )
-        })}
-      </nav>
-
-      {/* Tab content */}
-      {children}
     </div>
   )
 }

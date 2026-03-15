@@ -12,12 +12,16 @@ export interface ChatThread {
 interface ChatState {
   threadId: string | null
   threads: ChatThread[]
+  spoilerMaxChapter: number | null
+  selectedBookId: string | null
 
   setThreadId: (id: string | null) => void
   addThread: (thread: ChatThread) => void
   removeThread: (id: string) => void
   updateThreadTitle: (id: string, title: string) => void
   clearThreads: () => void
+  setSpoilerMaxChapter: (ch: number | null) => void
+  setSelectedBookId: (bookId: string | null) => void
 }
 
 export const useChatStore = create<ChatState>()(
@@ -25,6 +29,8 @@ export const useChatStore = create<ChatState>()(
     (set) => ({
       threadId: null,
       threads: [],
+      spoilerMaxChapter: null,
+      selectedBookId: null,
 
       setThreadId: (id) => set({ threadId: id }),
       addThread: (thread) =>
@@ -41,6 +47,9 @@ export const useChatStore = create<ChatState>()(
           ),
         })),
       clearThreads: () => set({ threads: [], threadId: null }),
+      setSpoilerMaxChapter: (ch) => set({ spoilerMaxChapter: ch }),
+      setSelectedBookId: (bookId) =>
+        set({ selectedBookId: bookId, spoilerMaxChapter: null }),
     }),
     { name: "worldrag-chat" },
   ),

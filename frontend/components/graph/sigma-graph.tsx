@@ -4,17 +4,35 @@ import { useEffect, useRef, useCallback } from "react"
 import Graph from "graphology"
 import Sigma from "sigma"
 import Forceatlas2Layout from "graphology-layout-forceatlas2/worker"
-import { labelColor, LABEL_COLORS } from "@/lib/utils"
+import { ENTITY_HEX, getEntityHex } from "@/lib/constants"
 import type { SubgraphData } from "@/lib/api/types"
 
 interface SigmaGraphProps {
   data: SubgraphData
   onNodeClick?: (nodeId: string, name: string, labels: string[]) => void
   onNodeHover?: (nodeId: string | null) => void
-  onReady?: (actions: { zoomIn: () => void; zoomOut: () => void; resetZoom: () => void }) => void
+  onZoomIn?: (fn: () => void) => void
+  onZoomOut?: (fn: () => void) => void
+  onFit?: (fn: () => void) => void
+  onFocusNode?: (fn: (nodeId: string) => void) => void
   highlightNodeId?: string | null
-  height?: number | string
   className?: string
+}
+
+/** Convert any CSS color to rgba with a given alpha using an offscreen canvas. */
+function colorWithAlpha(color: string, alpha: number): string {
+  if (typeof document === "undefined") return color
+  const ctx = document.createElement("canvas").getContext("2d")
+  if (!ctx) return color
+  ctx.fillStyle = color
+  const normalized = ctx.fillStyle
+  if (normalized.startsWith("#")) {
+    const r = parseInt(normalized.slice(1, 3), 16)
+    const g = parseInt(normalized.slice(3, 5), 16)
+    const b = parseInt(normalized.slice(5, 7), 16)
+    return `rgba(${r},${g},${b},${alpha})`
+  }
+  return normalized.replace("rgb(", "rgba(").replace(")", `,${alpha})`)
 }
 
 /**
@@ -25,31 +43,18 @@ function getCssVar(el: HTMLElement, varName: string, fallback: string): string {
   return value || fallback
 }
 
-/** Convert any CSS color to rgba with a given alpha using an offscreen canvas. */
-function colorWithAlpha(color: string, alpha: number): string {
-  if (typeof document === "undefined") return color
-  const ctx = document.createElement("canvas").getContext("2d")
-  if (!ctx) return color
-  ctx.fillStyle = color
-  // ctx.fillStyle normalizes to rgb()/rgba() string
-  const normalized = ctx.fillStyle
-  if (normalized.startsWith("#")) {
-    const r = parseInt(normalized.slice(1, 3), 16)
-    const g = parseInt(normalized.slice(3, 5), 16)
-    const b = parseInt(normalized.slice(5, 7), 16)
-    return `rgba(${r},${g},${b},${alpha})`
-  }
-  // Already rgb(...) form
-  return normalized.replace("rgb(", "rgba(").replace(")", `,${alpha})`)
-}
+/** Zoom threshold below which labels are hidden (lower ratio = more zoomed out) */
+const LABEL_ZOOM_THRESHOLD = 0.4
 
 export function SigmaGraph({
   data,
   onNodeClick,
   onNodeHover,
-  onReady,
+  onZoomIn,
+  onZoomOut,
+  onFit,
+  onFocusNode,
   highlightNodeId,
-  height = "100%",
   className,
 }: SigmaGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -57,14 +62,15 @@ export function SigmaGraph({
   const graphRef = useRef<Graph | null>(null)
   const layoutRef = useRef<Forceatlas2Layout | null>(null)
   const hoveredNodeRef = useRef<string | null>(null)
+  const cameraRatioRef = useRef<number>(1)
 
   // Build graphology graph from API data
-  const buildGraph = useCallback((data: SubgraphData, edgeColor: string): Graph => {
+  const buildGraph = useCallback((gData: SubgraphData, edgeColor: string): Graph => {
     const graph = new Graph()
 
-    for (const node of data.nodes) {
+    for (const node of gData.nodes) {
       const label = node.labels?.[0] ?? "Concept"
-      const degree = data.edges.filter(
+      const degree = gData.edges.filter(
         (e) => e.source === node.id || e.target === node.id,
       ).length
 
@@ -73,9 +79,8 @@ export function SigmaGraph({
         x: Math.random() * 100,
         y: Math.random() * 100,
         size: Math.max(4, Math.min(20, 4 + degree * 1.5)),
-        color: labelColor(label),
+        color: getEntityHex(label),
         type: "circle",
-        // Store metadata for events
         entityType: label,
         entityName: node.name,
         entityLabels: node.labels ?? [],
@@ -83,7 +88,7 @@ export function SigmaGraph({
       })
     }
 
-    for (const edge of data.edges) {
+    for (const edge of gData.edges) {
       if (graph.hasNode(edge.source) && graph.hasNode(edge.target)) {
         const edgeKey = `${edge.source}-${edge.target}-${edge.type}`
         if (!graph.hasEdge(edgeKey)) {
@@ -104,7 +109,6 @@ export function SigmaGraph({
   useEffect(() => {
     if (!containerRef.current) return
     if (data.nodes.length === 0) {
-      // Clear if no data
       if (sigmaRef.current) {
         sigmaRef.current.kill()
         sigmaRef.current = null
@@ -123,7 +127,8 @@ export function SigmaGraph({
     const highlightEdgeColor = getCssVar(container, "--primary", "#a78bfa")
     const mutedColor = getCssVar(container, "--muted-foreground", "#888888")
     const edgeColor = colorWithAlpha(mutedColor, 0.2)
-    const dimmedNodeColor = colorWithAlpha(mutedColor, 0.15)
+    const dimmedNodeColor = colorWithAlpha(mutedColor, 0.1)
+    const dimmedEdgeColor = colorWithAlpha(mutedColor, 0.05)
 
     const graph = buildGraph(data, edgeColor)
     graphRef.current = graph
@@ -151,13 +156,17 @@ export function SigmaGraph({
       edgeLabelSize: 9,
       minCameraRatio: 0.1,
       maxCameraRatio: 10,
-      // Node reducer for hover highlighting
-      nodeReducer: (node, data) => {
-        const res = { ...data }
+      nodeReducer: (node, nodeData) => {
+        const res = { ...nodeData }
         const hovered = hoveredNodeRef.current
+        const ratio = cameraRatioRef.current
+
+        // Hide labels when zoomed out past threshold
+        if (ratio > LABEL_ZOOM_THRESHOLD && hovered !== node) {
+          res.label = ""
+        }
 
         if (hovered && hovered !== node) {
-          // Check if this node is a neighbor of hovered
           const isNeighbor = graph.hasEdge(hovered, node) || graph.hasEdge(node, hovered)
           if (!isNeighbor) {
             res.color = dimmedNodeColor
@@ -173,15 +182,16 @@ export function SigmaGraph({
 
         return res
       },
-      edgeReducer: (edge, data) => {
-        const res = { ...data }
+      edgeReducer: (edge, edgeData) => {
+        const res = { ...edgeData }
         const hovered = hoveredNodeRef.current
 
         if (hovered) {
           const source = graph.source(edge)
           const target = graph.target(edge)
           if (source !== hovered && target !== hovered) {
-            res.hidden = true
+            res.color = dimmedEdgeColor
+            res.size = 0.5
           } else {
             res.color = highlightEdgeColor
             res.size = 2
@@ -194,11 +204,23 @@ export function SigmaGraph({
 
     sigmaRef.current = sigma
 
-    // Expose zoom actions to parent
-    onReady?.({
-      zoomIn: () => sigma.getCamera().animatedZoom({ duration: 300 }),
-      zoomOut: () => sigma.getCamera().animatedUnzoom({ duration: 300 }),
-      resetZoom: () => sigma.getCamera().animatedReset({ duration: 300 }),
+    // Track camera ratio for label threshold
+    const camera = sigma.getCamera()
+    cameraRatioRef.current = camera.ratio
+    camera.on("updated", (state) => {
+      cameraRatioRef.current = state.ratio
+    })
+
+    // Expose imperative methods via callbacks
+    onZoomIn?.(() => camera.animatedZoom({ duration: 300 }))
+    onZoomOut?.(() => camera.animatedUnzoom({ duration: 300 }))
+    onFit?.(() => camera.animatedReset({ duration: 300 }))
+    onFocusNode?.((nodeId: string) => {
+      if (!graph.hasNode(nodeId)) return
+      const nodePosition = sigma.getNodeDisplayData(nodeId)
+      if (nodePosition) {
+        camera.animate({ x: nodePosition.x, y: nodePosition.y, ratio: 0.3 }, { duration: 500 })
+      }
     })
 
     // Start ForceAtlas2 layout
@@ -255,7 +277,7 @@ export function SigmaGraph({
       sigma.kill()
       sigmaRef.current = null
     }
-  }, [data, buildGraph, onNodeClick, onNodeHover, onReady])
+  }, [data, buildGraph, onNodeClick, onNodeHover, onZoomIn, onZoomOut, onFit, onFocusNode])
 
   // Handle highlight from external source (e.g., search)
   useEffect(() => {
@@ -272,11 +294,8 @@ export function SigmaGraph({
   return (
     <div
       ref={containerRef}
-      className={className}
+      className={className ?? "absolute inset-0"}
       style={{
-        height,
-        width: "100%",
-        borderRadius: 0,
         background: "transparent",
         overflow: "hidden",
       }}

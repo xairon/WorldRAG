@@ -1,172 +1,84 @@
 "use client"
 
-import { useState, useCallback } from "react"
-import { toast } from "sonner"
+import { useState } from "react"
+import { useRouter } from "next/navigation"
+import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog"
-import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
-import { createProject } from "@/lib/api/projects"
+import { apiFetch } from "@/lib/api/client"
+import { Plus } from "lucide-react"
 
-interface CreateProjectDialogProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  onCreated: () => void
-}
-
-function nameToSlug(name: string): string {
-  return name
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9\s-]/g, "")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-")
-}
-
-export function CreateProjectDialog({
-  open,
-  onOpenChange,
-  onCreated,
-}: CreateProjectDialogProps) {
+export function CreateProjectDialog() {
+  const [open, setOpen] = useState(false)
   const [name, setName] = useState("")
-  const [slug, setSlug] = useState("")
-  const [slugTouched, setSlugTouched] = useState(false)
   const [description, setDescription] = useState("")
-  const [submitting, setSubmitting] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const router = useRouter()
 
-  const handleNameChange = useCallback(
-    (value: string) => {
-      setName(value)
-      if (!slugTouched) {
-        setSlug(nameToSlug(value))
-      }
-    },
-    [slugTouched]
-  )
-
-  const handleSlugChange = useCallback((value: string) => {
-    setSlugTouched(true)
-    setSlug(nameToSlug(value))
-  }, [])
-
-  const resetForm = useCallback(() => {
-    setName("")
-    setSlug("")
-    setSlugTouched(false)
-    setDescription("")
-  }, [])
-
-  const handleSubmit = useCallback(
-    async (e: React.FormEvent) => {
-      e.preventDefault()
-      if (!name.trim() || !slug.trim()) return
-
-      setSubmitting(true)
-      try {
-        await createProject({
-          name: name.trim(),
-          slug: slug.trim(),
-          description: description.trim() || undefined,
-        })
-        toast.success(`Project "${name.trim()}" created`)
-        resetForm()
-        onCreated()
-        onOpenChange(false)
-      } catch (err) {
-        const message =
-          err instanceof Error ? err.message : "Failed to create project"
-        toast.error(message)
-      } finally {
-        setSubmitting(false)
-      }
-    },
-    [name, slug, description, resetForm, onCreated, onOpenChange]
-  )
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!name.trim()) return
+    setLoading(true)
+    try {
+      const res = await apiFetch<{ slug: string }>("/projects", {
+        method: "POST",
+        body: JSON.stringify({ name: name.trim(), description: description.trim() }),
+      })
+      setOpen(false)
+      setName("")
+      setDescription("")
+      router.push(`/projects/${res.slug}`)
+      router.refresh()
+    } catch {
+      // TODO: show error toast
+    } finally {
+      setLoading(false)
+    }
+  }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm">
+          <Plus className="h-4 w-4 mr-1" />
+          New Project
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
         <DialogHeader>
-          <DialogTitle>New Project</DialogTitle>
-          <DialogDescription>
-            Create a new project to organize your books and knowledge graph.
-          </DialogDescription>
+          <DialogTitle>Create Project</DialogTitle>
         </DialogHeader>
-
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <label
-              htmlFor="project-name"
-              className="text-sm font-medium leading-none"
-            >
-              Name
-            </label>
+            <label htmlFor="project-name" className="text-sm font-medium">Name</label>
             <Input
               id="project-name"
-              placeholder="My Epic Saga"
               value={name}
-              onChange={(e) => handleNameChange(e.target.value)}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="My Novel Universe"
               required
-              autoFocus
             />
           </div>
-
           <div className="space-y-2">
-            <label
-              htmlFor="project-slug"
-              className="text-sm font-medium leading-none"
-            >
-              Slug
-            </label>
+            <label htmlFor="project-desc" className="text-sm font-medium">Description</label>
             <Input
-              id="project-slug"
-              placeholder="my-epic-saga"
-              value={slug}
-              onChange={(e) => handleSlugChange(e.target.value)}
-              required
-              className="font-mono text-sm"
-            />
-            <p className="text-[11px] text-muted-foreground">
-              Used in URLs: /projects/{slug || "..."}
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <label
-              htmlFor="project-description"
-              className="text-sm font-medium leading-none"
-            >
-              Description
-            </label>
-            <Textarea
-              id="project-description"
-              placeholder="A brief description of this project..."
+              id="project-desc"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              rows={3}
+              placeholder="Optional description"
             />
           </div>
-
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => onOpenChange(false)}
-              disabled={submitting}
-            >
-              Cancel
+          <div className="flex justify-end">
+            <Button type="submit" disabled={loading || !name.trim()}>
+              {loading ? "Creating..." : "Create"}
             </Button>
-            <Button type="submit" disabled={submitting || !name.trim()}>
-              {submitting ? "Creating..." : "Create Project"}
-            </Button>
-          </DialogFooter>
+          </div>
         </form>
       </DialogContent>
     </Dialog>

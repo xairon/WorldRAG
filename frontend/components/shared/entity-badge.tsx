@@ -12,9 +12,9 @@ import {
   Bug,
   Flag,
   Lightbulb,
-  Tag,
 } from "lucide-react"
-import { cn, labelBadgeClass } from "@/lib/utils"
+import { cn } from "@/lib/utils"
+import { getEntityHex } from "@/lib/constants"
 
 const ENTITY_ICONS: Record<string, React.ElementType> = {
   Character: Users,
@@ -38,18 +38,18 @@ interface EntityBadgeProps {
 }
 
 export function EntityBadge({ name, type, clickable = true, size = "sm", className }: EntityBadgeProps) {
-  const Icon = ENTITY_ICONS[type] ?? Tag
-  const badgeClass = labelBadgeClass(type)
+  const Icon = ENTITY_ICONS[type] ?? Lightbulb
+  const hex = getEntityHex(type)
 
   const content = (
     <span
       className={cn(
         "inline-flex items-center gap-1 rounded-full border font-medium",
         size === "sm" ? "px-2 py-0.5 text-[11px]" : "px-2.5 py-1 text-xs",
-        badgeClass,
         clickable && "cursor-pointer hover:brightness-125 transition-all",
         className,
       )}
+      style={{ borderColor: hex, color: hex }}
     >
       <Icon className={size === "sm" ? "h-3 w-3" : "h-3.5 w-3.5"} />
       {name}

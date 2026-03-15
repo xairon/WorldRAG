@@ -129,6 +129,18 @@ export interface ChatResponse {
   entities_mentioned?: string[]
 }
 
+// ── Projects ──────────────────────────────────────────────────────────────
+
+export interface ProjectBook {
+  id: string
+  book_id: string
+  original_filename: string
+  file_path: string
+  book_num: number
+  status: string
+  created_at: string
+}
+
 // ── Admin / DLQ ────────────────────────────────────────────────────────────
 
 export interface DLQEntry {
