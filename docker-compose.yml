@@ -3,8 +3,8 @@ services:
     image: neo4j:5-community
     restart: unless-stopped
     ports:
-      - "${BIND_HOST:-127.0.0.1}:7474:7474"
-      - "${BIND_HOST:-127.0.0.1}:7687:7687"
+      - "${BIND_HOST:-127.0.0.1}:49520:7474"
+      - "${BIND_HOST:-127.0.0.1}:49521:7687"
     environment:
       NEO4J_AUTH: neo4j/${NEO4J_PASSWORD}
       NEO4J_PLUGINS: '["apoc", "graph-data-science"]'
@@ -24,7 +24,7 @@ services:
     image: redis:7-alpine
     restart: unless-stopped
     ports:
-      - "${BIND_HOST:-127.0.0.1}:6379:6379"
+      - "${BIND_HOST:-127.0.0.1}:49522:6379"
     command: redis-server --requirepass ${REDIS_PASSWORD}
     volumes:
       - redis_data:/data
@@ -39,7 +39,7 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     ports:
-      - "${BIND_HOST:-127.0.0.1}:5432:5432"
+      - "${BIND_HOST:-127.0.0.1}:49523:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -58,10 +58,10 @@ services:
     image: langfuse/langfuse:2
     restart: unless-stopped
     ports:
-      - "${BIND_HOST:-127.0.0.1}:3001:3000"
+      - "${BIND_HOST:-127.0.0.1}:49517:3000"
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-worldrag}:${POSTGRES_PASSWORD:-worldrag}@postgres:5432/langfuse
-      NEXTAUTH_URL: http://localhost:3001
+      NEXTAUTH_URL: http://localhost:49517
       NEXTAUTH_SECRET: worldrag-langfuse-secret-change-in-prod
       SALT: worldrag-langfuse-salt-change-in-prod
       TELEMETRY_ENABLED: "false"
@@ -74,7 +74,7 @@ services:
     build: .
     restart: unless-stopped
     ports:
-      - "${BIND_HOST:-127.0.0.1}:8000:8000"
+      - "${BIND_HOST:-127.0.0.1}:49515:8000"
     env_file: .env
     environment:
       NEO4J_URI: bolt://neo4j:7687
@@ -82,7 +82,7 @@ services:
       POSTGRES_URI: postgresql://${POSTGRES_USER:-worldrag}:${POSTGRES_PASSWORD:-worldrag}@postgres:5432/${POSTGRES_DB:-worldrag}
       LANGFUSE_HOST: http://langfuse:3000
       EMBEDDING_DEVICE: cpu
-      CORS_ORIGINS: '["http://localhost:3500","http://localhost:3000"]'
+      CORS_ORIGINS: '["http://localhost:49516","http://localhost:3000"]'
     volumes:
       - project_data:/data/projects
     depends_on:
