@@ -311,6 +311,7 @@ export default function GraphExplorerPage() {
         <NodeDetailPanel
           node={selectedNode}
           edges={rawData.edges}
+          slug={slug}
           bookId={selectedBookId ?? undefined}
           open={detailOpen}
           onClose={() => {

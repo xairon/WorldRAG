@@ -1,6 +1,6 @@
 "use client"
 
-import Link from "next/link"
+// Link removed — no standalone entity detail page
 import {
   Users,
   Sparkles,
@@ -56,13 +56,6 @@ export function EntityBadge({ name, type, clickable = true, size = "sm", classNa
     </span>
   )
 
-  if (clickable) {
-    return (
-      <Link href={`/entity/${encodeURIComponent(type)}/${encodeURIComponent(name)}`}>
-        {content}
-      </Link>
-    )
-  }
-
+  // Entity badge is display-only — no standalone entity page exists
   return content
 }

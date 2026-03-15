@@ -76,9 +76,9 @@ export function ProjectCard({ project }: { project: Project }) {
   return (
     <>
       <div className="border rounded-lg overflow-hidden hover:bg-muted/50 transition-colors group relative">
-        <Link href={`/projects/${project.slug}`} className="block">
+        <Link href={`/projects/${project.slug}`} className="flex">
           {project.cover_image && (
-            <div className="h-32 bg-muted overflow-hidden">
+            <div className="w-20 shrink-0 bg-muted">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={project.cover_image}
@@ -87,7 +87,7 @@ export function ProjectCard({ project }: { project: Project }) {
               />
             </div>
           )}
-          <div className="p-4">
+          <div className="flex-1 p-4 min-w-0">
             <h3 className="text-lg font-semibold truncate pr-8">{project.name}</h3>
             {project.description && (
               <p className="text-sm text-muted-foreground line-clamp-2 mt-1">

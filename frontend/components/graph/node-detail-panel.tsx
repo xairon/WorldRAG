@@ -11,12 +11,13 @@ import type { GraphNode, GraphEdge } from "@/lib/api/types"
 interface NodeDetailPanelProps {
   node: GraphNode
   edges: GraphEdge[]
+  slug: string
   bookId?: string
   open: boolean
   onClose: () => void
 }
 
-export function NodeDetailPanel({ node, edges, bookId, open, onClose }: NodeDetailPanelProps) {
+export function NodeDetailPanel({ node, edges, slug, bookId, open, onClose }: NodeDetailPanelProps) {
   const primaryLabel = node.labels?.[0] ?? "Concept"
 
   // Collect relations involving this node, grouped by type
@@ -121,8 +122,8 @@ export function NodeDetailPanel({ node, edges, bookId, open, onClose }: NodeDeta
               <Link
                 href={
                   bookId
-                    ? `/read/${bookId}?entity=${encodeURIComponent(node.name)}`
-                    : `/read?entity=${encodeURIComponent(node.name)}`
+                    ? `/projects/${slug}/books/${bookId}/reader/1`
+                    : `/projects/${slug}`
                 }
               >
                 <BookOpen className="h-3 w-3 mr-1.5" />
@@ -131,11 +132,7 @@ export function NodeDetailPanel({ node, edges, bookId, open, onClose }: NodeDeta
             </Button>
             <Button variant="outline" size="sm" className="h-8 text-xs" asChild>
               <Link
-                href={
-                  bookId
-                    ? `/chat?book=${bookId}&q=${encodeURIComponent(node.name)}`
-                    : `/chat?q=${encodeURIComponent(node.name)}`
-                }
+                href={`/projects/${slug}/chat?q=${encodeURIComponent(node.name)}`}
               >
                 <MessageSquare className="h-3 w-3 mr-1.5" />
                 View in Chat
