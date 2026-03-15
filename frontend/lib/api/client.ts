@@ -2,7 +2,12 @@
  * Base API client. All fetch calls go through apiFetch.
  */
 
-export const API_BASE = "/api"
+function getApiBase() {
+  if (typeof window === "undefined") {
+    return process.env.BACKEND_URL ?? "http://localhost:8000"
+  }
+  return "/api"
+}
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const headers: HeadersInit = { ...(init?.headers as Record<string, string>) }
@@ -13,7 +18,7 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   if (apiKey) {
     (headers as Record<string, string>)["X-API-Key"] = apiKey
   }
-  const res = await fetch(`${API_BASE}${path}`, { ...init, headers })
+  const res = await fetch(`${getApiBase()}${path}`, { ...init, headers })
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
     throw new Error(body.detail ?? `API error ${res.status}`)
