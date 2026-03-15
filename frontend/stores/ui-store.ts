@@ -1,21 +1,38 @@
 import { create } from "zustand"
 
 interface UIState {
+  // Existing
   mobileSidebarOpen: boolean
+  setMobileSidebarOpen: (open: boolean) => void
   commandOpen: boolean
-
-  toggleSidebar: () => void
-  setMobileSidebarOpen: (collapsed: boolean) => void
-  setCommandOpen: (open: boolean) => void
   toggleCommandOpen: () => void
+
+  // New
+  sidebarExpanded: boolean
+  setSidebarExpanded: (expanded: boolean) => void
+
+  /** Which books have their accordion expanded in sidebar */
+  expandedBooks: Record<string, boolean>
+  toggleBookExpanded: (bookId: string) => void
 }
 
 export const useUIStore = create<UIState>((set) => ({
+  // Existing
   mobileSidebarOpen: false,
+  setMobileSidebarOpen: (open) => set({ mobileSidebarOpen: open }),
   commandOpen: false,
-
-  toggleSidebar: () => set((s) => ({ mobileSidebarOpen: !s.mobileSidebarOpen })),
-  setMobileSidebarOpen: (collapsed) => set({ mobileSidebarOpen: collapsed }),
-  setCommandOpen: (open) => set({ commandOpen: open }),
   toggleCommandOpen: () => set((s) => ({ commandOpen: !s.commandOpen })),
+
+  // New
+  sidebarExpanded: true,
+  setSidebarExpanded: (expanded) => set({ sidebarExpanded: expanded }),
+
+  expandedBooks: {},
+  toggleBookExpanded: (bookId) =>
+    set((state) => ({
+      expandedBooks: {
+        ...state.expandedBooks,
+        [bookId]: !state.expandedBooks[bookId],
+      },
+    })),
 }))
