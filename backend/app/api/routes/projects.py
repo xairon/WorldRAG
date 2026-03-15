@@ -257,6 +257,92 @@ async def upload_book(
     if file_row is None:
         return JSONResponse(status_code=500, content={"detail": "Failed to store book file"})
 
+    # ── Run ingestion pipeline (parse → chunk → regex → Neo4j) ──────
+    from pathlib import Path as _Path
+    from app.services.ingestion import extract_epub_metadata, ingest_file
+    from app.services.chunking import chunk_chapter
+    from app.services.regex_extractor import RegexExtractor
+    from app.schemas.book import ProcessingStatus
+
+    file_path = _Path(file_row["file_path"])
+    neo4j_driver = request.app.state.neo4j_driver
+    from app.repositories.book_repo import BookRepository
+    repo = BookRepository(neo4j_driver)
+
+    try:
+        # Auto-detect metadata from epub
+        epub_meta: dict = {}
+        if suffix == ".epub":
+            epub_meta = await extract_epub_metadata(file_path)
+
+        book_title = epub_meta.get("title") or file_path.stem
+        book_author = epub_meta.get("author")
+        book_series = epub_meta.get("series_name")
+        book_order = epub_meta.get("order_in_series")
+
+        # Create book in Neo4j
+        book_id = await repo.create_book(
+            title=book_title,
+            series_name=book_series,
+            order_in_series=book_order,
+            author=book_author,
+            genre=None,
+        )
+
+        await repo.update_book_status(book_id, ProcessingStatus.INGESTING.value)
+
+        # Parse file into chapters
+        chapters, epub_css = await ingest_file(file_path)
+        if not chapters:
+            await repo.update_book_status(book_id, ProcessingStatus.FAILED.value)
+            return JSONResponse(status_code=422, content={"detail": "No chapters found in file"})
+
+        await repo.create_chapters(book_id, chapters)
+        await repo.update_book_chapter_count(book_id, len(chapters))
+
+        if epub_css:
+            await repo.set_book_epub_css(book_id, epub_css)
+
+        for chapter in chapters:
+            if chapter.paragraphs:
+                await repo.create_paragraphs(book_id, chapter.number, chapter.paragraphs)
+
+        # Chunk each chapter
+        await repo.update_book_status(book_id, ProcessingStatus.CHUNKING.value)
+        all_chunks = []
+        for chapter in chapters:
+            chunks = chunk_chapter(chapter, book_id)
+            all_chunks.extend(chunks)
+        await repo.create_chunks(book_id, all_chunks)
+
+        # Regex extraction (Passe 0)
+        regex_extractor = RegexExtractor.default()
+        all_regex_matches = []
+        for chapter in chapters:
+            matches = regex_extractor.extract(chapter.text, chapter.number)
+            all_regex_matches.extend(matches)
+        await repo.store_regex_matches(book_id, all_regex_matches)
+
+        await repo.update_book_status(book_id, ProcessingStatus.COMPLETED.value)
+
+        # Update project_files row with the Neo4j book_id
+        await svc.repo.update_file_book_id(str(file_row["id"]), book_id)
+
+        logger.info(
+            "project_book_ingested",
+            slug=slug,
+            book_id=book_id,
+            chapters=len(chapters),
+            chunks=len(all_chunks),
+            regex_matches=len(all_regex_matches),
+        )
+
+        file_row["book_id"] = book_id
+    except Exception:
+        logger.exception("project_book_ingestion_failed", slug=slug, filename=file.filename)
+        # File is stored but ingestion failed — return partial result
+        pass
+
     return JSONResponse(status_code=201, content=_serialize_project(file_row))
 
 

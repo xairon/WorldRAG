@@ -8,10 +8,11 @@ import { UploadDropZone } from "./upload-drop-zone"
 
 export interface Book {
   id: string
-  book_id?: string
-  original_filename: string
+  book_id?: string | null
+  original_filename?: string
+  filename?: string
   book_num: number
-  status: string
+  status?: string
   total_chapters?: number
   total_words?: number
 }
@@ -46,16 +47,19 @@ export function BooksTable({ slug, books }: { slug: string; books: Book[] }) {
             </tr>
           </thead>
           <tbody>
-            {books.map((book) => (
+            {books.map((book) => {
+              const hasNeoId = book.book_id != null
+              const displayName = (book.original_filename ?? book.filename ?? "Untitled")
+                .replace(/\.(epub|pdf|txt)$/i, "")
+                .replace(/ -- .*/g, "") // strip "-- Author -- Year" suffixes
+              return (
               <tr
-                key={book.book_id ?? book.id}
-                onClick={() =>
-                  router.push(`/projects/${slug}/books/${book.book_id ?? book.id}/chapters`)
-                }
-                className="cursor-pointer border-b transition-colors hover:bg-muted/30"
+                key={book.id}
+                onClick={() => hasNeoId && router.push(`/projects/${slug}/books/${book.book_id}/chapters`)}
+                className={hasNeoId ? "cursor-pointer border-b transition-colors hover:bg-muted/30" : "border-b opacity-60"}
               >
                 <td className="px-4 py-3 font-mono text-muted-foreground">{book.book_num}</td>
-                <td className="px-4 py-3 font-medium">{book.original_filename}</td>
+                <td className="px-4 py-3 font-medium">{displayName}</td>
                 <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
                   {book.total_chapters != null ? formatNumber(book.total_chapters) : "\u2014"}
                 </td>
@@ -63,10 +67,11 @@ export function BooksTable({ slug, books }: { slug: string; books: Book[] }) {
                   {book.total_words != null ? formatNumber(book.total_words) : "\u2014"}
                 </td>
                 <td className="px-4 py-3">
-                  <BookStatusBadge status={book.status} />
+                  <BookStatusBadge status={book.status ?? "pending"} />
                 </td>
               </tr>
-            ))}
+              )
+            })}
           </tbody>
         </table>
       </div>
