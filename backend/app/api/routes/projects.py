@@ -261,7 +261,7 @@ async def upload_book(
     from pathlib import Path as _Path
     from app.services.ingestion import extract_epub_metadata, ingest_file
     from app.services.chunking import chunk_chapter
-    from app.services.regex_extractor import RegexExtractor
+    from app.services.extraction.regex_extractor import RegexExtractor
     from app.schemas.book import ProcessingStatus
 
     file_path = _Path(file_row["file_path"])
