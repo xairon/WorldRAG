@@ -781,7 +781,7 @@ The frontend uses simplified status labels. The backend `ProcessingStatus` enum 
 
 | Frontend status | Backend values | Notes |
 |---|---|---|
-| `pending` | `pending`, `queued` | Job enqueued but not started |
+| `pending` | `pending` | Job enqueued but not started |
 | `parsing` | `ingesting`, `chunking` | File being parsed into chapters/chunks |
 | `ready` | `completed` | Chapters parsed, ready for extraction |
 | `extracting` | `extracting`, `reconciling`, `validating` | LangGraph extraction in progress |
