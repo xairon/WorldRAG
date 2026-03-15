@@ -27,7 +27,7 @@ export function ReaderNav({
     <div className="flex items-center justify-between">
       {hasPrev ? (
         <Link
-          href={`/read/${bookId}/${current - 1}`}
+          href={`/projects/${slug}/books/${bookId}/reader/${current - 1}`}
           className="flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
         >
           <ChevronLeft className="h-4 w-4" />
@@ -39,7 +39,7 @@ export function ReaderNav({
 
       {hasNext ? (
         <Link
-          href={`/read/${bookId}/${current + 1}`}
+          href={`/projects/${slug}/books/${bookId}/reader/${current + 1}`}
           className="flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
         >
           {nextTitle ? <span>{nextTitle}</span> : <span>Next</span>}
