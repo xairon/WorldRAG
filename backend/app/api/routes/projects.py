@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+import httpx
 from fastapi import APIRouter, Depends, Form, Request, UploadFile
 from fastapi.responses import JSONResponse, Response
 
@@ -280,6 +281,11 @@ async def upload_book(
         book_series = epub_meta.get("series_name")
         book_order = epub_meta.get("order_in_series")
 
+        # Enrich metadata from OpenLibrary
+        from app.services.metadata_enrichment import enrich_from_openlibrary
+
+        ol_meta = await enrich_from_openlibrary(book_title, book_author)
+
         # Save cover image if extracted
         cover_url = None
         cover_bytes = epub_meta.pop("cover_image", None)
@@ -294,6 +300,44 @@ async def upload_book(
             # URL relative to project data dir: /data/projects/{slug}/covers/cover.jpg
             cover_url = f"/api/projects/{slug}/covers/{cover_filename}"
             logger.info("cover_extracted", slug=slug, cover_path=str(cover_path))
+
+        # Use OpenLibrary cover if epub doesn't have one
+        if not cover_bytes and ol_meta.get("cover_url"):
+            try:
+                async with httpx.AsyncClient(timeout=10) as http:
+                    cover_resp = await http.get(ol_meta["cover_url"])
+                    if cover_resp.status_code == 200 and len(cover_resp.content) > 1000:
+                        cover_bytes = cover_resp.content
+                        cover_mime = cover_resp.headers.get("content-type", "image/jpeg")
+                        ext = {
+                            "image/jpeg": ".jpg",
+                            "image/png": ".png",
+                            "image/gif": ".gif",
+                        }.get(cover_mime, ".jpg")
+                        cover_dir = file_path.parent / "covers"
+                        cover_dir.mkdir(exist_ok=True)
+                        cover_filename = f"cover{ext}"
+                        cover_path = cover_dir / cover_filename
+                        cover_path.write_bytes(cover_bytes)
+                        cover_url = f"/api/projects/{slug}/covers/{cover_filename}"
+                        logger.info(
+                            "cover_from_openlibrary",
+                            slug=slug,
+                            cover_path=str(cover_path),
+                        )
+            except Exception:
+                pass  # Cover download is best-effort
+
+        # Enrich project description from OpenLibrary if empty
+        if ol_meta.get("description"):
+            try:
+                current_project = await svc.get_project(slug)
+                if current_project and not current_project.get("description"):
+                    await svc.update_project(
+                        slug, description=ol_meta["description"][:500]
+                    )
+            except Exception:
+                pass  # Description enrichment is best-effort
 
         # Create book in Neo4j
         book_id = await repo.create_book(
