@@ -120,6 +120,8 @@ export function EpubRenderer({ xhtml, css }: EpubRendererProps) {
           fontFamily: '"Literata", "Georgia", "Cambria", "Times New Roman", serif',
           fontSize: "18px",
           lineHeight: 1.8,
+          maxWidth: "720px",
+          margin: "0 auto",
         }}
       />
     </>

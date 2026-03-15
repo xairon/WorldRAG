@@ -43,7 +43,7 @@ export function ChatMessage({ message: msg, threadId, bookId }: ChatMessageProps
       {/* Bubble */}
       <div
         className={cn(
-          "rounded-xl px-4 py-3 text-sm leading-relaxed min-w-0",
+          "rounded-2xl px-4 py-3 text-sm leading-relaxed min-w-0",
           isUser && "bg-primary/20 border border-primary/20 text-foreground",
           isAssistant && "bg-accent border border-[var(--glass-border)] text-foreground",
           isSystem && "bg-[var(--glass-bg)] border border-[var(--glass-border)] text-muted-foreground italic",
