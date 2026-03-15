@@ -55,7 +55,7 @@ frontend/
 │   │   ├── extraction-header.tsx           # NEW
 │   │   ├── extraction-donut.tsx            # NEW
 │   │   ├── chapter-table.tsx               # NEW
-│   │   ├── chapter-row.tsx                 # NEW
+│   │   ├── chapter-row.tsx                 # NEW (includes entity breakdown inline)
 │   │   ├── live-feed.tsx                   # NEW
 │   │   └── extraction-action.tsx           # NEW
 │   │
@@ -287,7 +287,8 @@ export function StatusBadge({ status, className }: { status: UIStatus; className
         className,
       )}
     >
-      <span className={`text-${config.color}`}>{STATUS_ICONS[status]}</span>
+      {/* Use inline style — dynamic Tailwind classes get purged */}
+      <span style={{ color: config.hex }}>{STATUS_ICONS[status]}</span>
       <span className="text-muted-foreground">{config.label}</span>
     </span>
   )
@@ -339,16 +340,22 @@ git commit -m "feat(ui): add StatusBadge and EmptyState shared components"
 - Create: `frontend/components/layout/mobile-drawer.tsx`
 - Modify: `frontend/stores/ui-store.ts` — add sidebar state
 
-- [ ] **Step 1: Update ui-store with sidebar state**
+- [ ] **Step 1: Update ui-store — merge new fields into existing store**
+
+The existing store has `commandOpen` and `toggleCommandOpen` — keep those. Add new sidebar fields:
 
 ```typescript
 // frontend/stores/ui-store.ts
 import { create } from "zustand"
 
 interface UIState {
+  // Existing — keep
   mobileSidebarOpen: boolean
   setMobileSidebarOpen: (open: boolean) => void
+  commandOpen: boolean
+  toggleCommandOpen: () => void
 
+  // New
   sidebarExpanded: boolean
   setSidebarExpanded: (expanded: boolean) => void
 
@@ -358,9 +365,13 @@ interface UIState {
 }
 
 export const useUIStore = create<UIState>((set) => ({
+  // Existing
   mobileSidebarOpen: false,
   setMobileSidebarOpen: (open) => set({ mobileSidebarOpen: open }),
+  commandOpen: false,
+  toggleCommandOpen: () => set((s) => ({ commandOpen: !s.commandOpen })),
 
+  // New
   sidebarExpanded: true,
   setSidebarExpanded: (expanded) => set({ sidebarExpanded: expanded }),
 
@@ -669,6 +680,8 @@ export function AppSidebar({ slug, projectName, books }: AppSidebarProps) {
 // frontend/components/layout/mobile-drawer.tsx
 "use client"
 
+import { useEffect } from "react"
+import { usePathname } from "next/navigation"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { Menu } from "lucide-react"
 import { useUIStore } from "@/stores/ui-store"
@@ -683,6 +696,12 @@ interface MobileDrawerProps {
 
 export function MobileDrawer({ slug, projectName, books }: MobileDrawerProps) {
   const { mobileSidebarOpen, setMobileSidebarOpen } = useUIStore()
+  const pathname = usePathname()
+
+  // Auto-close drawer on navigation
+  useEffect(() => {
+    setMobileSidebarOpen(false)
+  }, [pathname, setMobileSidebarOpen])
 
   return (
     <Sheet open={mobileSidebarOpen} onOpenChange={setMobileSidebarOpen}>
@@ -877,23 +896,39 @@ export default async function ProjectLayout({
 }
 ```
 
-**Note:** This is a Server Component. It fetches data at render time. The `apiFetch` function needs to work server-side too. Check if the current `apiFetch` uses relative `/api` prefix — if so, update it to use `BACKEND_URL` env var for server-side calls, or use Next.js `fetch` with the full URL. The `next.config.ts` rewrites only work client-side.
+**CRITICAL: Before this step, you MUST fix `apiFetch` for Server Components.**
 
-Create a server-safe fetch helper if needed:
+The current `apiFetch` in `frontend/lib/api/client.ts` uses `/api` prefix which only works client-side (Next.js rewrites). Server Components cannot use this. Update `client.ts` FIRST:
 
 ```typescript
-// Add to frontend/lib/api/client.ts
-export function getApiBase() {
-  // Server-side: use direct backend URL
+// frontend/lib/api/client.ts
+function getApiBase() {
+  // Server-side: use direct backend URL (no Next.js rewrite available)
   if (typeof window === "undefined") {
     return process.env.BACKEND_URL ?? "http://localhost:8000"
   }
   // Client-side: use Next.js rewrite proxy
   return "/api"
 }
+
+export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers: HeadersInit = { ...(init?.headers) }
+  if (!(init?.body instanceof FormData)) {
+    (headers as Record<string, string>)["Content-Type"] = "application/json"
+  }
+  if (process.env.NEXT_PUBLIC_API_KEY) {
+    (headers as Record<string, string>)["X-API-Key"] = process.env.NEXT_PUBLIC_API_KEY
+  }
+  const res = await fetch(`${getApiBase()}${path}`, { ...init, headers })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.detail ?? `API error ${res.status}`)
+  }
+  return res.json()
+}
 ```
 
-Then update `apiFetch` to use `getApiBase()` instead of hardcoded `/api`.
+This is a prerequisite for ALL Server Components (project layout, books page, reader pages, extraction page, settings, chapters).
 
 - [ ] **Step 4: Commit**
 
@@ -1718,7 +1753,13 @@ import { useExtractionStore } from "@/stores/extraction-store"
 
 export function useExtractionStream(bookId: string | null) {
   const eventSourceRef = useRef<EventSource | null>(null)
-  const store = useExtractionStore()
+
+  // Use selectors to avoid re-render loops — never destructure the whole store
+  const status = useExtractionStore((s) => s.status)
+  const feedMessages = useExtractionStore((s) => s.feedMessages)
+  const chaptersDone = useExtractionStore((s) => s.chaptersDone)
+  const chaptersTotal = useExtractionStore((s) => s.chaptersTotal)
+  const entitiesFound = useExtractionStore((s) => s.entitiesFound)
 
   const connect = useCallback(() => {
     if (!bookId) return
@@ -1729,21 +1770,24 @@ export function useExtractionStream(bookId: string | null) {
     const es = new EventSource(`/api/stream/extraction/${bookId}`)
     eventSourceRef.current = es
 
+    // Use store.getState() for mutations inside callbacks (not hooks)
+    const store = useExtractionStore.getState()
     store.setStatus("running")
 
     es.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data)
+        const s = useExtractionStore.getState()
 
         if (data.status === "started") {
-          store.setProgress({ chaptersTotal: data.total, chaptersDone: 0 })
+          s.setProgress({ chaptersTotal: data.total, chaptersDone: 0 })
         } else if (data.status === "progress") {
-          store.setProgress({
+          s.setProgress({
             chaptersDone: data.chapters_done,
-            entitiesFound: data.entities_found ?? store.getState().entitiesFound,
+            entitiesFound: data.entities_found ?? s.entitiesFound,
           })
         } else if (data.status === "done") {
-          store.setStatus("done")
+          s.setStatus("done")
           es.close()
         }
         // Ignore keepalive
@@ -1753,10 +1797,10 @@ export function useExtractionStream(bookId: string | null) {
     }
 
     es.onerror = () => {
-      store.setStatus("error")
+      useExtractionStore.getState().setStatus("error")
       es.close()
     }
-  }, [bookId, store])
+  }, [bookId])
 
   const disconnect = useCallback(() => {
     eventSourceRef.current?.close()
@@ -1767,7 +1811,7 @@ export function useExtractionStream(bookId: string | null) {
     return () => disconnect()
   }, [disconnect])
 
-  return { connect, disconnect, ...store }
+  return { connect, disconnect, status, feedMessages, chaptersDone, chaptersTotal, entitiesFound }
 }
 ```
 
@@ -1851,7 +1895,7 @@ export function ExtractionHeader({
 }
 ```
 
-- [ ] **Step 2: Create extraction-donut.tsx**
+- [ ] **Step 2: Create extraction-donut.tsx** (recharts is already in package.json — v3.7.0)
 
 ```tsx
 // frontend/components/extraction/extraction-donut.tsx
@@ -2197,6 +2241,9 @@ async function getBookDetail(bookId: string) {
 }
 
 async function getProjectInfo(slug: string) {
+  // Note: verify that /projects/{slug}/stats returns has_profile and books_count.
+  // The ProjectStatsResponse schema includes: slug, books_count, chapters_total,
+  // entities_total, community_count, has_profile, profile_types_count
   return apiFetch<{ has_profile: boolean; books_count: number }>(`/projects/${slug}/stats`)
 }
 
@@ -2250,8 +2297,6 @@ export function ExtractionDashboard({ slug, bookId, book, chapters, hasProfile, 
   const extraction = useExtractionStream(bookId)
 
   const totalEntities = chapters.reduce((sum, ch) => sum + (ch.entity_count || 0), 0)
-  // Approximate relations as ~60% of entities (until we have a real count)
-  const totalRelations = Math.round(totalEntities * 0.6)
 
   // Build donut data from chapters
   const typeCountMap: Record<string, number> = {}
@@ -2260,7 +2305,11 @@ export function ExtractionDashboard({ slug, bookId, book, chapters, hasProfile, 
 
   const handleStart = async () => {
     try {
-      await fetch(`/api/projects/${slug}/extract`, { method: "POST" })
+      await fetch(`/api/projects/${slug}/extract`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ book_id: bookId }),
+      })
       extraction.connect()
       toast.success("Extraction started")
     } catch (err) {
@@ -2291,7 +2340,7 @@ export function ExtractionDashboard({ slug, bookId, book, chapters, hasProfile, 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-6">
         <ExtractionHeader
           entities={totalEntities}
-          relations={totalRelations}
+          relations={0} /* TODO: add total_relations to BookDetail API response */
           chaptersDone={chapters.filter((c) => ["extracted", "embedded", "completed"].includes(c.status)).length}
           chaptersTotal={book.total_chapters}
           cost={book.total_cost_usd}
@@ -2330,13 +2379,15 @@ git commit -m "feat(ui): extraction dashboard page with SSE streaming"
 - Rewrite: `frontend/components/graph/sigma-graph.tsx`
 - Rewrite: `frontend/components/graph/node-detail-panel.tsx`
 
+**API note:** The graph endpoints are NOT project-scoped in the backend despite what the spec Section 14 suggests. The actual routes are `GET /api/graph/search?q=...&book_id=...` and `GET /api/graph/subgraph/{bookId}`. The plan uses the correct backend URLs.
+
 - [ ] **Step 1: Create graph-search.tsx**
 
 ```tsx
 // frontend/components/graph/graph-search.tsx
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useRef } from "react"
 import { Search } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { getEntityHex } from "@/lib/constants"
@@ -2357,18 +2408,22 @@ export function GraphSearch({
   const [query, setQuery] = useState("")
   const [results, setResults] = useState<SearchResult[]>([])
   const [open, setOpen] = useState(false)
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(null)
 
   const search = useCallback(
-    async (q: string) => {
+    (q: string) => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
       if (q.length < 2) { setResults([]); return }
-      try {
-        const res = await fetch(`/api/graph/search?q=${encodeURIComponent(q)}&book_id=${bookId}&limit=10`)
-        if (res.ok) {
-          const data = await res.json()
-          setResults(data)
-          setOpen(true)
-        }
-      } catch { /* ignore */ }
+      debounceRef.current = setTimeout(async () => {
+        try {
+          const res = await fetch(`/api/graph/search?q=${encodeURIComponent(q)}&book_id=${bookId}&limit=10`)
+          if (res.ok) {
+            const data = await res.json()
+            setResults(data)
+            setOpen(true)
+          }
+        } catch { /* ignore */ }
+      }, 200) // 200ms debounce per spec
     },
     [bookId],
   )
@@ -2642,6 +2697,8 @@ git commit -m "feat(ui): graph explorer page — full-bleed with floating panels
 ## Chunk 6: Chat Enhancement
 
 ### Task 17: Chat Header + Input Components
+
+**API note:** The chat streaming endpoint is `GET /api/chat/stream` (not POST, not project-scoped) with query params `q`, `book_id`, `max_chapter`, `thread_id`. The existing `use-chat-stream.ts` hook already calls this correctly. Verify this before modifying it — just add `book_id` and `max_chapter` params from the chat store.
 
 **Files:**
 - Create: `frontend/components/chat/chat-header.tsx`
