@@ -28,6 +28,7 @@ interface Project {
   books_count: number
   entity_count: number
   updated_at: string
+  cover_image?: string | null
 }
 
 export function ProjectCard({ project }: { project: Project }) {
@@ -74,17 +75,29 @@ export function ProjectCard({ project }: { project: Project }) {
 
   return (
     <>
-      <div className="border rounded-lg p-4 hover:bg-muted/50 transition-colors group relative">
+      <div className="border rounded-lg overflow-hidden hover:bg-muted/50 transition-colors group relative">
         <Link href={`/projects/${project.slug}`} className="block">
-          <h3 className="text-lg font-semibold truncate pr-8">{project.name}</h3>
-          {project.description && (
-            <p className="text-sm text-muted-foreground line-clamp-2 mt-1">
-              {project.description}
-            </p>
+          {project.cover_image && (
+            <div className="h-32 bg-muted overflow-hidden">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={project.cover_image}
+                alt={`${project.name} cover`}
+                className="w-full h-full object-cover"
+              />
+            </div>
           )}
-          <div className="flex gap-4 mt-3 text-xs text-muted-foreground font-mono">
-            <span>{project.books_count} books</span>
-            <span>{project.entity_count} entities</span>
+          <div className="p-4">
+            <h3 className="text-lg font-semibold truncate pr-8">{project.name}</h3>
+            {project.description && (
+              <p className="text-sm text-muted-foreground line-clamp-2 mt-1">
+                {project.description}
+              </p>
+            )}
+            <div className="flex gap-4 mt-3 text-xs text-muted-foreground font-mono">
+              <span>{project.books_count} books</span>
+              <span>{project.entity_count} entities</span>
+            </div>
           </div>
         </Link>
 

@@ -328,6 +328,13 @@ async def upload_book(
             except Exception:
                 pass  # Cover download is best-effort
 
+        # Save cover URL to project
+        if cover_url:
+            try:
+                await svc.update_project(slug, cover_image=cover_url)
+            except Exception:
+                pass
+
         # Enrich project description from OpenLibrary if empty
         if ol_meta.get("description"):
             try:
