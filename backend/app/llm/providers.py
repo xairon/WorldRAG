@@ -99,6 +99,41 @@ def get_instructor_for_task(task: str) -> tuple[instructor.AsyncInstructor, str]
     return client, model
 
 
+def get_instructor_for_extraction(
+    model_override: str | None = None,
+) -> tuple[instructor.AsyncInstructor, str]:
+    """Get Instructor client for v4 extraction steps.
+
+    Default: Gemini 2.5 Flash (settings.langextract_model)
+    Override: ollama (qwen3:32b) via OpenAI-compatible endpoint with 'local:' prefix
+
+    Args:
+        model_override: Optional model override. Use 'local:<model_name>' to route
+            to the local Ollama endpoint instead of Gemini.
+
+    Returns:
+        Tuple of (instructor_client, model_name).
+    """
+    if model_override and model_override.startswith("local:"):
+        model_name = model_override.removeprefix("local:")
+        client = instructor.from_openai(
+            AsyncOpenAI(
+                base_url=settings.ollama_base_url,
+                api_key="ollama",
+            ),
+            mode=instructor.Mode.JSON,
+        )
+        return client, model_name
+
+    # Default: Gemini
+    client = instructor.from_genai(
+        get_gemini_client(),
+        mode=instructor.Mode.GENAI_STRUCTURED_OUTPUTS,
+        use_async=True,
+    )
+    return client, settings.langextract_model
+
+
 def get_langchain_llm(spec: str | None = None):
     """Get a LangChain ChatModel for LangGraph usage.
 
