@@ -21,6 +21,7 @@ from app.schemas.extraction import (
     LoreExtractionResult,
     SystemExtractionResult,
 )
+from app.schemas.extraction_v4 import ExtractionStateV4  # noqa: F401
 
 
 class ExtractionPipelineState(TypedDict, total=False):
