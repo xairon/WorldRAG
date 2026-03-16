@@ -88,8 +88,8 @@ def test_relation_prompt_all_16_relation_types() -> None:
     prompt = build_relation_prompt(language="fr")
     for rel_type in [
         "RELATES_TO", "MEMBER_OF", "HAS_SKILL", "HAS_CLASS", "HAS_TITLE",
-        "HAS_BLOODLINE", "HAS_PROFESSION", "OWNS", "PARTICIPATES_IN", "LOCATED_IN",
-        "PART_OF", "LEADS_TO", "PART_OF_ARC", "GOVERNED_BY",
-        "QUEST_GIVER", "QUEST_TARGET",
+        "PARTICIPATES_IN", "OCCURS_AT", "LOCATED_AT", "POSSESSES",
+        "CAUSES", "ENABLES", "PART_OF", "EVOLVES_INTO", "IS_RACE",
+        "INHABITS", "BELONGS_TO",
     ]:
         assert rel_type in prompt, f"Missing relation type: {rel_type}"

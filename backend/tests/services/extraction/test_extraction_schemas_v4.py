@@ -173,7 +173,7 @@ def test_relation_roundtrip():
     relation = ExtractedRelation(
         source="Jake Thayne",
         target="Miranda",
-        relation_type="ALLIED_WITH",
+        relation_type="RELATES_TO",
         subtype="combat_partner",
         sentiment=0.8,
         valid_from_chapter=3,
@@ -181,7 +181,7 @@ def test_relation_roundtrip():
     )
     dumped = relation.model_dump()
     assert dumped["source"] == "Jake Thayne"
-    assert dumped["relation_type"] == "ALLIED_WITH"
+    assert dumped["relation_type"] == "RELATES_TO"
     assert dumped["sentiment"] == 0.8
 
     reloaded = ExtractedRelation.model_validate(dumped)
@@ -215,7 +215,7 @@ def test_relation_result_with_ended():
             ExtractedRelation(
                 source="A",
                 target="B",
-                relation_type="ALLIED_WITH",
+                relation_type="RELATES_TO",
                 context="Together.",
             )
         ],
@@ -240,28 +240,28 @@ def test_relation_result_with_ended():
 def test_sentiment_bounds():
     # Valid boundary values
     r_low = ExtractedRelation(
-        source="A", target="B", relation_type="ENEMY_OF", sentiment=-1.0, context=""
+        source="A", target="B", relation_type="RELATES_TO", sentiment=-1.0, context=""
     )
     assert r_low.sentiment == -1.0
 
     r_high = ExtractedRelation(
-        source="A", target="B", relation_type="ALLIED_WITH", sentiment=1.0, context=""
+        source="A", target="B", relation_type="RELATES_TO", sentiment=1.0, context=""
     )
     assert r_high.sentiment == 1.0
 
     # None is valid
     r_none = ExtractedRelation(
-        source="A", target="B", relation_type="KNOWS", sentiment=None, context=""
+        source="A", target="B", relation_type="HAS_SKILL", sentiment=None, context=""
     )
     assert r_none.sentiment is None
 
     # Out-of-bounds should raise
     with pytest.raises(ValidationError):
         ExtractedRelation(
-            source="A", target="B", relation_type="ALLIED_WITH", sentiment=1.5, context=""
+            source="A", target="B", relation_type="RELATES_TO", sentiment=1.5, context=""
         )
 
     with pytest.raises(ValidationError):
         ExtractedRelation(
-            source="A", target="B", relation_type="ALLIED_WITH", sentiment=-2.0, context=""
+            source="A", target="B", relation_type="RELATES_TO", sentiment=-2.0, context=""
         )

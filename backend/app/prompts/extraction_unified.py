@@ -203,78 +203,77 @@ MEMBER_OF (Character → Faction) :
 
 HAS_SKILL (Character → Skill) :
 - source : canonical_name du personnage
-- target : canonical_name du skill
-- acquisition_chapter : chapitre d'acquisition si précisé
+- target : nom du skill
 - extraction_text, char_start, char_end
 
 HAS_CLASS (Character → Class) :
 - source : canonical_name du personnage
-- target : canonical_name de la classe
-- acquisition_chapter : chapitre si précisé
+- target : nom de la classe
 - extraction_text, char_start, char_end
 
 HAS_TITLE (Character → Title) :
 - source : canonical_name du personnage
-- target : canonical_name du titre
-- extraction_text, char_start, char_end
-
-HAS_BLOODLINE (Character → Bloodline) :
-- source : canonical_name du personnage
-- target : canonical_name du lignage
-- extraction_text, char_start, char_end
-
-HAS_PROFESSION (Character → Profession) :
-- source : canonical_name du personnage
-- target : canonical_name de la profession
-- extraction_text, char_start, char_end
-
-OWNS (Character → Item) :
-- source : canonical_name du personnage
-- target : canonical_name de l'objet
-- acquisition_method : looted | crafted | gifted | purchased | other
+- target : nom du titre
 - extraction_text, char_start, char_end
 
 PARTICIPATES_IN (Character → Event) :
 - source : canonical_name du personnage
-- target : canonical_name de l'événement
+- target : nom de l'événement
 - role : protagonist | antagonist | witness | victim | other
 - extraction_text, char_start, char_end
 
-LOCATED_IN (Character | Faction | Event → Location) :
+POSSESSES (Character → Item) :
+- source : canonical_name du personnage
+- target : nom de l'objet
+- extraction_text, char_start, char_end
+
+--- Relations spatiales et structurelles ---
+
+OCCURS_AT (Event → Location) :
+- source : nom de l'événement
+- target : nom du lieu
+- extraction_text, char_start, char_end
+
+LOCATED_AT (any → Location) :
 - source : canonical_name de l'entité
-- target : canonical_name du lieu
+- target : nom du lieu
 - extraction_text, char_start, char_end
 
---- Relations structurelles ---
-
-PART_OF (Location | Faction → Location | Faction) :
-- source : canonical_name de l'entité enfant
-- target : canonical_name de l'entité parente
+PART_OF (Location → Location) :
+- source : nom du lieu enfant
+- target : nom du lieu parent
 - extraction_text, char_start, char_end
 
-LEADS_TO (Event → Event) :
-- source : canonical_name de l'événement déclencheur
-- target : canonical_name de l'événement résultant
+--- Relations causales et évolutives ---
+
+CAUSES (Event → Event) :
+- source : nom de l'événement déclencheur
+- target : nom de l'événement résultant
 - extraction_text, char_start, char_end
 
-PART_OF_ARC (Event | Character → Arc) :
-- source : canonical_name de l'entité
-- target : canonical_name de l'arc
+ENABLES (Event → Event) :
+- source : événement qui rend possible
+- target : événement rendu possible
 - extraction_text, char_start, char_end
 
-GOVERNED_BY (Location | Faction → Character | Faction) :
-- source : entité gouvernée
-- target : entité qui gouverne
+EVOLVES_INTO (Skill|Class → Skill|Class) :
+- source : nom de l'entité d'origine
+- target : nom de l'entité évoluée
 - extraction_text, char_start, char_end
 
-QUEST_GIVER (Character → Quest) :
-- source : canonical_name du personnage donneur de quête
-- target : canonical_name de la quête
+IS_RACE (Character → Creature) :
+- source : canonical_name du personnage
+- target : nom de la race/espèce
 - extraction_text, char_start, char_end
 
-QUEST_TARGET (Character → Quest) :
-- source : canonical_name du personnage ciblé par la quête
-- target : canonical_name de la quête
+INHABITS (Creature → Location) :
+- source : nom de la créature
+- target : nom de l'habitat
+- extraction_text, char_start, char_end
+
+BELONGS_TO (Skill → Class) :
+- source : nom du skill
+- target : nom de la classe associée
 - extraction_text, char_start, char_end
 
 === INVALIDATION TEMPORELLE ===

@@ -279,23 +279,23 @@ class ExtractedRelation(BaseModel):
     source: str = Field(..., description="Source entity name")
     target: str = Field(..., description="Target entity name")
     relation_type: Literal[
-        "ALLIED_WITH",
-        "ENEMY_OF",
-        "KNOWS",
-        "MENTOR_OF",
-        "FAMILY_OF",
-        "ROMANTIC_WITH",
-        "RIVAL_OF",
-        "PATRON_OF",
-        "SUBORDINATE_OF",
+        "RELATES_TO",
         "MEMBER_OF",
-        "OWNS",
-        "LOCATED_IN",
+        "HAS_SKILL",
+        "HAS_CLASS",
+        "HAS_TITLE",
         "PARTICIPATES_IN",
-        "GRANTS",
-        "CAUSED_BY",
+        "OCCURS_AT",
+        "LOCATED_AT",
+        "POSSESSES",
+        "CAUSES",
+        "ENABLES",
         "PART_OF",
-    ] = Field(..., description="Neo4j relation type")
+        "EVOLVES_INTO",
+        "IS_RACE",
+        "INHABITS",
+        "BELONGS_TO",
+    ] = Field(..., description="Neo4j relation type from ontology")
     subtype: str = ""
     sentiment: float | None = Field(None, ge=-1.0, le=1.0)
     valid_from_chapter: int | None = None

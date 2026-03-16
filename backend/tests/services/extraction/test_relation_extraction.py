@@ -12,10 +12,10 @@ ENTITIES = [
 
 MOCK_RESULT = RelationExtractionResult(
     relations=[
-        ExtractedRelation(source="jake", target="Shadow Step", relation_type="OWNS", valid_from_chapter=5),
+        ExtractedRelation(source="jake", target="Shadow Step", relation_type="HAS_SKILL", valid_from_chapter=5),
     ],
     ended_relations=[
-        RelationEnd(source="jake", target="Old Skill", relation_type="OWNS", ended_at_chapter=5),
+        RelationEnd(source="jake", target="Old Skill", relation_type="HAS_SKILL", ended_at_chapter=5),
     ],
 )
 
@@ -33,14 +33,14 @@ async def test_extract_relations_node():
         result = await extract_relations_node(state)
     assert len(result["relations"]) == 1
     assert len(result["ended_relations"]) == 1
-    assert result["relations"][0]["relation_type"] == "OWNS"
+    assert result["relations"][0]["relation_type"] == "HAS_SKILL"
     assert result["relations"][0]["valid_from_chapter"] == 5
 
 
 @pytest.mark.asyncio
 async def test_sets_valid_from_chapter_if_missing():
     mock_result = RelationExtractionResult(
-        relations=[ExtractedRelation(source="a", target="b", relation_type="KNOWS")],
+        relations=[ExtractedRelation(source="a", target="b", relation_type="RELATES_TO")],
     )
     state = {
         "chapter_text": "text",
