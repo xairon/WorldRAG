@@ -53,24 +53,30 @@ def get_language_config(language: str = "fr") -> PromptLanguage:
 
 def build_extraction_prompt(
     *,
-    phase: int,
+    phase: str | int,
     role_description: str,
     ontology_schema: dict,
+    task_instructions: str = "",
     entity_registry_context: str = "",
     previous_summary: str = "",
     phase0_hints: list[dict] | None = None,
+    router_hints: list[str] | None = None,
+    extracted_entities_json: str | None = None,
     few_shot_examples: str = "",
     language: str = "fr",
 ) -> str:
     """Build a complete extraction prompt with ontology injection.
 
     Args:
-        phase: Extraction phase number (0-5).
+        phase: Extraction phase number or name (e.g. 0-5, "entities", "relations").
         role_description: Role description for the LLM.
         ontology_schema: JSON-serializable dict of target entity types.
+        task_instructions: Optional free-form instructions injected after [SYSTEM].
         entity_registry_context: String of known entities for context.
         previous_summary: Summary of previous chapters.
         phase0_hints: Regex-extracted hints from Phase 0.
+        router_hints: Optional focus hints injected as [FOCUS] section after [CONTRAINTES].
+        extracted_entities_json: JSON string of already-extracted entities (for relation phase).
         few_shot_examples: Formatted few-shot examples string.
         language: Prompt language code ('fr' or 'en').
 
@@ -92,6 +98,11 @@ def build_extraction_prompt(
         if language == "fr"
         else f"Target ontology:\n```json\n{schema_json}\n```"
     )
+
+    # [TÂCHE] — optional free-form task instructions
+    if task_instructions:
+        label = "TÂCHE" if language == "fr" else "TASK"
+        sections.append(f"\n[{label}]\n{task_instructions}")
 
     # [CONTRAINTES]
     sections.append(f"\n[{lang.constraint_label}]")
@@ -118,6 +129,17 @@ def build_extraction_prompt(
         sections.append("- Do NOT invent information absent from the text")
         sections.append("- Do NOT translate proper nouns \u2014 keep them as-is from source text")
         sections.append("- Use canonical_name in lowercase, without articles (the/a/an)")
+
+    # [FOCUS] — optional router hints
+    if router_hints:
+        label = "FOCUS" if language == "fr" else "FOCUS"
+        hints_lines = "\n".join(f"- {h}" for h in router_hints)
+        sections.append(f"\n[{label}]\n{hints_lines}")
+
+    # [ENTITÉS EXTRAITES] — optional previously extracted entities (relation phase)
+    if extracted_entities_json:
+        label = "ENTITÉS EXTRAITES" if language == "fr" else "EXTRACTED ENTITIES"
+        sections.append(f"\n[{label}]\n{extracted_entities_json}")
 
     # [CONTEXTE]
     has_context = entity_registry_context or previous_summary or phase0_hints
