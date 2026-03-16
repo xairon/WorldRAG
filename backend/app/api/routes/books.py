@@ -514,6 +514,103 @@ async def extract_book_v3(
 
 
 @router.post(
+    "/{book_id}/extract/v4",
+    response_model=JobEnqueuedResult,
+    dependencies=[Depends(require_auth)],
+)
+async def extract_book_v4(
+    book_id: str,
+    request: Request,
+    body: ExtractionRequestV3 | None = None,
+    driver: AsyncDriver = Depends(get_neo4j),
+    arq_pool: ArqRedis = Depends(get_arq_pool),
+) -> JobEnqueuedResult:
+    """Enqueue V4 single-pass extraction pipeline for an ingested book.
+
+    Uses the 4-node LangGraph pipeline
+    (extract_entities → extract_relations → mention_detect → reconcile_persist)
+    with EntityRegistry for cross-chapter context accumulation.
+    """
+    repo = BookRepository(driver)
+    book = await repo.get_book(book_id)
+    if not book:
+        raise NotFoundError("Book not found")
+
+    current_status = book.get("status", "")
+    if current_status not in ("completed", "extracted", "partial", "embedded", "error_quota", "extracting"):
+        raise ConflictError(
+            f"Book status is '{current_status}'. "
+            "Extraction requires ingestion to be completed first."
+        )
+
+    chapter_list = body.chapters if body else None
+    language = body.language if body else "fr"
+    genre = (body.genre if body else None) or book.get("genre", "litrpg")
+    series_name = (body.series_name if body else None) or book.get("series_name", "") or ""
+    provider = body.provider if body else None
+
+    chapters = await repo.get_chapters_for_extraction(book_id, chapters=chapter_list)
+    if not chapters:
+        raise ValidationError("No chapter text found for the requested selection.")
+
+    suffix = ""
+    if chapter_list:
+        suffix = f":{','.join(str(c) for c in sorted(chapter_list)[:5])}"
+        if len(chapter_list) > 5:
+            suffix += f"...({len(chapter_list)})"
+
+    job = await arq_pool.enqueue_job(
+        "process_book_extraction_v4",
+        book_id,
+        genre,
+        series_name,
+        chapter_list,
+        language,
+        provider,
+        _queue_name="worldrag:arq",
+        _job_id=f"extract-v4:{book_id}{suffix}",
+    )
+
+    if job is None:
+        raise ConflictError("Job already enqueued or could not be created.")
+
+    # Set status to "extracting" immediately for instant frontend feedback
+    await repo.update_book_status(book_id, "extracting")
+
+    # Publish initial progress event so SSE stream has something to show
+    try:
+        await request.app.state.redis.publish(
+            f"worldrag:progress:{book_id}",
+            json.dumps(
+                {
+                    "chapter": 0,
+                    "total": len(chapters),
+                    "status": "started",
+                    "entities_found": 0,
+                    "pipeline": "v4",
+                }
+            ),
+        )
+    except Exception:
+        logger.warning("initial_progress_publish_failed", book_id=book_id, exc_info=True)
+
+    logger.info(
+        "book_extraction_v4_enqueued",
+        book_id=book_id,
+        job_id=job.job_id,
+        chapters=chapter_list,
+        language=language,
+    )
+
+    return JobEnqueuedResult(
+        book_id=book_id,
+        job_id=job.job_id,
+        status="enqueued",
+        message="V4 extraction job enqueued. Poll GET /books/{book_id}/jobs for status.",
+    )
+
+
+@router.post(
     "/{book_id}/reprocess",
     response_model=JobEnqueuedResult,
     dependencies=[Depends(require_auth)],
