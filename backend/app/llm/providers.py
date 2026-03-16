@@ -128,7 +128,7 @@ def get_instructor_for_extraction(
     # Default: Gemini
     client = instructor.from_genai(
         get_gemini_client(),
-        mode=instructor.Mode.GENAI_STRUCTURED_OUTPUTS,
+        mode=instructor.Mode.GENAI_TOOLS,
         use_async=True,
     )
     return client, settings.langextract_model
