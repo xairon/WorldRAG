@@ -110,6 +110,7 @@ class WorkerSettings:
         process_book_embeddings,
         process_book_extraction,
         process_book_extraction_v3,
+        process_book_extraction_v4,
         process_book_graphiti,
         process_book_reprocessing,
     )
@@ -118,6 +119,7 @@ class WorkerSettings:
         process_book_extraction,
         process_book_embeddings,
         process_book_extraction_v3,
+        process_book_extraction_v4,
         process_book_reprocessing,
         process_book_graphiti,
     ]
