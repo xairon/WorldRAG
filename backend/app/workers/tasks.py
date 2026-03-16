@@ -12,6 +12,7 @@ Tasks use arq's built-in job chaining via ctx["redis"].enqueue_job().
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from app.core.exceptions import QuotaExhaustedError
@@ -723,6 +724,29 @@ async def process_book_extraction_v4(
     }
 
     logger.info("task_book_extraction_v4_completed", **result_summary)
+
+    # Book-level post-processing
+    try:
+        from app.services.extraction.book_level import (
+            community_cluster,
+            generate_entity_summaries,
+            iterative_cluster,
+        )
+        book_batch_id = f"book-level:{book_id}:{int(time.time())}"
+
+        # 1. Iterative clustering
+        cluster_aliases = await iterative_cluster(driver, book_id)
+        logger.info("v4_book_clustering_done", merges=len(cluster_aliases))
+
+        # 2. Entity summaries
+        summaries = await generate_entity_summaries(driver, book_id, batch_id=book_batch_id)
+        logger.info("v4_book_summaries_done", count=len(summaries))
+
+        # 3. Community clustering
+        communities = await community_cluster(driver, book_id, batch_id=book_batch_id)
+        logger.info("v4_book_communities_done", count=len(communities))
+    except Exception:
+        logger.warning("v4_book_level_failed", book_id=book_id, exc_info=True)
 
     # Auto-enqueue embedding job after extraction
     await ctx["redis"].enqueue_job(
