@@ -103,7 +103,6 @@ async def build_chapter_graph(
     # Resolve provider override to LangExtract model_id
     model_override = None
     if provider == "local":
-        from app.config import settings as _settings
         model_override = "ollama/qwen3:32b"
     elif provider:
         model_override = None  # use default for known providers like gemini
@@ -501,6 +500,46 @@ def _apply_alias_map(
         concept.name = alias_map.get(concept.name, concept.name)
 
 
+def apply_alias_map_v4(
+    entities: list[dict],
+    relations: list[dict],
+    alias_map: dict[str, str],
+) -> None:
+    """Normalize names in v4 flat arrays using alias_map. In-place mutation.
+
+    For entities: updates name, canonical_name, owner, character fields.
+    For relations: updates source, target fields.
+
+    The alias_map keys are lowercased canonical names. Lookups are
+    case-insensitive (key = value.lower()).
+    """
+    if not alias_map:
+        return
+
+    def _resolve(name: str) -> str:
+        if not name:
+            return name
+        return alias_map.get(name.lower(), name)
+
+    for entity in entities:
+        if "name" in entity:
+            entity["name"] = _resolve(entity["name"])
+        if "canonical_name" in entity:
+            entity["canonical_name"] = _resolve(entity["canonical_name"])
+        # owner field (skills, classes, titles, items, bloodlines, professions)
+        if "owner" in entity:
+            entity["owner"] = _resolve(entity["owner"])
+        # character field (level_change, stat_change)
+        if "character" in entity:
+            entity["character"] = _resolve(entity["character"])
+
+    for relation in relations:
+        if "source" in relation:
+            relation["source"] = _resolve(relation["source"])
+        if "target" in relation:
+            relation["target"] = _resolve(relation["target"])
+
+
 async def _persist_extraction_result(
     entity_repo: EntityRepository,
     book_id: str,
@@ -712,7 +751,6 @@ async def build_chapter_graph_v3(
     # Resolve provider override to LangExtract model_id
     model_override = None
     if provider == "local":
-        from app.config import settings as _settings
         model_override = "ollama/qwen3:32b"
     logger.info(
         "v3_extraction_provider",

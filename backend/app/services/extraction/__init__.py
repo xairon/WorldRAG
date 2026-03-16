@@ -1437,3 +1437,146 @@ async def extract_chapter_v3(
     )
 
     return result
+
+
+# ── v4 Pipeline (2-step KGGen-style) ─────────────────────────────────
+
+
+async def mention_detect_v4_node(state: dict[str, Any]) -> dict[str, Any]:
+    """LangGraph node: detect entity mentions programmatically (v4)."""
+    from app.services.extraction.mention_detector import detect_mentions_from_flat
+
+    mentions = detect_mentions_from_flat(state["chapter_text"], state.get("entities", []))
+    return {"grounded_entities": [m.model_dump() for m in mentions]}
+
+
+async def reconcile_and_persist_v4_node(state: dict[str, Any]) -> dict[str, Any]:
+    """LangGraph node: reconcile + persist + update registry (v4).
+
+    This is the final node — it:
+    1. Runs 3-tier dedup on the flat entity array
+    2. Applies alias_map to entities + relations
+    3. Persists to Neo4j via entity_repo
+    4. Updates the EntityRegistry for next chapter
+    """
+    from app.services.extraction.reconciler import reconcile_flat_entities
+    from app.services.graph_builder import apply_alias_map_v4
+    from app.services.extraction.entity_registry import EntityRegistry
+    from app.llm.providers import get_instructor_for_task
+
+    chapter_number = state.get("chapter_number", 0)
+
+    # 1. Reconcile (3-tier dedup)
+    try:
+        client, model = get_instructor_for_task("dedup")
+        alias_map = await reconcile_flat_entities(state.get("entities", []), client, model)
+    except Exception:
+        logger.warning("v4_reconciliation_failed", chapter=chapter_number, exc_info=True)
+        alias_map = {}
+
+    # 2. Normalize names
+    entities = state.get("entities", [])
+    relations = state.get("relations", [])
+    apply_alias_map_v4(entities, relations, alias_map)
+
+    # 3. Persist to Neo4j
+    # Note: actual persistence happens in the worker (tasks.py), not in the graph node.
+    # The graph node prepares the data; the worker calls entity_repo.upsert_v4_entities().
+
+    # 4. Update EntityRegistry
+    registry = EntityRegistry.from_dict(state.get("entity_registry", {}))
+    for entity_dict in entities:
+        entity_type = entity_dict.get("entity_type", "")
+        name = entity_dict.get("canonical_name") or entity_dict.get("name", "")
+        if not name:
+            name = entity_dict.get("deity_name", "") or entity_dict.get("character", "")
+        aliases = entity_dict.get("aliases", [])
+        registry.add(
+            name=name,
+            entity_type=entity_type,
+            aliases=aliases,
+            first_seen_chapter=chapter_number,
+            description=entity_dict.get("description", ""),
+        )
+
+    logger.info(
+        "v4_reconcile_persist_done",
+        chapter=chapter_number,
+        alias_count=len(alias_map),
+    )
+
+    return {
+        "alias_map": alias_map,
+        "entity_registry": registry.to_dict(),
+        "entities": entities,  # normalized
+        "relations": relations,  # normalized
+    }
+
+
+def build_extraction_graph_v4() -> CompiledStateGraph:
+    """Build the v4 extraction LangGraph (4 linear nodes)."""
+    from app.schemas.extraction_v4 import ExtractionStateV4
+    from app.services.extraction.entities import extract_entities_node
+    from app.services.extraction.relations import extract_relations_node
+
+    graph = StateGraph(ExtractionStateV4)
+    graph.add_node("extract_entities", extract_entities_node)
+    graph.add_node("extract_relations", extract_relations_node)
+    graph.add_node("mention_detect", mention_detect_v4_node)
+    graph.add_node("reconcile_persist", reconcile_and_persist_v4_node)
+
+    graph.add_edge(START, "extract_entities")
+    graph.add_edge("extract_entities", "extract_relations")
+    graph.add_edge("extract_relations", "mention_detect")
+    graph.add_edge("mention_detect", "reconcile_persist")
+    graph.add_edge("reconcile_persist", END)
+
+    return graph.compile()
+
+
+# Pre-compile v4 graph (cached at module level like v3)
+_extraction_graph_v4: CompiledStateGraph | None = None
+
+
+def _get_v4_graph() -> CompiledStateGraph:
+    global _extraction_graph_v4
+    if _extraction_graph_v4 is None:
+        _extraction_graph_v4 = build_extraction_graph_v4()
+    return _extraction_graph_v4
+
+
+async def extract_chapter_v4(
+    *,
+    book_id: str,
+    chapter_number: int,
+    chapter_text: str,
+    regex_matches_json: str = "[]",
+    genre: str = "litrpg",
+    series_name: str = "",
+    source_language: str = "fr",
+    model_override: str | None = None,
+    entity_registry: dict | None = None,
+    chunk_texts: list[str] | None = None,
+) -> dict[str, Any]:
+    """Extract entities and relations from a single chapter using v4 pipeline.
+
+    Returns the final state dict with entities, relations, alias_map, etc.
+    """
+    graph = _get_v4_graph()
+
+    initial_state = {
+        "book_id": book_id,
+        "chapter_number": chapter_number,
+        "chapter_text": chapter_text,
+        "chunk_texts": chunk_texts or [],
+        "regex_matches_json": regex_matches_json,
+        "genre": genre,
+        "series_name": series_name,
+        "source_language": source_language,
+        "model_override": model_override,
+        "entity_registry": entity_registry or {},
+        "series_entities": [],
+    }
+
+    result = await graph.ainvoke(initial_state)
+    return result
