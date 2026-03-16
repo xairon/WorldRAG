@@ -1612,6 +1612,443 @@ class EntityRepository(Neo4jRepository):
         )
         return len(changes)
 
+    # ── V4: Relation end ────────────────────────────────────────────────
+
+    async def apply_relation_end(
+        self,
+        source: str,
+        target: str,
+        relation_type: str,
+        ended_at_chapter: int,
+        reason: str = "",
+        book_id: str = "",
+    ) -> None:
+        """Set valid_to_chapter on an active relation.
+
+        Uses dynamic relationship type (controlled Literal enum — safe).
+        Neo4j doesn't support parameterized relationship types in MATCH.
+        Since relation_type comes from a controlled Literal enum (16 values),
+        the f-string interpolation is safe — not user input.
+        """
+        book_filter = "AND r.book_id = $book_id" if book_id else ""
+        query = f"""
+            MATCH (a {{canonical_name: $source}})-[r:{relation_type}]->(b {{name: $target}})
+            WHERE r.valid_to_chapter IS NULL
+            {book_filter}
+            SET r.valid_to_chapter = $ended_at_chapter,
+                r.end_reason = $reason
+        """
+        await self.execute_write(
+            query,
+            {
+                "source": source,
+                "target": target,
+                "ended_at_chapter": ended_at_chapter,
+                "reason": reason,
+                "book_id": book_id,
+            },
+        )
+        logger.info(
+            "relation_end_applied",
+            source=source,
+            target=target,
+            relation_type=relation_type,
+            ended_at_chapter=ended_at_chapter,
+        )
+
+    # ── V4: Flat entity dispatch ─────────────────────────────────────────
+
+    async def upsert_v4_entities(
+        self,
+        entities: list[dict],
+        relations: list[dict],
+        ended_relations: list[dict],
+        book_id: str,
+        chapter_number: int,
+        batch_id: str,
+    ) -> dict[str, int]:
+        """Dispatch v4 flat entities to existing upsert methods by entity_type.
+
+        Converts v4 flat dicts to the simple-namespace objects (SimpleNamespace)
+        expected by the existing upsert_* methods (which access fields as attributes).
+        """
+        from types import SimpleNamespace
+
+        counts: dict[str, int] = {}
+
+        # Group entities by entity_type
+        by_type: dict[str, list[dict]] = {}
+        for e in entities:
+            et = e.get("entity_type", "")
+            if et not in by_type:
+                by_type[et] = []
+            by_type[et].append(e)
+
+        def _ns(d: dict) -> SimpleNamespace:
+            """Convert a dict to a SimpleNamespace for attribute access."""
+            return SimpleNamespace(**d)
+
+        # Characters
+        if "character" in by_type:
+            chars = [_ns(e) for e in by_type["character"]]
+            for c in chars:
+                if not hasattr(c, "aliases"):
+                    c.aliases = []
+                if not hasattr(c, "canonical_name") or not c.canonical_name:
+                    c.canonical_name = c.name
+                if not hasattr(c, "description"):
+                    c.description = ""
+                if not hasattr(c, "role"):
+                    c.role = ""
+                if not hasattr(c, "species"):
+                    c.species = ""
+                if not hasattr(c, "first_appearance_chapter"):
+                    c.first_appearance_chapter = chapter_number
+            counts["characters"] = await self.upsert_characters(
+                book_id, chapter_number, chars, batch_id
+            )
+
+        # Skills
+        if "skill" in by_type:
+            skills = [_ns(e) for e in by_type["skill"]]
+            for s in skills:
+                if not hasattr(s, "description"):
+                    s.description = ""
+                if not hasattr(s, "skill_type"):
+                    s.skill_type = "active"
+                if not hasattr(s, "rank"):
+                    s.rank = ""
+                if not hasattr(s, "owner"):
+                    s.owner = ""
+                if not hasattr(s, "acquired_chapter"):
+                    s.acquired_chapter = chapter_number
+            counts["skills"] = await self.upsert_skills(
+                book_id, chapter_number, skills, batch_id
+            )
+
+        # Classes
+        if "class" in by_type:
+            classes = [_ns(e) for e in by_type["class"]]
+            for c in classes:
+                if not hasattr(c, "description"):
+                    c.description = ""
+                if not hasattr(c, "tier"):
+                    c.tier = None
+                if not hasattr(c, "owner"):
+                    c.owner = ""
+                if not hasattr(c, "acquired_chapter"):
+                    c.acquired_chapter = chapter_number
+            counts["classes"] = await self.upsert_classes(
+                book_id, chapter_number, classes, batch_id
+            )
+
+        # Titles
+        if "title" in by_type:
+            titles = [_ns(e) for e in by_type["title"]]
+            for t in titles:
+                if not hasattr(t, "description"):
+                    t.description = ""
+                if not hasattr(t, "effects"):
+                    t.effects = []
+                if not hasattr(t, "owner"):
+                    t.owner = ""
+                if not hasattr(t, "acquired_chapter"):
+                    t.acquired_chapter = chapter_number
+            counts["titles"] = await self.upsert_titles(
+                book_id, chapter_number, titles, batch_id
+            )
+
+        # Events
+        if "event" in by_type:
+            events = [_ns(e) for e in by_type["event"]]
+            for ev in events:
+                if not hasattr(ev, "description"):
+                    ev.description = ""
+                if not hasattr(ev, "event_type"):
+                    ev.event_type = "action"
+                if not hasattr(ev, "significance"):
+                    ev.significance = "moderate"
+                if not hasattr(ev, "participants"):
+                    ev.participants = []
+                if not hasattr(ev, "location"):
+                    ev.location = ""
+                if not hasattr(ev, "chapter"):
+                    ev.chapter = chapter_number
+                if not hasattr(ev, "is_flashback"):
+                    ev.is_flashback = False
+            counts["events"] = await self.upsert_events(
+                book_id, chapter_number, events, batch_id
+            )
+
+        # Locations
+        if "location" in by_type:
+            locations = [_ns(e) for e in by_type["location"]]
+            for loc in locations:
+                if not hasattr(loc, "description"):
+                    loc.description = ""
+                if not hasattr(loc, "location_type"):
+                    loc.location_type = ""
+                if not hasattr(loc, "parent_location"):
+                    loc.parent_location = ""
+            counts["locations"] = await self.upsert_locations(
+                book_id, chapter_number, locations, batch_id
+            )
+
+        # Items
+        if "item" in by_type:
+            items = [_ns(e) for e in by_type["item"]]
+            for it in items:
+                if not hasattr(it, "description"):
+                    it.description = ""
+                if not hasattr(it, "item_type"):
+                    it.item_type = ""
+                if not hasattr(it, "rarity"):
+                    it.rarity = ""
+                if not hasattr(it, "owner"):
+                    it.owner = ""
+            counts["items"] = await self.upsert_items(
+                book_id, chapter_number, items, batch_id
+            )
+
+        # Creatures
+        if "creature" in by_type:
+            creatures = [_ns(e) for e in by_type["creature"]]
+            for cr in creatures:
+                if not hasattr(cr, "description"):
+                    cr.description = ""
+                if not hasattr(cr, "species"):
+                    cr.species = ""
+                if not hasattr(cr, "threat_level"):
+                    cr.threat_level = ""
+                if not hasattr(cr, "habitat"):
+                    cr.habitat = ""
+            counts["creatures"] = await self.upsert_creatures(
+                book_id, chapter_number, creatures, batch_id
+            )
+
+        # Factions
+        if "faction" in by_type:
+            factions = [_ns(e) for e in by_type["faction"]]
+            for fa in factions:
+                if not hasattr(fa, "description"):
+                    fa.description = ""
+                if not hasattr(fa, "faction_type"):
+                    fa.faction_type = ""
+                if not hasattr(fa, "alignment"):
+                    fa.alignment = ""
+            counts["factions"] = await self.upsert_factions(
+                book_id, chapter_number, factions, batch_id
+            )
+
+        # Concepts
+        if "concept" in by_type:
+            concepts = [_ns(e) for e in by_type["concept"]]
+            for co in concepts:
+                if not hasattr(co, "description"):
+                    co.description = ""
+                if not hasattr(co, "domain"):
+                    co.domain = ""
+            counts["concepts"] = await self.upsert_concepts(
+                book_id, chapter_number, concepts, batch_id
+            )
+
+        # LevelChanges
+        if "level_change" in by_type:
+            level_changes = [_ns(e) for e in by_type["level_change"]]
+            for lc in level_changes:
+                if not hasattr(lc, "old_level"):
+                    lc.old_level = None
+                if not hasattr(lc, "new_level"):
+                    lc.new_level = None
+                if not hasattr(lc, "realm"):
+                    lc.realm = ""
+                if not hasattr(lc, "chapter"):
+                    lc.chapter = chapter_number
+            counts["level_changes"] = await self.upsert_level_changes(
+                book_id, chapter_number, level_changes, batch_id
+            )
+
+        # StatChanges
+        if "stat_change" in by_type:
+            stat_changes = [_ns(e) for e in by_type["stat_change"]]
+            for sc in stat_changes:
+                if not hasattr(sc, "value"):
+                    sc.value = 0
+            counts["stat_changes"] = await self.upsert_stat_changes(
+                book_id, chapter_number, stat_changes, batch_id
+            )
+
+        # Bloodlines (Layer 3)
+        if "bloodline" in by_type:
+            bloodlines = [_ns(e) for e in by_type["bloodline"]]
+            for bl in bloodlines:
+                if not hasattr(bl, "description"):
+                    bl.description = ""
+                if not hasattr(bl, "effects"):
+                    bl.effects = []
+                if not hasattr(bl, "origin"):
+                    bl.origin = ""
+                if not hasattr(bl, "owner"):
+                    bl.owner = ""
+                if not hasattr(bl, "awakened_chapter"):
+                    bl.awakened_chapter = chapter_number
+            counts["bloodlines"] = await self.upsert_bloodlines(
+                book_id, chapter_number, bloodlines, batch_id
+            )
+
+        # Professions (Layer 3)
+        if "profession" in by_type:
+            professions = [_ns(e) for e in by_type["profession"]]
+            for pr in professions:
+                if not hasattr(pr, "tier"):
+                    pr.tier = None
+                if not hasattr(pr, "profession_type"):
+                    pr.profession_type = ""
+                if not hasattr(pr, "owner"):
+                    pr.owner = ""
+                if not hasattr(pr, "acquired_chapter"):
+                    pr.acquired_chapter = chapter_number
+            counts["professions"] = await self.upsert_professions(
+                book_id, chapter_number, professions, batch_id
+            )
+
+        # Churches (Layer 3)
+        if "church" in by_type:
+            churches = [_ns(e) for e in by_type["church"]]
+            for ch in churches:
+                if not hasattr(ch, "domain"):
+                    ch.domain = ""
+                if not hasattr(ch, "blessing"):
+                    ch.blessing = ""
+                if not hasattr(ch, "worshipper"):
+                    ch.worshipper = ""
+                if not hasattr(ch, "valid_from_chapter"):
+                    ch.valid_from_chapter = chapter_number
+            counts["churches"] = await self.upsert_churches(
+                book_id, chapter_number, churches, batch_id
+            )
+
+        # Relations (v4 ExtractedRelation dicts)
+        if relations:
+            rel_ns = [_ns(r) for r in relations]
+            for r in rel_ns:
+                # Map v4 relation_type to the rel_type field expected by upsert_relationships
+                if not hasattr(r, "rel_type"):
+                    r.rel_type = getattr(r, "relation_type", "RELATES_TO")
+                if not hasattr(r, "subtype"):
+                    r.subtype = ""
+                if not hasattr(r, "context"):
+                    r.context = ""
+                if not hasattr(r, "since_chapter"):
+                    r.since_chapter = getattr(r, "valid_from_chapter", None) or chapter_number
+            counts["relations"] = await self.upsert_relationships(
+                book_id, chapter_number, rel_ns, batch_id
+            )
+
+        # Ended relations
+        for er in ended_relations:
+            await self.apply_relation_end(
+                source=er.get("source", ""),
+                target=er.get("target", ""),
+                relation_type=er.get("relation_type", "RELATES_TO"),
+                ended_at_chapter=er.get("ended_at_chapter", chapter_number),
+                reason=er.get("reason", ""),
+                book_id=book_id,
+            )
+        if ended_relations:
+            counts["ended_relations"] = len(ended_relations)
+
+        logger.info(
+            "v4_entities_upserted",
+            book_id=book_id,
+            chapter=chapter_number,
+            batch_id=batch_id,
+            entity_types=list(by_type.keys()),
+            counts=counts,
+        )
+        return counts
+
+    # ── V4: Entity summaries ─────────────────────────────────────────────
+
+    async def upsert_entity_summary(
+        self,
+        entity_name: str,
+        summary: str,
+        key_facts: list[str],
+        mention_count: int,
+        batch_id: str,
+        book_id: str = "",
+    ) -> None:
+        """Store entity summary on the node. Uses MERGE pattern."""
+        await self.execute_write(
+            """
+            MATCH (e {canonical_name: $name})
+            WHERE e.book_id = $book_id OR $book_id = ''
+            SET e.summary = $summary,
+                e.key_facts = $key_facts,
+                e.mention_count = $mention_count,
+                e.summary_batch_id = $batch_id
+            """,
+            {
+                "name": entity_name,
+                "book_id": book_id,
+                "summary": summary,
+                "key_facts": key_facts,
+                "mention_count": mention_count,
+                "batch_id": batch_id,
+            },
+        )
+        logger.info(
+            "entity_summary_upserted",
+            entity_name=entity_name,
+            book_id=book_id,
+            mention_count=mention_count,
+        )
+
+    # ── V4: Communities ──────────────────────────────────────────────────
+
+    async def upsert_community(
+        self,
+        community_id: str,
+        book_id: str,
+        summary: str,
+        member_names: list[str],
+        batch_id: str,
+    ) -> None:
+        """Create/update community node + member edges. Uses MERGE."""
+        await self.execute_write(
+            """
+            MERGE (comm:Community {id: $community_id})
+            ON CREATE SET
+                comm.book_id = $book_id,
+                comm.summary = $summary,
+                comm.member_count = size($member_names),
+                comm.batch_id = $batch_id,
+                comm.created_at = datetime()
+            ON MATCH SET
+                comm.summary = $summary,
+                comm.member_count = size($member_names),
+                comm.batch_id = $batch_id
+            WITH comm
+            UNWIND $member_names AS member_name
+            MATCH (e {canonical_name: member_name, book_id: $book_id})
+            MERGE (e)-[:BELONGS_TO_COMMUNITY]->(comm)
+            """,
+            {
+                "community_id": community_id,
+                "book_id": book_id,
+                "summary": summary,
+                "member_names": member_names,
+                "batch_id": batch_id,
+            },
+        )
+        logger.info(
+            "community_upserted",
+            community_id=community_id,
+            book_id=book_id,
+            member_count=len(member_names),
+        )
+
     # ── Bulk upsert from extraction result ─────────────────────────────
 
     async def upsert_extraction_result(
