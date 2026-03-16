@@ -14,6 +14,8 @@ This is the bridge between raw extraction and KG ingestion.
 
 from __future__ import annotations
 
+from typing import Any
+
 from app.core.logging import get_logger
 from app.llm.providers import get_instructor_for_task
 from app.schemas.extraction import (
@@ -57,6 +59,97 @@ async def _dedup_group(
         model,
     )
     return aliases
+
+
+def _get_name_from_flat_entity(entity: dict) -> str | None:
+    """Extract the primary name field from a v4 flat entity dict.
+
+    Different entity types use different name fields:
+    - Most types: "name"
+    - church: "deity_name"
+    - level_change, stat_change: "character"
+    """
+    entity_type = entity.get("entity_type", "")
+    if entity_type == "church":
+        return entity.get("deity_name") or entity.get("name")
+    if entity_type in ("level_change", "stat_change"):
+        return entity.get("character") or entity.get("name")
+    return entity.get("name")
+
+
+async def reconcile_flat_entities(
+    entities: list[dict],
+    client: Any = None,
+    model: str = "",
+) -> dict[str, str]:
+    """Reconcile entities from a v4 flat array.
+
+    Groups entities by entity_type, extracts names, and runs
+    deduplicate_entities() per group to build a unified alias map.
+
+    Args:
+        entities: List of raw entity dicts from v4 single-pass extraction.
+            Each dict must contain at least "entity_type" and a name field.
+        client: Instructor async client (or None to skip LLM dedup tier).
+        model: Model name for LLM dedup tier.
+
+    Returns:
+        Combined alias map {alias -> canonical} across all entity groups.
+    """
+    if not entities:
+        return {}
+
+    if client is None and not model:
+        try:
+            client, model = get_instructor_for_task("dedup")
+        except Exception:
+            client, model = None, ""
+
+    # Group entity dicts by entity_type
+    groups: dict[str, list[dict]] = {}
+    for entity in entities:
+        entity_type = entity.get("entity_type", "unknown")
+        groups.setdefault(entity_type, []).append(entity)
+
+    full_alias_map: dict[str, str] = {}
+
+    for entity_type, group in groups.items():
+        if len(group) < 2:
+            continue  # Nothing to deduplicate
+
+        # Build name-only dicts expected by deduplicate_entities()
+        name_dicts: list[dict[str, str]] = []
+        for e in group:
+            name = _get_name_from_flat_entity(e)
+            if name:
+                name_dicts.append({"name": name})
+
+        if len(name_dicts) < 2:
+            continue
+
+        try:
+            _, aliases = await deduplicate_entities(
+                name_dicts,
+                entity_type,
+                client,
+                model,
+            )
+            full_alias_map.update(aliases)
+        except Exception:
+            logger.warning(
+                "reconcile_flat_entities_group_failed",
+                entity_type=entity_type,
+                group_size=len(name_dicts),
+            )
+
+    logger.info(
+        "reconcile_flat_entities_completed",
+        total_entities=len(entities),
+        entity_types=len(groups),
+        aliases_found=len(full_alias_map),
+    )
+
+    return full_alias_map
 
 
 async def reconcile_chapter_result(
