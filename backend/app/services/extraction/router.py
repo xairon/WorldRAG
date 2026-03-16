@@ -100,6 +100,71 @@ LORE_THRESHOLD = 3  # Need 3+ lore keywords to trigger Pass 4
 SHORT_CHAPTER_CHARS = 2000
 
 
+def compute_router_hints(chapter_text: str, genre: str = "litrpg") -> list[str]:
+    """Compute router hints for v4 prompt injection.
+
+    Analyzes chapter text with the same keyword patterns used by
+    route_extraction_passes() and returns human-readable hint strings
+    suitable for injection into v4 single-pass prompts.
+
+    Args:
+        chapter_text: Full chapter text to analyze.
+        genre: Book genre (e.g. "litrpg", "progression_fantasy").
+
+    Returns:
+        List of hint strings describing detected content categories, e.g.:
+        - "Éléments de système (skills, classes, levels)"
+        - "Éléments de lore (lieux, items, créatures)"
+        - "Développements de personnages"
+    """
+    hints: list[str] = []
+
+    # Short chapters: assume all content categories are present
+    if len(chapter_text) < SHORT_CHAPTER_CHARS:
+        return [
+            "Développements de personnages",
+            "Éléments de système (skills, classes, levels)",
+            "Développements narratifs et événements",
+            "Éléments de lore (lieux, items, créatures)",
+        ]
+
+    system_hits = len(SYSTEM_KEYWORDS.findall(chapter_text))
+    event_hits = len(EVENT_KEYWORDS.findall(chapter_text))
+    lore_hits = len(LORE_KEYWORDS.findall(chapter_text))
+
+    is_progression_genre = genre.lower() in (
+        "litrpg",
+        "progression_fantasy",
+        "cultivation",
+    )
+
+    # Characters: always present
+    hints.append("Développements de personnages")
+
+    # Systems: triggered by keywords (mirrors route_extraction_passes logic)
+    if system_hits >= SYSTEM_THRESHOLD or (is_progression_genre and system_hits >= 1):
+        hints.append("Éléments de système (skills, classes, levels)")
+
+    # Events: triggered by event keywords (mirrors safety fallback too)
+    if event_hits >= 1:
+        hints.append("Développements narratifs et événements")
+
+    # Lore: triggered by lore keywords
+    if lore_hits >= LORE_THRESHOLD:
+        hints.append("Éléments de lore (lieux, items, créatures)")
+
+    logger.debug(
+        "router_hints_computed",
+        hint_count=len(hints),
+        system_hits=system_hits,
+        event_hits=event_hits,
+        lore_hits=lore_hits,
+        genre=genre,
+    )
+
+    return hints
+
+
 def route_extraction_passes(state: ExtractionPipelineState) -> dict[str, Any]:
     """LangGraph node: Determine which extraction passes to run.
 
