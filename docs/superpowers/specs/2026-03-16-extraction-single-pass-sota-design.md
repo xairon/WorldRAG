@@ -1,6 +1,6 @@
 # WorldRAG — Extraction Single-Pass SOTA
 
-**Design Spec — v1**
+**Design Spec — v2 (post-review)**
 *2026-03-16 — Nicolas, LIFAT / Université de Tours*
 
 ---
@@ -22,7 +22,7 @@ Refactorer le pipeline d'extraction de Knowledge Graph en remplaçant les **4 pa
 2. **Instructor comme couche structurée** — provider-agnostic (Gemini, ollama, GPT-4o-mini), retry + validation Pydantic
 3. **Garder ce qui marche** — Regex Passe 0, mention detector, 3-tier dedup, entity registry, Neo4j MERGE/UNWIND
 4. **Temporalité chapter-based** — valid_from/to_chapter (naturel pour la fiction), invalidation active + retcon
-5. **Full schema + router hints** — 11 types toujours dans le prompt, router hint guide l'attention
+5. **Full schema + router hints** — 14 types toujours dans le prompt (11 core/genre + 3 Layer 3), router hint guide l'attention
 
 ### Ce qui change vs pipeline actuel
 
@@ -172,6 +172,7 @@ class ExtractedCharacter(BaseModel):
 class ExtractedSkill(BaseModel):
     entity_type: Literal["skill"] = "skill"
     name: str
+    description: str = ""
     skill_type: Literal["active", "passive", "racial", "class",
                          "profession", "unique"] = "active"
     rank: str = ""
@@ -183,7 +184,7 @@ class ExtractedSkill(BaseModel):
 
 
 class ExtractedClass(BaseModel):
-    entity_type: Literal["class_"] = "class_"
+    entity_type: Literal["class"] = "class"  # "class" is valid as a Literal string value
     name: str
     tier: int | None = None
     owner: str = ""
@@ -196,7 +197,7 @@ class ExtractedClass(BaseModel):
 class ExtractedTitle(BaseModel):
     entity_type: Literal["title"] = "title"
     name: str
-    effects: str = ""
+    effects: list[str] = Field(default_factory=list)
     owner: str = ""
     extraction_text: str
     char_offset_start: int = -1
@@ -279,7 +280,7 @@ class ExtractedLevelChange(BaseModel):
     entity_type: Literal["level_change"] = "level_change"
     character: str
     old_level: int | None = None
-    new_level: int
+    new_level: int | None = None
     realm: str = ""
     extraction_text: str
     char_offset_start: int = -1
@@ -296,14 +297,54 @@ class ExtractedStatChange(BaseModel):
     char_offset_end: int = -1
 
 
+# ── Layer 3: Series-specific entities ─────────────────────────────────
+
+
+class ExtractedBloodline(BaseModel):
+    entity_type: Literal["bloodline"] = "bloodline"
+    name: str
+    description: str = ""
+    effects: list[str] = Field(default_factory=list)
+    origin: str = ""
+    owner: str = ""
+    extraction_text: str
+    char_offset_start: int = -1
+    char_offset_end: int = -1
+
+
+class ExtractedProfession(BaseModel):
+    entity_type: Literal["profession"] = "profession"
+    name: str
+    tier: int | None = None
+    profession_type: str = ""
+    owner: str = ""
+    extraction_text: str
+    char_offset_start: int = -1
+    char_offset_end: int = -1
+
+
+class ExtractedChurch(BaseModel):
+    entity_type: Literal["church"] = "church"
+    deity_name: str
+    domain: str = ""
+    blessing: str = ""
+    worshipper: str = ""
+    extraction_text: str
+    char_offset_start: int = -1
+    char_offset_end: int = -1
+
+
 # ── Union discriminée ─────────────────────────────────────────────────
 
 EntityUnion = Annotated[
     Union[
+        # Layer 1+2 (core + genre)
         ExtractedCharacter, ExtractedSkill, ExtractedClass, ExtractedTitle,
         ExtractedEvent, ExtractedLocation, ExtractedItem, ExtractedCreature,
         ExtractedFaction, ExtractedConcept, ExtractedLevelChange,
         ExtractedStatChange,
+        # Layer 3 (series-specific)
+        ExtractedBloodline, ExtractedProfession, ExtractedChurch,
     ],
     Field(discriminator="entity_type"),
 ]
@@ -315,14 +356,23 @@ class EntityExtractionResult(BaseModel):
         default_factory=list,
         description="Toutes les entités extraites, dans l'ordre d'apparition",
     )
+    chapter_number: int = 0  # Self-contained chapter context
 ```
 
 **Notes de design** :
 - `char_offset_start/end = -1` par défaut (pas None) — le LLM peut omettre et on post-valide
 - `entity_type` en Literal pour la discriminated union — Instructor + Pydantic v2 natif
-- `class_` au lieu de `class` (mot réservé Python) — mappé à "class" dans le JSON via `alias`
+- `Literal["class"]` est valide Python — `class` n'est réservé que comme identifiant, pas comme valeur de string
 - Pas de `confidence` dans le schema LLM — la confidence vient du post-processing (alignment check)
 - `extraction_text` obligatoire partout — force le grounding
+- Layer 3 (Bloodline, Profession, Church) inclus dans l'EntityUnion — pas de pass séparé
+- `chapter_number` ajouté à `EntityExtractionResult` pour rendre le résultat self-contained
+
+**Contrainte critique : `from __future__ import annotations`**
+
+Le fichier `extraction_v4.py` et le fichier state NE DOIVENT PAS utiliser `from __future__ import annotations`. LangGraph utilise `get_type_hints()` au runtime pour résoudre le schema du state — les annotations déférées cassent cette résolution silencieusement. Tous les fichiers dans la chaîne d'import du state (schemas, state, graph) doivent utiliser des types concrets.
+
+**Nommage du fichier schemas** : `extraction_v4.py` (convention interne — le "v4" réfère à la 4e itération du pipeline d'extraction, même si les fichiers v2/v3 n'existent pas séparément)
 
 ### 3.2 Step 2 — Extraction de relations
 
@@ -367,6 +417,15 @@ class RelationExtractionResult(BaseModel):
 - `RelationEnd` pour l'invalidation temporelle — le Neo4j repo met à jour `valid_to_chapter`
 - `source`/`target` sont des noms canoniques — doivent correspondre aux entités du step 1
 - Le prompt du step 2 reçoit la liste d'entités extraites, donc le LLM est contraint
+
+**Migration des relation types existants** :
+Le pipeline actuel stocke les relations character-to-character comme `rel_type` (ally, enemy, mentor, etc.).
+Dans v4, ces valeurs deviennent `relation_type=RELATES_TO` + `subtype=ally|enemy|mentor|...`.
+Le `entity_repo.upsert_relationships()` doit être adapté :
+- Actuel : `MERGE (a)-[:RELATES_TO {type: $rel_type}]->(b)`
+- v4 : `MERGE (a)-[:RELATES_TO {subtype: $subtype, sentiment: $sentiment}]->(b)`
+- Migration des données existantes : un script de migration met à jour les anciennes relations
+  `SET r.subtype = r.type, r.type = null` (one-shot, réversible)
 
 ### 3.3 State LangGraph simplifié
 
@@ -414,6 +473,64 @@ class ExtractionState(TypedDict, total=False):
 ```
 
 30 lignes au lieu de 106. Pas de `characters`, `systems`, `events`, `lore` séparés — tout est dans `entities[]` (flat array).
+
+### 3.4 Pipeline de grounding et population du registry
+
+La validation de grounding est intégrée dans le nœud `extract_entities` (pas un nœud séparé) :
+
+```python
+async def extract_entities_node(state: ExtractionState) -> dict:
+    """Step 1: extract entities + validate grounding inline."""
+    # 1. Build prompt (full schema + router hints + registry context + Phase 0 hints)
+    # 2. Call Instructor → EntityExtractionResult
+    # 3. Post-validate grounding for each entity:
+    for entity in result.entities:
+        status, confidence = validate_grounding(entity, state["chapter_text"])
+        grounded = GroundedEntity(
+            entity_type=entity.entity_type,
+            entity_name=entity.name,
+            extraction_text=entity.extraction_text,
+            char_offset_start=entity.char_offset_start,
+            char_offset_end=entity.char_offset_end,
+            alignment_status=status,
+            confidence=confidence,
+            pass_name="entities",
+        )
+        grounded_entities.append(grounded)
+    # 4. Return entities + grounded_entities
+    return {"entities": [...], "grounded_entities": grounded_entities}
+```
+
+Le nœud `reconcile_persist` peuple le registry depuis le flat array :
+
+```python
+async def reconcile_and_persist_node(state: ExtractionState) -> dict:
+    # ...after reconciliation + persist...
+    # Populate EntityRegistry from flat array
+    registry = EntityRegistry.from_dict(state.get("entity_registry", {}))
+    for entity_dict in state["entities"]:
+        entity_type = entity_dict["entity_type"]
+        name = entity_dict.get("canonical_name") or entity_dict["name"]
+        aliases = entity_dict.get("aliases", [])
+        registry.add(
+            name=name,
+            entity_type=entity_type,
+            aliases=aliases,
+            significance=_infer_significance(entity_dict),
+            first_seen_chapter=state["chapter_number"],
+            description=entity_dict.get("description", ""),
+        )
+    return {"entity_registry": registry.to_dict()}
+```
+
+### 3.5 Gestion des chapitres multi-chunks
+
+Les chapitres longs (>1000 tokens) sont découpés en chunks. L'extraction opère **par chapitre, pas par chunk** :
+
+- Le step 1 reçoit le `chapter_text` complet (pas les chunks individuels)
+- Gemini 2.5 Flash (1M context) et qwen3:32b (128k context) gèrent des chapitres de 8-32k tokens sans problème
+- Les chunks servent uniquement pour l'embedding et le GROUNDED_IN (localisation dans le chapitre)
+- Si un chapitre dépasse 32k tokens (très rare) : fallback vers extraction per-chunk avec merge post-hoc
 
 ---
 
@@ -478,6 +595,20 @@ LEVEL_CHANGE : montée de niveau
 
 STAT_CHANGE : changement de statistique
 - character, stat_name, value (entier, positif ou négatif)
+
+=== TYPES SPÉCIFIQUES À LA SÉRIE (Layer 3 — injectés si la série les définit) ===
+
+BLOODLINE : lignée de sang (Primal Hunter, etc.)
+- name, description, effects, origin, owner
+
+PROFESSION : métier / profession non-combat
+- name, tier, profession_type (crafting/combat/utility/social), owner
+
+CHURCH : église / culte primordial
+- deity_name, domain, blessing, worshipper
+
+(Ces types sont inclus dans le prompt uniquement si l'ontologie Layer 3 de la
+série les définit. Pour une série sans Layer 3, seuls les 11 types core sont présents.)
 
 === BLUE BOXES (indices Phase 0) ===
 Les romans LitRPG contiennent des notifications système entre crochets [].
@@ -563,7 +694,11 @@ Retourne ces invalidations dans ended_relations[].
 - context = bref extrait textuel justifiant la relation
 ```
 
-### 4.3 Adaptation de build_extraction_prompt()
+### 4.3 Langue des prompts
+
+Les prompts v4 sont écrits en français (langue principale du corpus cible). Le support bilingue de `build_extraction_prompt()` (FR/EN via `PromptLanguage`) est conservé : les prompts ci-dessus sont la version française, la version anglaise sera générée en traduisant les descriptions de types et les règles. Le `source_language` dans le state détermine la langue utilisée.
+
+### 4.4 Adaptation de build_extraction_prompt()
 
 Modifications à `backend/app/prompts/base.py` :
 - Ajouter paramètre `router_hints: list[str] | None` — injecté comme section `[FOCUS]`
@@ -730,13 +865,17 @@ async def community_cluster(driver: AsyncDriver, book_id: str) -> list[Community
 
 **Neo4j** :
 ```cypher
-CREATE (comm:Community {
-    id: $community_id,
-    book_id: $book_id,
-    summary: $summary,
-    member_count: $member_count,
-    batch_id: $batch_id
-})
+MERGE (comm:Community {id: $community_id})
+ON CREATE SET
+    comm.book_id = $book_id,
+    comm.summary = $summary,
+    comm.member_count = $member_count,
+    comm.batch_id = $batch_id,
+    comm.created_at = datetime()
+ON MATCH SET
+    comm.summary = $summary,
+    comm.member_count = $member_count,
+    comm.batch_id = $batch_id
 WITH comm
 UNWIND $member_names AS member_name
 MATCH (e {canonical_name: member_name})
@@ -744,6 +883,26 @@ MERGE (e)-[:BELONGS_TO_COMMUNITY]->(comm)
 ```
 
 **Coût** : ~$0.01-0.03 par livre (clustering local + ~10-20 appels LLM pour les summaries).
+
+### 6.4 Rollback des opérations book-level
+
+Toutes les opérations book-level utilisent un `batch_id` dédié (`book-level:{book_id}:{timestamp}`) :
+
+```cypher
+// Rollback entity summaries
+MATCH (e) WHERE e.summary_batch_id = $batch_id
+REMOVE e.summary, e.key_facts, e.mention_count, e.summary_batch_id
+
+// Rollback community clustering
+MATCH (comm:Community {batch_id: $batch_id})
+DETACH DELETE comm
+
+// Rollback iterative clustering alias merges
+// Les merges sont tracés dans un log Redis (worldrag:cluster_log:{book_id})
+// Rollback = restaurer les noms originaux depuis le log
+```
+
+En cas d'échec partiel, le worker marque le book status comme `book_level_partial` et log les opérations complétées vs échouées dans le DLQ.
 
 ---
 
@@ -1045,14 +1204,14 @@ Test sur 3 livres : Primal Hunter (LitRPG), Harry Potter (fantasy), L'Assassin R
 
 - `instructor` (déjà dans le projet pour reconciliation)
 - `langgraph` (simplifié mais conservé)
+- `leidenalg` (déjà dans pyproject.toml)
 - `structlog`, `tenacity`, `pydantic`, `neo4j`
 
 ### 15.2 Ajoutées
 
 | Package | Rôle | Taille |
 |---|---|---|
-| `leidenalg` | Community clustering (Leiden algorithm) | ~5 MB |
-| `igraph` | Graph export pour Leiden (dependency de leidenalg) | ~15 MB |
+| `igraph` | Graph export pour Leiden (vérifier si transitive dep de leidenalg, sinon ajouter) | ~15 MB |
 
 ### 15.3 Supprimées
 
