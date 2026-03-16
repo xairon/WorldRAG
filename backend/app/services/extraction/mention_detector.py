@@ -134,6 +134,58 @@ def detect_mentions(
     return grounded
 
 
+def detect_mentions_from_flat(
+    chapter_text: str,
+    entities: list[dict],
+) -> list[GroundedEntity]:
+    """Detect mentions from a v4 flat entity array.
+
+    Extracts name, canonical_name, and aliases from each entity dict —
+    normalizing v4 field conventions — then delegates to the existing
+    detect_mentions() logic for word-boundary regex matching and overlap
+    prevention.
+
+    Args:
+        chapter_text: Full chapter text to search.
+        entities: List of v4 flat entity dicts. Each dict may contain:
+            - entity_type: str
+            - name: str (primary surface form)
+            - canonical_name: str (optional; falls back to name)
+            - aliases: list[str] (optional)
+
+    Returns:
+        List of GroundedEntity objects for each mention found.
+    """
+    if not chapter_text or not entities:
+        return []
+
+    # Normalize each v4 entity dict into the shape expected by detect_mentions()
+    normalized: list[dict] = []
+    for entity in entities:
+        name = entity.get("name", "")
+        canonical = entity.get("canonical_name") or name
+        entity_type = entity.get("entity_type", "character")
+        aliases: list[str] = []
+
+        raw_aliases = entity.get("aliases", [])
+        if isinstance(raw_aliases, list):
+            aliases = [str(a).strip() for a in raw_aliases if a]
+
+        if not name and not canonical:
+            continue
+
+        normalized.append(
+            {
+                "name": name or canonical,
+                "canonical_name": canonical or name,
+                "entity_type": entity_type,
+                "aliases": aliases,
+            }
+        )
+
+    return detect_mentions(chapter_text, normalized)
+
+
 def _overlaps(start: int, end: int, occupied: list[tuple[int, int]]) -> bool:
     """Check if a span overlaps with any occupied span."""
     return any(start < occ_end and end > occ_start for occ_start, occ_end in occupied)
