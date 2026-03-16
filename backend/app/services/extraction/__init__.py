@@ -33,6 +33,7 @@ from langgraph.graph.state import CompiledStateGraph  # noqa: TC002
 from langgraph.types import Send
 
 from app.agents.state import ExtractionPipelineState
+from app.core.exceptions import QuotaExhaustedError
 from app.core.logging import get_logger
 from app.schemas.extraction import (
     ChapterExtractionResult,
@@ -314,6 +315,8 @@ async def mention_detect_node(state: ExtractionPipelineState) -> dict[str, Any]:
                 chapter=chapter_number,
                 pronouns_resolved=len(coref_grounded),
             )
+        except QuotaExhaustedError:
+            raise  # Must propagate to stop the pipeline
         except Exception:
             logger.warning(
                 "coreference_skipped",
@@ -330,6 +333,8 @@ async def mention_detect_node(state: ExtractionPipelineState) -> dict[str, Any]:
             "passes_completed": ["mention_detect"],
             "errors": [],
         }
+    except QuotaExhaustedError:
+        raise  # Must propagate to stop the pipeline
     except Exception as e:
         logger.exception(
             "mention_detect_failed",
@@ -417,6 +422,8 @@ async def reconcile_in_graph(state: ExtractionPipelineState) -> dict[str, Any]:
             chapter=chapter_number,
             aliases_resolved=len(alias_map),
         )
+    except QuotaExhaustedError:
+        raise  # Must propagate to stop the pipeline
     except Exception:
         logger.exception(
             "extraction_reconcile_failed",
@@ -470,6 +477,8 @@ async def narrative_node(state: ExtractionPipelineState) -> dict[str, Any]:
             "narrative_analysis": result.model_dump(),
             "passes_completed": ["narrative"],
         }
+    except QuotaExhaustedError:
+        raise  # Must propagate to stop the pipeline
     except Exception:
         logger.warning(
             "narrative_analysis_skipped",
@@ -582,6 +591,7 @@ async def extract_chapter(
     series_name: str = "",
     regex_matches_json: str = "[]",
     series_entities: list[dict] | None = None,
+    model_override: str | None = None,
 ) -> ChapterExtractionResult:
     """Extract all entities from a single chapter.
 
@@ -619,6 +629,7 @@ async def extract_chapter(
         "total_entities": 0,
         "alias_map": {},
         "narrative_analysis": {},
+        "model_override": model_override,
     }
 
     logger.info(
@@ -1319,6 +1330,7 @@ async def extract_chapter_v3(
     ontology_version: str = "3.0.0",
     source_language: str = "fr",
     series_entities: list[dict] | None = None,
+    model_override: str | None = None,
 ) -> ChapterExtractionResult:
     """V3 entry point: extract entities from a chapter using 6-phase pipeline.
 
@@ -1365,6 +1377,7 @@ async def extract_chapter_v3(
         "ontology_version": ontology_version,
         "extraction_run_id": "",
         "source_language": source_language,
+        "model_override": model_override,
         "phase0_regex": [],
         "phase1_narrative": [],
         "phase2_genre": [],

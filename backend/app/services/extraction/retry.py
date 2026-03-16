@@ -20,9 +20,16 @@ from tenacity import (
 )
 
 from app.config import settings
+from app.core.exceptions import QuotaExhaustedError
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+def _is_quota_error(exc: BaseException) -> bool:
+    """Check if the exception is specifically a 429 quota error."""
+    msg = str(exc).lower()
+    return "429" in msg or "resource_exhausted" in msg or "quota" in msg
 
 
 def _is_transient_error(exc: BaseException) -> bool:
@@ -55,7 +62,7 @@ class _RetryableExtractionError(Exception):
     wait=wait_exponential(multiplier=5, min=5, max=60),
     reraise=True,
 )
-async def extract_with_retry(
+async def _extract_with_retry_inner(
     *,
     text_or_documents: str,
     prompt_description: str,
@@ -68,6 +75,7 @@ async def extract_with_retry(
     pass_name: str = "",
     book_id: str = "",
     chapter: int = 0,
+    model_url: str | None = None,
 ) -> Any:
     """Call lx.extract with automatic retry on transient Gemini errors.
 
@@ -94,6 +102,7 @@ async def extract_with_retry(
                 max_workers=max_workers,
                 show_progress=show_progress,
                 max_char_buffer=settings.langextract_max_char_buffer,
+                **({"model_url": model_url, "language_model_params": {"timeout": 600}} if model_url else {}),
             )
         )
         return result
@@ -109,4 +118,46 @@ async def extract_with_retry(
             )
             raise _RetryableExtractionError(str(exc)) from exc
         # Non-transient error — propagate immediately
+        raise
+
+
+async def extract_with_retry(
+    *,
+    text_or_documents: str,
+    prompt_description: str,
+    examples: list[Any],
+    model_id: str,
+    api_key: str | None,
+    extraction_passes: int,
+    max_workers: int,
+    show_progress: bool = False,
+    pass_name: str = "",
+    book_id: str = "",
+    chapter: int = 0,
+    model_url: str | None = None,
+) -> Any:
+    """Call lx.extract with retry, raising QuotaExhaustedError on 429 exhaustion."""
+    try:
+        return await _extract_with_retry_inner(
+            text_or_documents=text_or_documents,
+            prompt_description=prompt_description,
+            examples=examples,
+            model_id=model_id,
+            api_key=api_key,
+            extraction_passes=extraction_passes,
+            max_workers=max_workers,
+            show_progress=show_progress,
+            pass_name=pass_name,
+            book_id=book_id,
+            chapter=chapter,
+            model_url=model_url,
+        )
+    except _RetryableExtractionError as exc:
+        cause = exc.__cause__ or exc
+        if _is_quota_error(cause) or _is_quota_error(exc):
+            provider = model_id.split(":")[0] if ":" in model_id else model_id
+            raise QuotaExhaustedError(
+                provider=provider,
+                message=str(cause),
+            ) from cause
         raise

@@ -85,6 +85,10 @@ class ProjectService:
         """
         return await self._repo.get_by_slug(slug)
 
+    async def list_project_books(self, slug: str) -> list[dict[str, Any]]:
+        """Return project files that have been ingested (book_id set)."""
+        return await self._repo.list_books(slug)
+
     async def list_projects(self) -> list[dict[str, Any]]:
         """List all projects enriched with books_count and has_profile.
 

@@ -3,7 +3,7 @@ export type EntityType =
   | "Item" | "System" | "Title" | "Level" | "Faction"
   | "Arc" | "Creature" | "Concept" | "Race" | "Prophecy"
 
-export type UIStatus = "pending" | "parsing" | "ready" | "extracting" | "embedding" | "done" | "error"
+export type UIStatus = "pending" | "parsing" | "ready" | "extracting" | "embedding" | "done" | "error" | "error_quota"
 
 /** Tailwind color class per entity type (bg-, text-, border- prefix yourself) */
 export const ENTITY_COLORS: Record<string, string> = {
@@ -53,6 +53,7 @@ export const STATUS_CONFIG: Record<UIStatus, { color: string; hex: string; label
   embedding:  { color: "cyan-500",    hex: "#06b6d4", label: "Embedding" },
   done:       { color: "emerald-500", hex: "#10b981", label: "Done" },
   error:      { color: "red-500",     hex: "#ef4444", label: "Error" },
+  error_quota: { color: "orange-500", hex: "#f97316", label: "Quota Exceeded" },
 } as const
 
 /** Map backend ProcessingStatus values to frontend UIStatus */
@@ -68,6 +69,7 @@ export function mapBackendStatus(status: string): UIStatus {
     case "embedding": return "embedding"
     case "extracted":
     case "embedded": return "done"
+    case "error_quota": return "error_quota"
     case "failed":
     case "partial": return "error"
     default: return "pending"

@@ -124,7 +124,7 @@ async def _summarize_community(names: list[str], summaries: list[str]) -> str:
     """
     # Import inside function body to avoid circular imports at module load
     from app.config import settings
-    from app.llm.providers import get_llm
+    from app.llm.providers import get_langchain_llm
 
     entities_text = "\n".join(
         f"- {n}: {s}" for n, s in zip(names, summaries) if s
@@ -132,7 +132,7 @@ async def _summarize_community(names: list[str], summaries: list[str]) -> str:
     prompt = f"Summarize this group of fiction entities in 2-3 sentences:\n\n{entities_text}"
 
     try:
-        llm = get_llm(settings.llm_generation)
+        llm = get_langchain_llm(settings.llm_generation)
         response = await llm.ainvoke(prompt)
         return response.content if hasattr(response, "content") else str(response)
     except Exception:

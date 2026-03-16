@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.core.exceptions import QuotaExhaustedError
 from app.core.logging import get_logger
 from app.repositories.book_repo import BookRepository
 
@@ -28,6 +29,7 @@ async def process_book_extraction(
     genre: str = "litrpg",
     series_name: str = "",
     chapters: list[int] | None = None,
+    provider: str | None = None,
 ) -> dict[str, Any]:
     """Run the full KG extraction pipeline for a book.
 
@@ -107,18 +109,35 @@ async def process_book_extraction(
                 ),
             )
 
-    result = await build_book_graph(
-        driver=driver,
-        book_repo=book_repo,
-        book_id=book_id,
-        chapters=chapter_data,
-        genre=genre,
-        series_name=series_name,
-        chapter_regex_matches=chapter_regex,
-        dlq=dlq,
-        cost_tracker=cost_tracker,
-        on_chapter_done=_publish_progress,
-    )
+    try:
+        result = await build_book_graph(
+            driver=driver,
+            book_repo=book_repo,
+            book_id=book_id,
+            chapters=chapter_data,
+            genre=genre,
+            series_name=series_name,
+            chapter_regex_matches=chapter_regex,
+            dlq=dlq,
+            cost_tracker=cost_tracker,
+            on_chapter_done=_publish_progress,
+            provider=provider,
+        )
+    except QuotaExhaustedError as qe:
+        logger.warning(
+            "task_quota_exhausted",
+            book_id=book_id,
+            provider=qe.provider,
+        )
+        await _publish_progress(0, 0, "error_quota", 0)
+        await book_repo.update_book_status(book_id, "error_quota")
+        return {
+            "chapters_processed": 0,
+            "chapters_failed": 1,
+            "total_entities": 0,
+            "stopped_reason": "quota_exhausted",
+            "provider": qe.provider,
+        }
 
     logger.info(
         "task_book_extraction_completed",
@@ -148,6 +167,7 @@ async def process_book_extraction_v3(
     series_name: str = "",
     chapters: list[int] | None = None,
     language: str = "fr",
+    provider: str | None = None,
 ) -> dict[str, Any]:
     """Run the V3 6-phase extraction pipeline for a book.
 
@@ -161,6 +181,8 @@ async def process_book_extraction_v3(
     On success: enqueues process_book_embeddings automatically.
     On chapter failure: pushes to DLQ (individual chapters).
     """
+    logger.info("v3_task_args", book_id=book_id, genre=genre, provider=provider, language=language)
+
     driver = ctx["neo4j_driver"]
     dlq = ctx["dlq"]
     cost_tracker = ctx.get("cost_tracker")
@@ -287,6 +309,7 @@ async def process_book_extraction_v3(
                 entity_registry=entity_registry.to_dict(),
                 ontology_version=ontology_version,
                 source_language=language,
+                provider=provider,
             )
             total_entities += stats.get("total_entities", 0)
             chapter_stats.append(stats)
@@ -322,6 +345,32 @@ async def process_book_extraction_v3(
                 stats.get("total_entities", 0),
             )
 
+        except QuotaExhaustedError as qe:
+            logger.warning(
+                "v3_quota_exhausted",
+                book_id=book_id,
+                chapter=chapter.number,
+                provider=qe.provider,
+                chapters_processed=len(chapter_stats),
+            )
+            failed_chapters.append(chapter.number)
+            await _publish_progress(
+                chapter.number,
+                len(content_chapters),
+                "error_quota",
+                total_entities,
+            )
+            await book_repo.update_book_status(book_id, "error_quota")
+            return {
+                "book_id": book_id,
+                "chapters_processed": len(chapter_stats),
+                "chapters_failed": len(failed_chapters),
+                "failed_chapters": failed_chapters,
+                "total_entities": total_entities,
+                "stopped_reason": "quota_exhausted",
+                "stopped_at_chapter": chapter.number,
+                "provider": qe.provider,
+            }
         except CostCeilingError:
             logger.warning(
                 "v3_cost_ceiling_hit",

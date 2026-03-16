@@ -211,6 +211,20 @@ class ProjectRepository:
         async with self._pool.acquire() as conn:
             await conn.execute(query, book_id, file_id)
 
+    async def list_books(self, slug: str) -> list[dict[str, Any]]:
+        """Return project_files with a non-null book_id for a project slug."""
+        query = """
+            SELECT pf.*
+            FROM projects p
+            JOIN project_files pf ON pf.project_id = p.id
+            WHERE p.slug = $1
+              AND pf.book_id IS NOT NULL
+            ORDER BY pf.book_num
+        """
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(query, slug)
+            return [dict(r) for r in rows]
+
     async def count_books(self, slug: str) -> int:
         """Count ingested books (book_id IS NOT NULL) for a project.
 

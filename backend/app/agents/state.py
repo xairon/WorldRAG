@@ -91,6 +91,9 @@ class ExtractionPipelineState(TypedDict, total=False):
     total_cost_usd: float
     total_entities: int
 
+    # -- Provider override (ollama fallback) --
+    model_override: str | None
+
     # -- V3 fields --
     entity_registry: dict  # EntityRegistry serialized
     ontology_version: str

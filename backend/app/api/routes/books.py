@@ -21,6 +21,7 @@ from app.api.dependencies import get_arq_pool, get_neo4j
 from app.core.exceptions import ConflictError, ExtractionError, NotFoundError, ValidationError
 from app.core.logging import get_logger
 from app.repositories.book_repo import BookRepository
+from app.services.extraction.regex_extractor import RegexExtractor
 from app.schemas.book import (
     BookDetail,
     BookInfo,
@@ -337,6 +338,7 @@ async def extract_book(
     After extraction completes, an embedding job is automatically enqueued.
     """
     chapter_list = body.chapters if body else None
+    provider = body.provider if body else None
 
     repo = BookRepository(driver)
     book = await repo.get_book(book_id)
@@ -344,7 +346,7 @@ async def extract_book(
         raise NotFoundError("Book not found")
 
     current_status = book.get("status", "")
-    if current_status not in ("completed", "extracted", "partial", "embedded"):
+    if current_status not in ("completed", "extracted", "partial", "embedded", "error_quota", "extracting"):
         raise ConflictError(
             f"Book status is '{current_status}'. "
             "Extraction requires ingestion to be completed first."
@@ -371,6 +373,7 @@ async def extract_book(
         book.get("genre", "litrpg"),
         book.get("series_name", "") or "",
         chapter_list,
+        provider,
         _queue_name="worldrag:arq",
         _job_id=f"extract:{book_id}{suffix}",
     )
@@ -437,7 +440,7 @@ async def extract_book_v3(
         raise NotFoundError("Book not found")
 
     current_status = book.get("status", "")
-    if current_status not in ("completed", "extracted", "partial", "embedded"):
+    if current_status not in ("completed", "extracted", "partial", "embedded", "error_quota", "extracting"):
         raise ConflictError(
             f"Book status is '{current_status}'. "
             "Extraction requires ingestion to be completed first."
@@ -447,6 +450,7 @@ async def extract_book_v3(
     language = body.language if body else "fr"
     genre = (body.genre if body else None) or book.get("genre", "litrpg")
     series_name = (body.series_name if body else None) or book.get("series_name", "") or ""
+    provider = body.provider if body else None
 
     chapters = await repo.get_chapters_for_extraction(book_id, chapters=chapter_list)
     if not chapters:
@@ -465,6 +469,7 @@ async def extract_book_v3(
         series_name,
         chapter_list,
         language,
+        provider,
         _queue_name="worldrag:arq",
         _job_id=f"extract-v3:{book_id}{suffix}",
     )
@@ -759,4 +764,6 @@ async def extract_graphiti(
         mode=mode,
         job_id=job.job_id if job else None,
     )
+    if job is None:
+        raise ConflictError("Graphiti extraction job already enqueued for this book.")
     return {"job_id": job.job_id, "mode": mode, "book_id": book_id}

@@ -26,6 +26,7 @@ class ProcessingStatus(StrEnum):
     EMBEDDED = "embedded"  # fully complete (extraction + embeddings)
     PARTIAL = "partial"  # some chapters failed
     FAILED = "failed"
+    ERROR_QUOTA = "error_quota"  # LLM quota exhausted (429)
 
 
 # --- Request schemas ---

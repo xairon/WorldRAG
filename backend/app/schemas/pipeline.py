@@ -179,6 +179,10 @@ class ExtractionRequest(BaseModel):
         None,
         description="Chapter numbers to extract. null = all chapters.",
     )
+    provider: str | None = Field(
+        None,
+        description="LLM provider override: 'gemini', 'local' (ollama). null = config default.",
+    )
 
 
 class ExtractionRequestV3(BaseModel):
@@ -199,6 +203,10 @@ class ExtractionRequestV3(BaseModel):
     genre: str | None = Field(
         None,
         description="Override genre for this extraction.",
+    )
+    provider: str | None = Field(
+        None,
+        description="LLM provider override: 'gemini', 'local' (ollama). null = config default.",
     )
 
 

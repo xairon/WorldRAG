@@ -17,7 +17,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
-from app.core.exceptions import CostCeilingError
+from app.core.exceptions import CostCeilingError, QuotaExhaustedError
 from app.core.logging import get_logger
 from app.repositories.entity_repo import EntityRepository
 from app.services.entity_filter import filter_extraction_result
@@ -48,6 +48,7 @@ async def build_chapter_graph(
     regex_matches_json: str = "[]",
     cost_tracker: CostTracker | None = None,
     series_entities: list[dict[str, Any]] | None = None,
+    provider: str | None = None,
 ) -> dict[str, Any]:
     """Process a single chapter through the full KG pipeline.
 
@@ -99,6 +100,14 @@ async def build_chapter_graph(
 
     # 1. Extract + reconcile entities via LangGraph
     #    (graph includes: route → [passes 1-4] → merge → reconcile)
+    # Resolve provider override to LangExtract model_id
+    model_override = None
+    if provider == "local":
+        from app.config import settings as _settings
+        model_override = "ollama/qwen3:32b"
+    elif provider:
+        model_override = None  # use default for known providers like gemini
+
     extraction_result = await extract_chapter(
         chapter_text=chapter.text,
         book_id=book_id,
@@ -107,6 +116,7 @@ async def build_chapter_graph(
         series_name=series_name,
         regex_matches_json=regex_matches_json,
         series_entities=series_entities,
+        model_override=model_override,
     )
 
     # 2. Log extraction warnings
@@ -210,6 +220,7 @@ async def build_book_graph(
     dlq: DeadLetterQueue | None = None,
     cost_tracker: CostTracker | None = None,
     on_chapter_done: ProgressCallback | None = None,
+    provider: str | None = None,
 ) -> dict[str, Any]:
     """Process all chapters of a book through the KG pipeline.
 
@@ -306,6 +317,7 @@ async def build_book_graph(
                     regex_matches_json=regex_json,
                     cost_tracker=cost_tracker,
                     series_entities=series_entities,
+                    provider=provider,
                 )
                 if on_chapter_done:
                     await on_chapter_done(
@@ -315,6 +327,8 @@ async def build_book_graph(
                         stats["total_entities"],
                     )
                 return (chapter.number, stats, None)
+            except QuotaExhaustedError:
+                raise  # Propagate out of gather — pipeline must stop
             except Exception as exc:
                 if on_chapter_done:
                     await on_chapter_done(chapter.number, total_chapters, "failed", 0)
@@ -643,6 +657,7 @@ async def build_chapter_graph_v3(
     entity_registry: dict | None = None,
     ontology_version: str = "3.0.0",
     source_language: str = "fr",
+    provider: str | None = None,
 ) -> dict[str, Any]:
     """V3: Extract and persist entities using the 6-phase pipeline.
 
@@ -694,6 +709,19 @@ async def build_chapter_graph_v3(
         ontology_version=ontology_version,
     )
 
+    # Resolve provider override to LangExtract model_id
+    model_override = None
+    if provider == "local":
+        from app.config import settings as _settings
+        model_override = "ollama/qwen3:32b"
+    logger.info(
+        "v3_extraction_provider",
+        book_id=book_id,
+        chapter=chapter_number,
+        provider=provider,
+        model_override=model_override,
+    )
+
     # 1. Extract via V3 pipeline
     result = await extract_chapter_v3(
         chapter_text=chapter.text,
@@ -706,6 +734,7 @@ async def build_chapter_graph_v3(
         ontology_version=ontology_version,
         source_language=source_language,
         series_entities=series_entities,
+        model_override=model_override,
     )
 
     # 2. Apply alias map to normalize names

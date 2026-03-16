@@ -1,12 +1,16 @@
 "use client"
 
 import { useCallback, useMemo, useState } from "react"
+import { AlertTriangle } from "lucide-react"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Progress } from "@/components/ui/progress"
 import { ExtractionAction } from "@/components/extraction/extraction-action"
 import { ExtractionHeader } from "@/components/extraction/extraction-header"
 import { ExtractionDonut } from "@/components/extraction/extraction-donut"
 import { ChapterTable, type ChapterData } from "@/components/extraction/chapter-table"
 import { LiveFeed } from "@/components/extraction/live-feed"
 import { useExtractionStream } from "@/hooks/use-extraction-stream"
+import { useExtractionStore } from "@/stores/extraction-store"
 import { mapBackendStatus } from "@/lib/constants"
 
 interface BookInfo {
@@ -45,12 +49,27 @@ export function ExtractionDashboard({
   isFirstBook,
 }: ExtractionDashboardProps) {
   const [starting, setStarting] = useState(false)
-  const { connect, disconnect, status, feedMessages, chaptersDone, chaptersTotal, entitiesFound } =
-    useExtractionStream(bookId)
+  const {
+    connect,
+    disconnect,
+    status,
+    feedMessages,
+    chaptersDone,
+    chaptersTotal,
+    entitiesFound,
+    errorDetail,
+  } = useExtractionStream(bookId)
+
+  const extractUrl = `/api/books/${bookId}/extract/v3`
 
   const isRunning = status === "running"
+  const isQuotaError = status === "error_quota"
 
-  const effectiveStatus = isRunning ? "extracting" : book.status
+  const effectiveStatus = isRunning
+    ? "extracting"
+    : isQuotaError
+      ? "error_quota"
+      : book.status
 
   const chapterRows: ChapterData[] = useMemo(
     () =>
@@ -84,19 +103,37 @@ export function ExtractionDashboard({
 
   const handleStart = useCallback(async () => {
     setStarting(true)
+    useExtractionStore.getState().reset()
+    connect()
     try {
-      await fetch(`/api/projects/${slug}/extract`, {
+      await fetch(extractUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ book_id: bookId }),
+        body: JSON.stringify({}),
       })
-      connect()
     } catch {
-      // extraction-action will show error state via store
+      disconnect()
     } finally {
       setStarting(false)
     }
-  }, [slug, bookId, connect])
+  }, [extractUrl, connect, disconnect])
+
+  const handleRetryOllama = useCallback(async () => {
+    setStarting(true)
+    useExtractionStore.getState().reset()
+    connect()
+    try {
+      await fetch(extractUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: "local" }),
+      })
+    } catch {
+      disconnect()
+    } finally {
+      setStarting(false)
+    }
+  }, [extractUrl, connect, disconnect])
 
   const handleCancel = useCallback(() => {
     disconnect()
@@ -116,9 +153,47 @@ export function ExtractionDashboard({
           isFirstBook={isFirstBook}
           onStart={handleStart}
           onCancel={handleCancel}
+          onRetryOllama={handleRetryOllama}
           disabled={starting}
         />
       </div>
+
+      {/* Quota error banner */}
+      {isQuotaError && errorDetail && (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>
+            Extraction stopped — {errorDetail.provider || "API"} quota exceeded
+          </AlertTitle>
+          <AlertDescription>
+            {chaptersDone} / {chaptersTotal} chapters extracted before the API quota was hit.
+            You can retry with a local Ollama model (lower quality but no quota limits).
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Progress bar */}
+      {(isRunning || isQuotaError) && chaptersTotal > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">
+              {isRunning ? "Extracting..." : "Stopped"}
+            </span>
+            <span className="tabular-nums font-medium">
+              {chaptersDone} / {chaptersTotal} chapters
+              {entitiesFound > 0 && (
+                <span className="ml-2 text-muted-foreground">
+                  · {entitiesFound} entities
+                </span>
+              )}
+            </span>
+          </div>
+          <Progress
+            value={(chaptersDone / chaptersTotal) * 100}
+            className={isQuotaError ? "[&>div]:bg-destructive" : ""}
+          />
+        </div>
+      )}
 
       {/* Stats + Donut */}
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
@@ -132,8 +207,8 @@ export function ExtractionDashboard({
         <ExtractionDonut data={donutData} />
       </div>
 
-      {/* Live feed — only visible while running */}
-      {isRunning && (
+      {/* Live feed — visible while running or after quota error */}
+      {(isRunning || isQuotaError) && feedMessages.length > 0 && (
         <div>
           <h2 className="mb-2 text-sm font-medium text-muted-foreground">Live feed</h2>
           <LiveFeed messages={feedMessages} />

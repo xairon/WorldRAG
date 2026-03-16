@@ -71,6 +71,20 @@ async def stream_extraction_progress(
                         }
                         continue
 
+                    # Error event — pipeline stopped
+                    if status == "error_quota":
+                        yield {
+                            "event": "error",
+                            "data": json.dumps(
+                                {
+                                    **data,
+                                    "error_type": "quota_exhausted",
+                                    "chapters_done": chapters_done,
+                                }
+                            ),
+                        }
+                        break
+
                     chapters_done += 1
 
                     yield {

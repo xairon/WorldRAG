@@ -20,6 +20,7 @@ from app.schemas.extraction import (
     GroundedEntity,
     LoreExtractionResult,
 )
+from app.core.exceptions import QuotaExhaustedError
 from app.services.extraction.alignment import alignment_label, check_alignment
 from app.services.extraction.retry import extract_with_retry
 
@@ -55,18 +56,25 @@ async def extract_lore(state: ExtractionPipelineState) -> dict[str, Any]:
         text_length=len(chapter_text),
     )
 
+    model_override = state.get("model_override")
+    is_ollama = bool(model_override and model_override.startswith("ollama/"))
+    effective_model = model_override.split("/", 1)[1] if is_ollama else (model_override or settings.langextract_model)
+    effective_api_key = "ollama" if is_ollama else (settings.gemini_api_key or None)
+    effective_url = settings.ollama_base_url if is_ollama else None
+
     try:
         result = await extract_with_retry(
             text_or_documents=chapter_text,
             prompt_description=PROMPT_DESCRIPTION,
             examples=FEW_SHOT_EXAMPLES,
-            model_id=settings.langextract_model,
-            api_key=settings.gemini_api_key or None,
+            model_id=effective_model,
+            api_key=effective_api_key,
             extraction_passes=settings.langextract_passes,
-            max_workers=min(settings.langextract_max_workers, 10),
+            max_workers=1 if is_ollama else min(settings.langextract_max_workers, 10),
             pass_name=PASS_NAME,
             book_id=book_id,
             chapter=chapter_number,
+            model_url=effective_url,
         )
 
         # Parse LangExtract output
@@ -179,6 +187,8 @@ async def extract_lore(state: ExtractionPipelineState) -> dict[str, Any]:
             "errors": [],
         }
 
+    except QuotaExhaustedError:
+        raise  # Must propagate to stop the pipeline
     except Exception as e:
         logger.exception(
             "extraction_pass_failed",

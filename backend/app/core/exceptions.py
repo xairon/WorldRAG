@@ -92,3 +92,16 @@ class RateLimitError(WorldRAGError):
 
     status_code = 429
     detail = "Rate limit exceeded"
+
+
+class QuotaExhaustedError(Exception):
+    """Raised when an LLM provider returns 429 after all retries.
+
+    Not a WorldRAGError because it's an internal pipeline signal,
+    not mapped to an HTTP status code.
+    """
+
+    def __init__(self, provider: str, message: str = ""):
+        self.provider = provider
+        self.message = message or f"{provider} quota exhausted (429)"
+        super().__init__(self.message)
