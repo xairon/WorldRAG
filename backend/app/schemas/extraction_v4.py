@@ -12,7 +12,7 @@ Design choices:
 """
 
 import operator
-from typing import Annotated, Literal, Union
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 from typing_extensions import TypedDict
@@ -242,23 +242,21 @@ class ExtractedChurch(BaseModel):
 # ── Discriminated Union ───────────────────────────────────────────────────
 
 EntityUnion = Annotated[
-    Union[
-        ExtractedCharacter,
-        ExtractedSkill,
-        ExtractedClass,
-        ExtractedTitle,
-        ExtractedEvent,
-        ExtractedLocation,
-        ExtractedItem,
-        ExtractedCreature,
-        ExtractedFaction,
-        ExtractedConcept,
-        ExtractedLevelChange,
-        ExtractedStatChange,
-        ExtractedBloodline,
-        ExtractedProfession,
-        ExtractedChurch,
-    ],
+    ExtractedCharacter
+    | ExtractedSkill
+    | ExtractedClass
+    | ExtractedTitle
+    | ExtractedEvent
+    | ExtractedLocation
+    | ExtractedItem
+    | ExtractedCreature
+    | ExtractedFaction
+    | ExtractedConcept
+    | ExtractedLevelChange
+    | ExtractedStatChange
+    | ExtractedBloodline
+    | ExtractedProfession
+    | ExtractedChurch,
     Field(discriminator="entity_type"),
 ]
 

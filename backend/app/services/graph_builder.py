@@ -103,7 +103,6 @@ async def build_chapter_graph(
     # Resolve provider override to LangExtract model_id
     model_override = None
     if provider == "local":
-        from app.config import settings as _settings
         model_override = "ollama/qwen3:32b"
     elif provider:
         model_override = None  # use default for known providers like gemini
@@ -752,7 +751,6 @@ async def build_chapter_graph_v3(
     # Resolve provider override to LangExtract model_id
     model_override = None
     if provider == "local":
-        from app.config import settings as _settings
         model_override = "ollama/qwen3:32b"
     logger.info(
         "v3_extraction_provider",

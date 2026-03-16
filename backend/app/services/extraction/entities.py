@@ -11,10 +11,10 @@ import structlog
 
 from app.llm.providers import get_instructor_for_extraction
 from app.prompts.extraction_unified import build_entity_prompt
-from app.schemas.extraction_v4 import EntityExtractionResult
 from app.schemas.extraction import GroundedEntity
-from app.services.extraction.grounding import validate_and_fix_grounding
+from app.schemas.extraction_v4 import EntityExtractionResult
 from app.services.extraction.entity_registry import EntityRegistry
+from app.services.extraction.grounding import validate_and_fix_grounding
 
 logger = structlog.get_logger()
 
@@ -83,7 +83,11 @@ async def extract_entities_node(state: dict[str, Any]) -> dict[str, Any]:
         status, confidence = validate_and_fix_grounding(entity, chapter_text)
 
         # Get entity name (different fields per type)
-        entity_name = getattr(entity, "name", "") or getattr(entity, "deity_name", "") or getattr(entity, "character", "")
+        entity_name = (
+            getattr(entity, "name", "")
+            or getattr(entity, "deity_name", "")
+            or getattr(entity, "character", "")
+        )
 
         ge = GroundedEntity(
             entity_type=entity.entity_type,
