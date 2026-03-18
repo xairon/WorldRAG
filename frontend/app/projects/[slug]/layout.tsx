@@ -64,7 +64,7 @@ export default async function ProjectLayout({
           ]}
           drawer={{ slug, projectName: project.name, books: sidebarBooks }}
         />
-        <main className="flex-1">{children}</main>
+        <main className="flex-1 overflow-x-hidden p-6">{children}</main>
       </div>
     </div>
   )
