@@ -1,0 +1,395 @@
+# Entity type descriptions for prompt generation (bilingual EN/FR)
+# Structure: {layer: {type_name: {en: "...", fr: "..."}}}
+
+core:
+  character:
+    en: |
+      CHARACTER:
+      - name: primary name as used in text (exact spelling)
+      - canonical_name: full name lowercase, no articles (the/a/an)
+      - role: protagonist | antagonist | mentor | sidekick | ally | minor | neutral
+      - species: race or species if mentioned
+      - aliases: list of alternate names or nicknames
+      - description: brief description in chapter context
+      - extraction_text: exact source passage
+    fr: |
+      CHARACTER :
+      - name : nom principal utilise dans le texte (orthographe exacte)
+      - canonical_name : nom complet en minuscules, sans articles
+      - role : protagonist | antagonist | mentor | sidekick | ally | minor | neutral
+      - species : race ou espece si mentionnee
+      - aliases : liste de surnoms ou noms alternatifs
+      - description : breve description dans le contexte du chapitre
+      - extraction_text : passage source exact
+
+  event:
+    en: |
+      EVENT:
+      - name: short descriptive name of the event
+      - event_type: action | state_change | achievement | process | dialogue | combat | discovery | revelation | transition | encounter
+      - significance: minor | moderate | major | critical | arc_defining
+      - participants: list of character canonical_names involved
+      - location: canonical_name of where it takes place
+      - is_flashback: true if event is narrated as past memory
+      - extraction_text: exact source passage
+    fr: |
+      EVENT :
+      - name : nom court et descriptif de l'evenement
+      - event_type : action | state_change | achievement | process | dialogue | combat | discovery | revelation | transition | encounter
+      - significance : minor | moderate | major | critical | arc_defining
+      - participants : liste des canonical_names des personnages impliques
+      - location : canonical_name du lieu
+      - is_flashback : true si l'evenement est narre comme souvenir
+      - extraction_text : passage source exact
+
+  location:
+    en: |
+      LOCATION:
+      - name: place name as used in text
+      - canonical_name: full name lowercase, no articles
+      - location_type: city | dungeon | realm | continent | pocket_dimension | planet | forest | mountain | building | region
+      - parent_location: canonical_name of containing location if any
+      - description: brief description in chapter context
+      - extraction_text: exact source passage
+    fr: |
+      LOCATION :
+      - name : nom du lieu tel qu'utilise dans le texte
+      - canonical_name : nom complet en minuscules, sans articles
+      - location_type : city | dungeon | realm | continent | pocket_dimension | planet | forest | mountain | building | region
+      - parent_location : canonical_name du lieu englobant si applicable
+      - description : breve description dans le contexte du chapitre
+      - extraction_text : passage source exact
+
+  item:
+    en: |
+      ITEM:
+      - name: item name as used in text
+      - canonical_name: full name lowercase, no articles
+      - item_type: weapon | armor | consumable | artifact | key_item | tool | material
+      - rarity: common | uncommon | rare | epic | legendary | unique
+      - effects: list of mechanical or narrative effects
+      - owner: canonical_name of current possessor
+      - extraction_text: exact source passage
+    fr: |
+      ITEM :
+      - name : nom de l'objet tel qu'utilise dans le texte
+      - canonical_name : nom complet en minuscules, sans articles
+      - item_type : weapon | armor | consumable | artifact | key_item | tool | material
+      - rarity : common | uncommon | rare | epic | legendary | unique
+      - effects : liste des effets mecaniques ou narratifs
+      - owner : canonical_name du possesseur actuel
+      - extraction_text : passage source exact
+
+  creature:
+    en: |
+      CREATURE:
+      - name: creature name as used in text
+      - canonical_name: full name lowercase, no articles
+      - species: species or monster type
+      - threat_level: threat level if mentioned (e.g. B-rank, level 50)
+      - habitat: where this creature is typically found
+      - description: brief description in chapter context
+      - extraction_text: exact source passage
+    fr: |
+      CREATURE :
+      - name : nom de la creature tel qu'utilise dans le texte
+      - canonical_name : nom complet en minuscules, sans articles
+      - species : espece ou type de monstre
+      - threat_level : niveau de menace si mentionne (ex. rang B, niveau 50)
+      - habitat : lieu ou cette creature se trouve generalement
+      - description : breve description dans le contexte du chapitre
+      - extraction_text : passage source exact
+
+  faction:
+    en: |
+      FACTION:
+      - name: faction name as used in text
+      - canonical_name: full name lowercase, no articles
+      - faction_type: guild | clan | kingdom | order | tribe | company | alliance
+      - alignment: lawful | neutral | chaotic | evil | good
+      - description: brief description in chapter context
+      - extraction_text: exact source passage
+    fr: |
+      FACTION :
+      - name : nom de la faction tel qu'utilise dans le texte
+      - canonical_name : nom complet en minuscules, sans articles
+      - faction_type : guild | clan | kingdom | order | tribe | company | alliance
+      - alignment : lawful | neutral | chaotic | evil | good
+      - description : breve description dans le contexte du chapitre
+      - extraction_text : passage source exact
+
+  concept:
+    en: |
+      CONCEPT:
+      - name: concept name as used in text
+      - canonical_name: full name lowercase, no articles
+      - domain: magic | technology | philosophy | religion | politics | nature | other
+      - description: brief description in chapter context
+      - extraction_text: exact source passage
+    fr: |
+      CONCEPT :
+      - name : nom du concept tel qu'utilise dans le texte
+      - canonical_name : nom complet en minuscules, sans articles
+      - domain : magic | technology | philosophy | religion | politics | nature | other
+      - description : breve description dans le contexte du chapitre
+      - extraction_text : passage source exact
+
+  arc:
+    en: |
+      ARC:
+      - name: arc or storyline name
+      - canonical_name: full name lowercase, no articles
+      - arc_type: main_plot | subplot | character_arc | world_arc
+      - status: active | completed | abandoned
+      - description: brief description in chapter context
+      - extraction_text: exact source passage
+    fr: |
+      ARC :
+      - name : nom de l'arc narratif
+      - canonical_name : nom complet en minuscules, sans articles
+      - arc_type : main_plot | subplot | character_arc | world_arc
+      - status : active | completed | abandoned
+      - description : breve description dans le contexte du chapitre
+      - extraction_text : passage source exact
+
+  prophecy:
+    en: |
+      PROPHECY:
+      - name: prophecy name or short identifier
+      - canonical_name: full name lowercase, no articles
+      - status: unfulfilled | fulfilled | subverted
+      - description: brief description in chapter context
+      - extraction_text: exact source passage
+    fr: |
+      PROPHECY :
+      - name : nom ou identifiant court de la prophetie
+      - canonical_name : nom complet en minuscules, sans articles
+      - status : unfulfilled | fulfilled | subverted
+      - description : breve description dans le contexte du chapitre
+      - extraction_text : passage source exact
+
+genre:
+  skill:
+    en: |
+      SKILL (use entity_type="genre_entity", sub_type="skill"):
+      - name: exact skill name as mentioned
+      - skill_type: active | passive | racial | class | profession | unique
+      - rank: common | uncommon | rare | epic | legendary | transcendent | divine
+      - owner: character who possesses this skill
+      - effects: list of mechanical effects
+      - extraction_text: exact source passage
+    fr: |
+      SKILL (utiliser entity_type="genre_entity", sub_type="skill") :
+      - name : nom exact de la competence
+      - skill_type : active | passive | racial | class | profession | unique
+      - rank : common | uncommon | rare | epic | legendary | transcendent | divine
+      - owner : personnage possedant cette competence
+      - effects : liste des effets mecaniques
+      - extraction_text : passage source exact
+
+  class_:
+    en: |
+      CLASS (use entity_type="genre_entity", sub_type="class"):
+      - name: class name as mentioned
+      - tier: class tier or grade if mentioned
+      - owner: character who holds this class
+      - description: brief description of class abilities
+      - extraction_text: exact source passage
+    fr: |
+      CLASS (utiliser entity_type="genre_entity", sub_type="class") :
+      - name : nom de la classe
+      - tier : palier ou grade si mentionne
+      - owner : personnage possedant cette classe
+      - description : breve description des capacites
+      - extraction_text : passage source exact
+
+  title:
+    en: |
+      TITLE (use entity_type="genre_entity", sub_type="title"):
+      - name: title as mentioned in text
+      - effects: bonuses or abilities granted by this title
+      - owner: character who holds this title
+      - extraction_text: exact source passage
+    fr: |
+      TITLE (utiliser entity_type="genre_entity", sub_type="title") :
+      - name : titre tel que mentionne dans le texte
+      - effects : bonus ou capacites conferes par ce titre
+      - owner : personnage possedant ce titre
+      - extraction_text : passage source exact
+
+  system:
+    en: |
+      SYSTEM (use entity_type="genre_entity", sub_type="system"):
+      - name: system name as mentioned
+      - system_type: cultivation | class_based | skill_based | stat_based | hybrid
+      - description: how the system works in this world
+      - extraction_text: exact source passage
+    fr: |
+      SYSTEM (utiliser entity_type="genre_entity", sub_type="system") :
+      - name : nom du systeme
+      - system_type : cultivation | class_based | skill_based | stat_based | hybrid
+      - description : fonctionnement du systeme dans ce monde
+      - extraction_text : passage source exact
+
+  level:
+    en: |
+      LEVEL (use entity_type="level_change"):
+      - character: canonical_name of the character
+      - old_level: previous level if mentioned
+      - new_level: new level reached
+      - realm: cultivation realm if applicable
+      - extraction_text: exact source passage
+    fr: |
+      LEVEL (utiliser entity_type="level_change") :
+      - character : canonical_name du personnage
+      - old_level : niveau precedent si mentionne
+      - new_level : nouveau niveau atteint
+      - realm : domaine de cultivation si applicable
+      - extraction_text : passage source exact
+
+  race:
+    en: |
+      RACE (use entity_type="genre_entity", sub_type="race"):
+      - name: race name as mentioned
+      - traits: distinctive racial characteristics
+      - typical_abilities: common racial abilities
+      - description: brief description in chapter context
+      - extraction_text: exact source passage
+    fr: |
+      RACE (utiliser entity_type="genre_entity", sub_type="race") :
+      - name : nom de la race
+      - traits : caracteristiques raciales distinctives
+      - typical_abilities : capacites raciales communes
+      - description : breve description dans le contexte du chapitre
+      - extraction_text : passage source exact
+
+  stat_block:
+    en: |
+      STAT_BLOCK (use entity_type="genre_entity", sub_type="stat_block"):
+      - character_name: canonical_name of the character
+      - stats: JSON object of stat names and values
+      - source: blue_box | narrative | inferred
+      - extraction_text: exact source passage
+    fr: |
+      STAT_BLOCK (utiliser entity_type="genre_entity", sub_type="stat_block") :
+      - character_name : canonical_name du personnage
+      - stats : objet JSON des noms et valeurs de stats
+      - source : blue_box | narrative | inferred
+      - extraction_text : passage source exact
+
+  quest:
+    en: |
+      QUEST (use entity_type="genre_entity", sub_type="quest"):
+      - name: quest name as mentioned
+      - quest_type: main | side | daily | hidden | world
+      - status: active | completed | failed
+      - reward: reward if mentioned
+      - extraction_text: exact source passage
+    fr: |
+      QUEST (utiliser entity_type="genre_entity", sub_type="quest") :
+      - name : nom de la quete
+      - quest_type : main | side | daily | hidden | world
+      - status : active | completed | failed
+      - reward : recompense si mentionnee
+      - extraction_text : passage source exact
+
+  achievement:
+    en: |
+      ACHIEVEMENT (use entity_type="genre_entity", sub_type="achievement"):
+      - name: achievement name as mentioned
+      - effects: bonuses or rewards granted
+      - earned_by: canonical_name of the character
+      - extraction_text: exact source passage
+    fr: |
+      ACHIEVEMENT (utiliser entity_type="genre_entity", sub_type="achievement") :
+      - name : nom du haut fait
+      - effects : bonus ou recompenses conferes
+      - earned_by : canonical_name du personnage
+      - extraction_text : passage source exact
+
+  realm:
+    en: |
+      REALM (use entity_type="genre_entity", sub_type="realm"):
+      - name: realm or cultivation stage name
+      - grade: grade or rank of this realm
+      - description: brief description of realm characteristics
+      - extraction_text: exact source passage
+    fr: |
+      REALM (utiliser entity_type="genre_entity", sub_type="realm") :
+      - name : nom du domaine ou palier de cultivation
+      - grade : grade ou rang de ce domaine
+      - description : breve description des caracteristiques
+      - extraction_text : passage source exact
+
+series:
+  bloodline:
+    en: |
+      BLOODLINE (use entity_type="genre_entity", sub_type="bloodline"):
+      - name: bloodline or heritage name
+      - owner: character bearing this bloodline
+      - effects: inherited abilities
+      - origin: source if mentioned
+      - extraction_text: exact source passage
+    fr: |
+      BLOODLINE (utiliser entity_type="genre_entity", sub_type="bloodline") :
+      - name : nom du lignage
+      - owner : personnage porteur
+      - effects : capacites heritees
+      - origin : source si mentionnee
+      - extraction_text : passage source exact
+
+  profession:
+    en: |
+      PROFESSION (use entity_type="genre_entity", sub_type="profession"):
+      - name: profession name
+      - owner: character with this profession
+      - rank: profession rank if mentioned
+      - extraction_text: exact source passage
+    fr: |
+      PROFESSION (utiliser entity_type="genre_entity", sub_type="profession") :
+      - name : nom de la profession
+      - owner : personnage possedant cette profession
+      - rank : rang de profession si mentionne
+      - extraction_text : passage source exact
+
+  church:
+    en: |
+      CHURCH (use entity_type="genre_entity", sub_type="church"):
+      - name: church or religious order name
+      - deity: associated deity if mentioned
+      - description: brief description
+      - extraction_text: exact source passage
+    fr: |
+      CHURCH (utiliser entity_type="genre_entity", sub_type="church") :
+      - name : nom de l'eglise ou ordre religieux
+      - deity : divinite associee si mentionnee
+      - description : breve description
+      - extraction_text : passage source exact
+
+  alchemy_recipe:
+    en: |
+      ALCHEMY_RECIPE (use entity_type="genre_entity", sub_type="alchemy_recipe"):
+      - name: recipe or potion name
+      - ingredients: list of required ingredients
+      - effects: resulting effects
+      - extraction_text: exact source passage
+    fr: |
+      ALCHEMY_RECIPE (utiliser entity_type="genre_entity", sub_type="alchemy_recipe") :
+      - name : nom de la recette ou potion
+      - ingredients : liste des ingredients requis
+      - effects : effets resultants
+      - extraction_text : passage source exact
+
+  floor:
+    en: |
+      FLOOR (use entity_type="genre_entity", sub_type="floor"):
+      - name: floor or level identifier (e.g. "Floor 37")
+      - difficulty: difficulty rating if mentioned
+      - description: brief description
+      - extraction_text: exact source passage
+    fr: |
+      FLOOR (utiliser entity_type="genre_entity", sub_type="floor") :
+      - name : identifiant de l'etage (ex. "Etage 37")
+      - difficulty : difficulte si mentionnee
+      - description : breve description
+      - extraction_text : passage source exact

@@ -1,0 +1,197 @@
+# Few-shot examples for extraction pipeline prompt generation (bilingual EN/FR)
+# Structure: {genre_name: {phase: {language: "example text"}}}
+
+litrpg:
+  entities:
+    en: |
+      Example input:
+      ---
+      Jake opened his eyes. His level had just reached 42. A new skill
+      "Thunderstrike" appeared in his list. He was in the Shadow Cavern,
+      a B-rank dungeon known for its deadly traps.
+      [Level 42 reached!]
+      [New Skill: Thunderstrike (Active) — Unleashes a lightning-charged
+      attack dealing 300% base damage.]
+      ---
+
+      Example output:
+      ```json
+      [
+        {
+          "entity_type": "character",
+          "name": "Jake",
+          "canonical_name": "jake",
+          "role": "protagonist",
+          "extraction_text": "Jake opened his eyes."
+        },
+        {
+          "entity_type": "genre_entity",
+          "sub_type": "skill",
+          "name": "Thunderstrike",
+          "rank": "unknown",
+          "owner": "jake",
+          "description": "Lightning-charged attack dealing 300% base damage.",
+          "extraction_text": "Thunderstrike (Active) — Unleashes a lightning-charged attack dealing 300% base damage."
+        },
+        {
+          "entity_type": "location",
+          "name": "Shadow Cavern",
+          "canonical_name": "shadow cavern",
+          "location_type": "dungeon",
+          "description": "B-rank dungeon known for its deadly traps.",
+          "extraction_text": "the Shadow Cavern, a B-rank dungeon known for its deadly traps."
+        },
+        {
+          "entity_type": "level_change",
+          "character": "jake",
+          "new_level": 42,
+          "extraction_text": "His level had just reached 42."
+        }
+      ]
+      ```
+    fr: |
+      Exemple d'entree :
+      ---
+      Jake ouvrit les yeux. Son niveau venait de passer a 42. Une nouvelle
+      competence "Frappe Foudroyante" apparut dans sa liste. Il se trouvait
+      dans la Caverne des Ombres, un donjon de rang B.
+      [Niveau 42 atteint !]
+      [Nouvelle competence : Frappe Foudroyante (Active)]
+      ---
+
+      Exemple de sortie :
+      ```json
+      [
+        {
+          "entity_type": "character",
+          "name": "Jake",
+          "canonical_name": "jake",
+          "role": "protagonist",
+          "extraction_text": "Jake ouvrit les yeux."
+        },
+        {
+          "entity_type": "genre_entity",
+          "sub_type": "skill",
+          "name": "Frappe Foudroyante",
+          "rank": "unknown",
+          "owner": "jake",
+          "extraction_text": "Frappe Foudroyante (Active)"
+        },
+        {
+          "entity_type": "location",
+          "name": "Caverne des Ombres",
+          "canonical_name": "caverne des ombres",
+          "location_type": "dungeon",
+          "extraction_text": "la Caverne des Ombres, un donjon de rang B."
+        },
+        {
+          "entity_type": "level_change",
+          "character": "jake",
+          "new_level": 42,
+          "extraction_text": "Son niveau venait de passer a 42."
+        }
+      ]
+      ```
+  relations:
+    en: |
+      Example input (entities already extracted):
+      ```json
+      [
+        {"entity_type": "character", "canonical_name": "jake"},
+        {"entity_type": "character", "canonical_name": "aria"},
+        {"entity_type": "genre_entity", "sub_type": "skill", "name": "thunderstrike"},
+        {"entity_type": "faction", "canonical_name": "hunters guild"}
+      ]
+      ```
+
+      Text: Jake and Aria were allies within the Hunters Guild. Jake had just
+      mastered Thunderstrike during the siege. Aria lost her "Arcane Shield"
+      skill after being cursed.
+
+      Example output:
+      ```json
+      {
+        "relations": [
+          {"relation_type": "RELATES_TO", "source": "jake", "target": "aria",
+           "subtype": "ally", "sentiment": 0.8},
+          {"relation_type": "MEMBER_OF", "source": "jake", "target": "hunters guild"},
+          {"relation_type": "MEMBER_OF", "source": "aria", "target": "hunters guild"},
+          {"relation_type": "HAS_SKILL", "source": "jake", "target": "thunderstrike"}
+        ],
+        "ended_relations": [
+          {"relation_type": "HAS_SKILL", "source": "aria", "target": "arcane shield",
+           "reason": "skill_lost"}
+        ]
+      }
+      ```
+    fr: |
+      Exemple d'entree (entites deja extraites) :
+      ```json
+      [
+        {"entity_type": "character", "canonical_name": "jake"},
+        {"entity_type": "character", "canonical_name": "aria"},
+        {"entity_type": "genre_entity", "sub_type": "skill", "name": "frappe foudroyante"},
+        {"entity_type": "faction", "canonical_name": "guilde des chasseurs"}
+      ]
+      ```
+
+      Texte : Jake et Aria etaient allies au sein de la Guilde des Chasseurs.
+      Jake venait de maitriser la Frappe Foudroyante durant le siege.
+      Aria perdit sa competence "Bouclier Arcanique" apres avoir ete maudite.
+
+      Exemple de sortie :
+      ```json
+      {
+        "relations": [
+          {"relation_type": "RELATES_TO", "source": "jake", "target": "aria",
+           "subtype": "ally", "sentiment": 0.8},
+          {"relation_type": "MEMBER_OF", "source": "jake", "target": "guilde des chasseurs"},
+          {"relation_type": "MEMBER_OF", "source": "aria", "target": "guilde des chasseurs"},
+          {"relation_type": "HAS_SKILL", "source": "jake", "target": "frappe foudroyante"}
+        ],
+        "ended_relations": [
+          {"relation_type": "HAS_SKILL", "source": "aria", "target": "bouclier arcanique",
+           "reason": "skill_lost"}
+        ]
+      }
+      ```
+
+core:
+  entities:
+    en: |
+      Example input:
+      ---
+      Mr. and Mrs. Dursley, of number four Privet Drive, were proud to say
+      that they were perfectly normal. Their son Dudley was the apple of
+      their eye.
+      ---
+
+      Example output:
+      ```json
+      [
+        {"entity_type": "character", "name": "Mr. Dursley", "canonical_name": "vernon dursley", "role": "minor"},
+        {"entity_type": "character", "name": "Mrs. Dursley", "canonical_name": "petunia dursley", "role": "minor"},
+        {"entity_type": "character", "name": "Dudley", "canonical_name": "dudley dursley", "role": "minor"},
+        {"entity_type": "location", "name": "number four Privet Drive", "canonical_name": "privet drive", "location_type": "building"}
+      ]
+      ```
+    fr: |
+      Exemple d'entree :
+      ---
+      M. et Mme Dursley, du numero quatre Privet Drive, etaient fiers de
+      dire qu'ils etaient parfaitement normaux. Leur fils Dudley etait la
+      prunelle de leurs yeux.
+      ---
+
+      Exemple de sortie :
+      ```json
+      [
+        {"entity_type": "character", "name": "M. Dursley", "canonical_name": "vernon dursley", "role": "minor"},
+        {"entity_type": "character", "name": "Mme Dursley", "canonical_name": "petunia dursley", "role": "minor"},
+        {"entity_type": "character", "name": "Dudley", "canonical_name": "dudley dursley", "role": "minor"},
+        {"entity_type": "location", "name": "numero quatre Privet Drive", "canonical_name": "privet drive", "location_type": "building"}
+      ]
+      ```
+  relations:
+    en: ""
+    fr: ""
