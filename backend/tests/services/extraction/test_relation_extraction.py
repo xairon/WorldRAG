@@ -20,14 +20,20 @@ MOCK_RESULT = RelationExtractionResult(
 )
 
 
+def _onto():
+    from app.core.ontology_loader import OntologyLoader
+    return OntologyLoader.from_layers(genre="litrpg", series="")
+
+
 @pytest.mark.asyncio
 async def test_extract_relations_node():
     state = {
         "chapter_text": "Jake acquit Shadow Step.",
         "chapter_number": 5,
         "entities": ENTITIES,
-        "source_language": "fr",
+        "source_language": "en",
         "model_override": None,
+        "ontology": _onto(),
     }
     with patch("app.services.extraction.relations._call_instructor_relations", new_callable=AsyncMock, return_value=MOCK_RESULT):
         result = await extract_relations_node(state)
@@ -46,8 +52,9 @@ async def test_sets_valid_from_chapter_if_missing():
         "chapter_text": "text",
         "chapter_number": 42,
         "entities": [],
-        "source_language": "fr",
+        "source_language": "en",
         "model_override": None,
+        "ontology": _onto(),
     }
     with patch("app.services.extraction.relations._call_instructor_relations", new_callable=AsyncMock, return_value=mock_result):
         result = await extract_relations_node(state)

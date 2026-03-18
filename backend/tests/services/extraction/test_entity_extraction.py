@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock, patch
 from app.schemas.extraction_v4 import (
-    EntityExtractionResult, ExtractedCharacter, ExtractedSkill,
+    EntityExtractionResult, ExtractedCharacter, ExtractedGenreEntity,
 )
 from app.services.extraction.entities import extract_entities_node
 
@@ -16,8 +16,8 @@ MOCK_RESULT = EntityExtractionResult(
             extraction_text="Jake se leva",
             char_offset_start=0, char_offset_end=12,
         ),
-        ExtractedSkill(
-            name="Shadow Step", owner="jake", rank="rare",
+        ExtractedGenreEntity(
+            sub_type="skill", name="Shadow Step", owner="jake", rank="rare",
             extraction_text="Shadow Step - Rare",
             char_offset_start=68, char_offset_end=86,
         ),
@@ -27,6 +27,7 @@ MOCK_RESULT = EntityExtractionResult(
 
 @pytest.fixture
 def base_state():
+    from app.core.ontology_loader import OntologyLoader
     return {
         "book_id": "test-book",
         "chapter_number": 5,
@@ -34,9 +35,10 @@ def base_state():
         "regex_matches_json": "[]",
         "genre": "litrpg",
         "series_name": "",
-        "source_language": "fr",
+        "source_language": "en",
         "model_override": None,
         "entity_registry": {},
+        "ontology": OntologyLoader.from_layers(genre="litrpg", series=""),
     }
 
 @pytest.mark.asyncio
