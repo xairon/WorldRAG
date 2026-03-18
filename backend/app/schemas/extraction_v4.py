@@ -22,6 +22,7 @@ from typing_extensions import TypedDict
 # LLMs generate close-but-not-exact values.  Instead of rejecting with a
 # ValidationError we map them to the closest canonical value.
 
+
 def _make_coercer(allowed: set[str], default: str):
     """Return a BeforeValidator function that coerces unknown strings."""
     _lower_map = {v.lower().replace("_", "").replace("-", ""): v for v in allowed}
@@ -46,8 +47,18 @@ _coerce_status = _make_coercer(_STATUSES, "unknown")
 _SKILL_TYPES = {"active", "passive", "racial", "class", "profession", "unique"}
 _coerce_skill_type = _make_coercer(_SKILL_TYPES, "active")
 
-_EVENT_TYPES = {"action", "state_change", "achievement", "process", "dialogue",
-                "encounter", "discovery", "revelation", "transition", "combat"}
+_EVENT_TYPES = {
+    "action",
+    "state_change",
+    "achievement",
+    "process",
+    "dialogue",
+    "encounter",
+    "discovery",
+    "revelation",
+    "transition",
+    "combat",
+}
 _coerce_event_type = _make_coercer(_EVENT_TYPES, "action")
 
 _SIGNIFICANCES = {"minor", "moderate", "major", "critical", "arc_defining"}

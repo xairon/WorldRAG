@@ -3,6 +3,7 @@
 Extracts all entity types (15 types) from chapter text using Instructor.
 Post-validates grounding offsets. Returns entities + grounded_entities.
 """
+
 # NO from __future__ import annotations
 import json
 from typing import Any
@@ -70,6 +71,7 @@ async def extract_entities_node(state: dict[str, Any]) -> dict[str, Any]:
     router_hints: list[str] = []
     try:
         from app.services.extraction.router import compute_router_hints
+
         router_hints = compute_router_hints(chapter_text, state.get("genre", "litrpg"))
     except (ImportError, AttributeError):
         pass  # router hints are optional
@@ -95,10 +97,7 @@ async def extract_entities_node(state: dict[str, Any]) -> dict[str, Any]:
         status, confidence = validate_and_fix_grounding(entity, chapter_text)
 
         # Get entity name (different fields per type)
-        entity_name = (
-            getattr(entity, "name", "")
-            or getattr(entity, "character", "")
-        )
+        entity_name = getattr(entity, "name", "") or getattr(entity, "character", "")
 
         ge = GroundedEntity(
             entity_type=entity.entity_type,

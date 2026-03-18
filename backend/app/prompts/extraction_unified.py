@@ -47,22 +47,14 @@ def _build_type_descriptions(ontology: OntologyLoader, language: str) -> str:
 
     # Preamble
     if language == "en":
-        sections.append(
-            "Extract ALL narrative entities from this chapter in a single pass."
-        )
+        sections.append("Extract ALL narrative entities from this chapter in a single pass.")
     else:
-        sections.append(
-            "Extrais TOUTES les entités narratives de ce chapitre en une seule passe."
-        )
+        sections.append("Extrais TOUTES les entités narratives de ce chapitre en une seule passe.")
 
     # Core types (always active)
     core_descs = descs.get("core", {})
     if core_descs:
-        header = (
-            "=== CORE ENTITY TYPES ==="
-            if language == "en"
-            else "=== TYPES D'ENTITÉS CORE ==="
-        )
+        header = "=== CORE ENTITY TYPES ===" if language == "en" else "=== TYPES D'ENTITÉS CORE ==="
         sections.append(header)
         for _type_name, lang_map in core_descs.items():
             text = lang_map.get(language, lang_map.get("en", ""))
@@ -71,10 +63,7 @@ def _build_type_descriptions(ontology: OntologyLoader, language: str) -> str:
 
     # Genre types (only if a real genre layer loaded — not "core" loaded twice)
     genre_descs = descs.get("genre", {})
-    has_genre = (
-        len(ontology.layers_loaded) > 1
-        and ontology.layers_loaded[1] != "core"
-    )
+    has_genre = len(ontology.layers_loaded) > 1 and ontology.layers_loaded[1] != "core"
     if genre_descs and has_genre:
         genre_label = ontology.layers_loaded[1]
         header = (
@@ -163,25 +152,29 @@ def _build_relation_descriptions(
 
     # Add temporal invalidation note
     if language == "en":
-        lines.extend([
-            "",
-            "=== TEMPORAL INVALIDATION ===",
-            "",
-            "If the text indicates a relation ENDS in this chapter "
-            "(death, betrayal, skill lost, etc.),",
-            "add a RelationEnd object with: relation_type, source, target, "
-            "reason, ended_at_chapter.",
-        ])
+        lines.extend(
+            [
+                "",
+                "=== TEMPORAL INVALIDATION ===",
+                "",
+                "If the text indicates a relation ENDS in this chapter "
+                "(death, betrayal, skill lost, etc.),",
+                "add a RelationEnd object with: relation_type, source, target, "
+                "reason, ended_at_chapter.",
+            ]
+        )
     else:
-        lines.extend([
-            "",
-            "=== INVALIDATION TEMPORELLE ===",
-            "",
-            "Si le texte indique qu'une relation PREND FIN dans ce chapitre "
-            "(mort, trahison, perte de skill, etc.),",
-            "ajouter un objet RelationEnd avec : relation_type, source, target, "
-            "reason, ended_at_chapter.",
-        ])
+        lines.extend(
+            [
+                "",
+                "=== INVALIDATION TEMPORELLE ===",
+                "",
+                "Si le texte indique qu'une relation PREND FIN dans ce chapitre "
+                "(mort, trahison, perte de skill, etc.),",
+                "ajouter un objet RelationEnd avec : relation_type, source, target, "
+                "reason, ended_at_chapter.",
+            ]
+        )
 
     return "\n".join(lines)
 
@@ -204,8 +197,7 @@ def build_entity_prompt(
     """Build Step 1 entity extraction prompt from ontology."""
     active_genre = (
         ontology.layers_loaded[1]
-        if len(ontology.layers_loaded) > 1
-        and ontology.layers_loaded[1] != "core"
+        if len(ontology.layers_loaded) > 1 and ontology.layers_loaded[1] != "core"
         else "core"
     )
 
@@ -222,8 +214,13 @@ def build_entity_prompt(
     extractable = {
         k: v
         for k, v in ontology.to_json_schema().items()
-        if k not in (
-            "Series", "Book", "Chapter", "Chunk", "NarrativeFunction",
+        if k
+        not in (
+            "Series",
+            "Book",
+            "Chapter",
+            "Chunk",
+            "NarrativeFunction",
         )
     }
 
@@ -248,8 +245,7 @@ def build_relation_prompt(
     """Build Step 2 relation extraction prompt from ontology."""
     active_genre = (
         ontology.layers_loaded[1]
-        if len(ontology.layers_loaded) > 1
-        and ontology.layers_loaded[1] != "core"
+        if len(ontology.layers_loaded) > 1 and ontology.layers_loaded[1] != "core"
         else "core"
     )
 

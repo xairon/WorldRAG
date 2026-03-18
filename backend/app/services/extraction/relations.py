@@ -3,6 +3,7 @@
 Receives entities from Step 1 + chapter text. Extracts relations between
 entities and detects temporal invalidations (RelationEnd).
 """
+
 import json
 from typing import Any
 

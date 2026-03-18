@@ -655,6 +655,7 @@ async def process_book_extraction_v4(
             generate_entity_summaries,
             iterative_cluster,
         )
+
         book_batch_id = f"book-level:{book_id}:{int(time.time())}"
 
         # 1. Iterative clustering
@@ -948,6 +949,7 @@ async def process_book_graphiti(
 
         # Run community clustering
         from app.services.community_clustering import run_community_clustering
+
         clustering_result = await run_community_clustering(neo4j_driver, saga_id=saga_id)
         logger.info("community_clustering_done", **clustering_result)
 
