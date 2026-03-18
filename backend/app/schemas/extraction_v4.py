@@ -292,11 +292,20 @@ class EntityExtractionResult(BaseModel):
     chapter_number: int = 0
 
 
+def _coerce_to_str(v: object) -> str:
+    """Coerce LLM outputs (ints, floats) to str for entity name fields."""
+    return str(v) if not isinstance(v, str) else v
+
+
 class ExtractedRelation(BaseModel):
     """A directed relationship between two named entities."""
 
-    source: str = Field(..., description="Source entity name")
-    target: str = Field(..., description="Target entity name")
+    source: Annotated[str, BeforeValidator(_coerce_to_str)] = Field(
+        ..., description="Source entity name"
+    )
+    target: Annotated[str, BeforeValidator(_coerce_to_str)] = Field(
+        ..., description="Target entity name"
+    )
     relation_type: str = Field(
         ..., description="Neo4j relation type — post-validated by extraction node"
     )
