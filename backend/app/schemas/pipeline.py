@@ -181,7 +181,12 @@ class ExtractionRequest(BaseModel):
     )
     provider: str | None = Field(
         None,
-        description="LLM provider override: 'gemini', 'local' (ollama). null = config default.",
+        description=(
+            "LLM provider override (provider:model format). "
+            "Examples: 'openrouter:deepseek/deepseek-chat-v3-0324', "
+            "'local:qwen3:32b', 'gemini:gemini-2.5-flash'. "
+            "null = config default."
+        ),
     )
 
 
@@ -206,7 +211,42 @@ class ExtractionRequestV3(BaseModel):
     )
     provider: str | None = Field(
         None,
-        description="LLM provider override: 'gemini', 'local' (ollama). null = config default.",
+        description=(
+            "LLM provider override (provider:model format). "
+            "Examples: 'openrouter:deepseek/deepseek-chat-v3-0324', "
+            "'local:qwen3:32b', 'gemini:gemini-2.5-flash'. "
+            "null = config default."
+        ),
+    )
+
+
+class ExtractionRequestV4(BaseModel):
+    """Request body for POST /books/{id}/extract/v4."""
+
+    chapters: list[int] | None = Field(
+        None,
+        description="Chapter numbers to extract. null = all chapters.",
+    )
+    language: str = Field(
+        "en",
+        description="Source language of the book text (en, fr).",
+    )
+    series_name: str | None = Field(
+        None,
+        description="Override series name for this extraction.",
+    )
+    genre: str | None = Field(
+        None,
+        description="Override genre for this extraction (litrpg, fantasy, core).",
+    )
+    provider: str | None = Field(
+        None,
+        description=(
+            "LLM provider override (provider:model format). "
+            "Examples: 'openrouter:deepseek/deepseek-v3.2', "
+            "'local:qwen3:32b', 'gemini:gemini-2.5-flash'. "
+            "null = config default."
+        ),
     )
 
 

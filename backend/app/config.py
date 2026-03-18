@@ -41,25 +41,29 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     gemini_api_key: str = ""
 
-    # --- LangExtract ---
-    langextract_model: str = "gemini-2.5-flash"
-    langextract_passes: int = 2
-    langextract_max_workers: int = 20
+    # --- Extraction (V4 Instructor pipeline — default: DeepSeek V3 via OpenRouter) ---
+    langextract_model: str = "openrouter:deepseek/deepseek-v3.2"
+    langextract_passes: int = 2  # V3 legacy only
+    langextract_max_workers: int = 20  # V3 legacy only
     langextract_batch_chapters: int = 10
     langextract_max_char_buffer: int = 2000
 
     # --- Instructor (reconciliation, classification) ---
-    llm_reconciliation: str = "gemini:gemini-2.5-flash"
-    llm_classification: str = "gemini:gemini-2.5-flash"
-    llm_dedup: str = "gemini:gemini-2.5-flash"
-    llm_cypher: str = "gemini:gemini-2.5-flash"
+    llm_reconciliation: str = "openrouter:deepseek/deepseek-v3.2"
+    llm_classification: str = "openrouter:deepseek/deepseek-v3.2"
+    llm_dedup: str = "openrouter:deepseek/deepseek-v3.2"
+    llm_cypher: str = "openrouter:deepseek/deepseek-v3.2"
     use_batch_api: bool = True
 
     # --- User-facing ---
     llm_chat: str = "gemini:gemini-2.5-flash"
     llm_generation: str = "gemini:gemini-2.5-flash-lite"
     llm_auxiliary: str = "local:Qwen/Qwen3.5-4B"
-    openrouter_api_key: str = ""
+
+    # --- OpenRouter (provider:model spec, e.g. "openrouter:deepseek/deepseek-v3.2") ---
+    openrouter_api_key: str = ""  # OPENROUTER_API_KEY env var
+
+    # --- Local (Ollama) ---
     local_llm_backend: str = "ollama"  # ollama|transformers
     ollama_base_url: str = "http://localhost:11434"
 
@@ -93,9 +97,10 @@ class Settings(BaseSettings):
     arq_keep_result: int = 86400  # keep job results for 24h
 
     # --- V3 Extraction Pipeline ---
-    use_v3_pipeline: bool = True  # Toggle V3 pipeline as default
-    extraction_language: str = "fr"
+    use_v3_pipeline: bool = False  # V4 (Instructor) is now the default
+    extraction_language: str = "en"
     ontology_version: str = "3.0.0"
+    default_genre: str = "litrpg"
 
     # --- KG v2 (Graphiti) ---
     graphiti_enabled: bool = False  # Toggle Graphiti pipeline

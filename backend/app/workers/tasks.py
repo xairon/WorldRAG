@@ -47,7 +47,6 @@ async def process_book_extraction(
     from app.config import settings
 
     if settings.use_v3_pipeline:
-        # Delegate to V3 pipeline
         return await process_book_extraction_v3(
             ctx,
             book_id,
@@ -57,108 +56,16 @@ async def process_book_extraction(
             settings.extraction_language,
         )
 
-    driver = ctx["neo4j_driver"]
-    dlq = ctx["dlq"]
-    cost_tracker = ctx.get("cost_tracker")
-
-    logger.info(
-        "task_book_extraction_started",
-        book_id=book_id,
-        genre=genre,
-        chapters=chapters,
-    )
-
-    book_repo = BookRepository(driver)
-    book = await book_repo.get_book(book_id)
-    if not book:
-        msg = f"Book {book_id!r} not found"
-        raise ValueError(msg)
-
-    chapter_data = await book_repo.get_chapters_for_extraction(
+    # Delegate to V4 pipeline (was incorrectly calling build_book_graph before)
+    return await process_book_extraction_v4(
+        ctx,
         book_id,
-        chapters=chapters,
+        genre,
+        series_name,
+        chapters,
+        settings.extraction_language,
+        provider,
     )
-    if not chapter_data:
-        msg = f"No chapters found for book {book_id!r}"
-        raise ValueError(msg)
-
-    chapter_regex = await book_repo.get_chapter_regex_json(book_id)
-    # Filter regex matches to requested chapters
-    if chapters is not None:
-        chapter_set = set(chapters)
-        chapter_regex = {k: v for k, v in chapter_regex.items() if k in chapter_set}
-
-    # Import here to avoid circular import at module load
-    from app.services.graph_builder import build_book_graph
-
-    # Progress callback: publish to Redis pub/sub for SSE consumers
-    dlq_redis = ctx.get("dlq_redis")
-
-    async def _publish_progress(chapter: int, total: int, status: str, entities: int) -> None:
-        if dlq_redis is not None:
-            import json
-
-            await dlq_redis.publish(
-                f"worldrag:progress:{book_id}",
-                json.dumps(
-                    {
-                        "chapter": chapter,
-                        "total": total,
-                        "status": status,
-                        "entities_found": entities,
-                    }
-                ),
-            )
-
-    try:
-        result = await build_book_graph(
-            driver=driver,
-            book_repo=book_repo,
-            book_id=book_id,
-            chapters=chapter_data,
-            genre=genre,
-            series_name=series_name,
-            chapter_regex_matches=chapter_regex,
-            dlq=dlq,
-            cost_tracker=cost_tracker,
-            on_chapter_done=_publish_progress,
-            provider=provider,
-        )
-    except QuotaExhaustedError as qe:
-        logger.warning(
-            "task_quota_exhausted",
-            book_id=book_id,
-            provider=qe.provider,
-        )
-        await _publish_progress(0, 0, "error_quota", 0)
-        await book_repo.update_book_status(book_id, "error_quota")
-        return {
-            "chapters_processed": 0,
-            "chapters_failed": 1,
-            "total_entities": 0,
-            "stopped_reason": "quota_exhausted",
-            "provider": qe.provider,
-        }
-
-    logger.info(
-        "task_book_extraction_completed",
-        book_id=book_id,
-        chapters_processed=result["chapters_processed"],
-        chapters_failed=result["chapters_failed"],
-        total_entities=result["total_entities"],
-    )
-
-    # Auto-enqueue embedding job after extraction
-    # ctx["redis"] is arq's ArqRedis pool (set by arq automatically)
-    await ctx["redis"].enqueue_job(
-        "process_book_embeddings",
-        book_id,
-        _queue_name=ARQ_QUEUE,
-        _job_id=f"embed:{book_id}",
-    )
-    logger.info("task_embeddings_enqueued", book_id=book_id)
-
-    return result
 
 
 async def process_book_extraction_v3(
@@ -505,6 +412,16 @@ async def process_book_extraction_v4(
     # Initialize entity registry
     entity_registry = EntityRegistry()
 
+    from app.core.ontology_loader import OntologyLoader
+
+    ontology = OntologyLoader.from_layers(genre=genre, series=series_name)
+    logger.info(
+        "v4_ontology_loaded",
+        layers=ontology.layers_loaded,
+        node_types=len(ontology.node_types),
+        relationship_types=len(ontology.relationship_types),
+    )
+
     # Load entity registries from other books in same series
     if series_name:
         try:
@@ -561,6 +478,11 @@ async def process_book_extraction_v4(
                 ),
             )
 
+    # Reset previous extraction data before starting fresh
+    deleted = await book_repo.reset_extraction(book_id)
+    if deleted:
+        logger.info("v4_previous_extraction_cleared", book_id=book_id, entities_deleted=deleted)
+
     await book_repo.update_book_status(book_id, "extracting")
 
     total_entities = 0
@@ -585,6 +507,7 @@ async def process_book_extraction_v4(
                 source_language=language,
                 model_override=provider,
                 entity_registry=entity_registry.to_dict(),
+                ontology=ontology,
             )
 
             entities = result.get("entities") or []

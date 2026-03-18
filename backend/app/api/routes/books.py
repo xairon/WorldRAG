@@ -33,6 +33,7 @@ from app.schemas.book import (
 from app.schemas.pipeline import (  # noqa: TC001 — runtime use by FastAPI
     ExtractionRequest,
     ExtractionRequestV3,
+    ExtractionRequestV4,
     ReprocessRequest,
 )
 from app.schemas.saga_profile import ExtractGraphitiRequest
@@ -521,7 +522,7 @@ async def extract_book_v3(
 async def extract_book_v4(
     book_id: str,
     request: Request,
-    body: ExtractionRequestV3 | None = None,
+    body: ExtractionRequestV4 | None = None,
     driver: AsyncDriver = Depends(get_neo4j),
     arq_pool: ArqRedis = Depends(get_arq_pool),
 ) -> JobEnqueuedResult:
@@ -543,8 +544,10 @@ async def extract_book_v4(
             "Extraction requires ingestion to be completed first."
         )
 
+    from app.config import settings as app_settings
+
     chapter_list = body.chapters if body else None
-    language = body.language if body else "fr"
+    language = body.language if body else app_settings.extraction_language
     genre = (body.genre if body else None) or book.get("genre", "litrpg")
     series_name = (body.series_name if body else None) or book.get("series_name", "") or ""
     provider = body.provider if body else None
