@@ -62,14 +62,33 @@ export function ExtractionDashboard({
     errorDetail,
   } = useExtractionStream(bookId)
 
-  // Refresh server component data when extraction completes
+  // Poll server data while extraction is running (SSE events can be missed)
   useEffect(() => {
     if (status === "done") {
       router.refresh()
+      return
     }
-  }, [status, router])
+    // Poll every 10s while extracting (book.status or SSE status indicates running)
+    const shouldPoll = status === "running" || book.status === "extracting"
+    if (!shouldPoll) return
+
+    const interval = setInterval(() => {
+      router.refresh() // Re-fetches server component data
+    }, 10_000)
+
+    return () => clearInterval(interval)
+  }, [status, book.status, router])
 
   const extractUrl = `/api/books/${bookId}/extract/v4`
+
+  // Auto-connect SSE if extraction is already running (page reload during extraction)
+  useEffect(() => {
+    if (book.status === "extracting" && status === "idle") {
+      useExtractionStore.getState().setProgress({ chaptersTotal: book.total_chapters })
+      useExtractionStore.getState().setStatus("running")
+      connect()
+    }
+  }, [book.status, status, book.total_chapters, connect])
 
   const isRunning = status === "running"
   const isError = status === "error" || status === "error_quota"
