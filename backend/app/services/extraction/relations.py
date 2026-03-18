@@ -8,9 +8,10 @@ from typing import Any
 
 import structlog
 
+from app.core.ontology_loader import OntologyLoader
 from app.llm.providers import get_instructor_for_extraction
 from app.prompts.extraction_unified import build_relation_prompt
-from app.schemas.extraction_v4 import RelationExtractionResult
+from app.schemas.extraction_v4 import RelationExtractionResult, _make_coercer
 
 logger = structlog.get_logger()
 
@@ -29,7 +30,7 @@ async def _call_instructor_relations(
             {"role": "system", "content": prompt},
             {"role": "user", "content": chapter_text},
         ],
-        max_retries=3,
+        max_retries=1,
     )
 
 
@@ -41,6 +42,7 @@ async def extract_relations_node(state: dict[str, Any]) -> dict[str, Any]:
     """
     chapter_text = state["chapter_text"]
     chapter_number = state["chapter_number"]
+    ontology: OntologyLoader = state["ontology"]
     entities = state.get("entities", [])
 
     # Serialize entities for prompt injection
@@ -48,18 +50,22 @@ async def extract_relations_node(state: dict[str, Any]) -> dict[str, Any]:
 
     # Build prompt
     prompt = build_relation_prompt(
-        chapter_text=chapter_text,
+        ontology=ontology,
         entities_json=entities_json,
-        language=state.get("source_language", "fr"),
+        language=state.get("source_language", "en"),
     )
 
     # Call LLM
     result = await _call_instructor_relations(prompt, chapter_text, state.get("model_override"))
 
-    # Set valid_from_chapter on new relations
+    # Post-coerce relation types from ontology
+    allowed = set(ontology.get_relationship_type_names())
+    coerce = _make_coercer(allowed, default="RELATES_TO")
+
     relations_serialized = []
     for rel in result.relations:
         d = rel.model_dump()
+        d["relation_type"] = coerce(d["relation_type"])
         if d.get("valid_from_chapter") is None:
             d["valid_from_chapter"] = chapter_number
         relations_serialized.append(d)

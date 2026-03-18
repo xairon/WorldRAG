@@ -1553,15 +1553,21 @@ async def extract_chapter_v4(
     regex_matches_json: str = "[]",
     genre: str = "litrpg",
     series_name: str = "",
-    source_language: str = "fr",
+    source_language: str = "en",
     model_override: str | None = None,
     entity_registry: dict | None = None,
     chunk_texts: list[str] | None = None,
+    ontology: Any = None,
 ) -> dict[str, Any]:
     """Extract entities and relations from a single chapter using v4 pipeline.
 
     Returns the final state dict with entities, relations, alias_map, etc.
     """
+    if ontology is None:
+        from app.core.ontology_loader import OntologyLoader
+
+        ontology = OntologyLoader.from_layers(genre=genre, series=series_name)
+
     graph = _get_v4_graph()
 
     initial_state = {
@@ -1576,6 +1582,7 @@ async def extract_chapter_v4(
         "model_override": model_override,
         "entity_registry": entity_registry or {},
         "series_entities": [],
+        "ontology": ontology,
     }
 
     result = await graph.ainvoke(initial_state)

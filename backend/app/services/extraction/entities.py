@@ -9,6 +9,7 @@ from typing import Any
 
 import structlog
 
+from app.core.ontology_loader import OntologyLoader
 from app.llm.providers import get_instructor_for_extraction
 from app.prompts.extraction_unified import build_entity_prompt
 from app.schemas.extraction import GroundedEntity
@@ -33,7 +34,7 @@ async def _call_instructor(
             {"role": "system", "content": prompt},
             {"role": "user", "content": chapter_text},
         ],
-        max_retries=3,
+        max_retries=1,
     )
 
 
@@ -46,13 +47,23 @@ async def extract_entities_node(state: dict[str, Any]) -> dict[str, Any]:
     """
     chapter_text = state["chapter_text"]
     chapter_number = state["chapter_number"]
+    ontology: OntologyLoader = state["ontology"]
 
     # Build registry context
     registry = EntityRegistry.from_dict(state.get("entity_registry", {}))
     registry_context = registry.to_prompt_context()
 
-    # Parse Phase 0 hints
-    phase0_hints = json.loads(state.get("regex_matches_json", "[]"))
+    # Parse Phase 0 hints — stored or live fallback
+    stored_hints = json.loads(state.get("regex_matches_json", "[]"))
+    if not stored_hints:
+        try:
+            from app.services.extraction.regex_extractor import RegexExtractor
+
+            extractor = RegexExtractor.from_ontology(ontology)
+            stored_hints = extractor.extract(chapter_text)
+        except Exception:
+            pass  # regex is optional
+    phase0_hints = stored_hints
 
     # Router hints (import here exists at module level)
     # Use try/except in case router module has issues
@@ -65,10 +76,11 @@ async def extract_entities_node(state: dict[str, Any]) -> dict[str, Any]:
 
     # Build prompt
     prompt = build_entity_prompt(
+        ontology=ontology,
+        language=state.get("source_language", "en"),
         registry_context=registry_context,
         phase0_hints=phase0_hints,
         router_hints=router_hints,
-        language=state.get("source_language", "fr"),
     )
 
     # Call LLM
@@ -85,7 +97,6 @@ async def extract_entities_node(state: dict[str, Any]) -> dict[str, Any]:
         # Get entity name (different fields per type)
         entity_name = (
             getattr(entity, "name", "")
-            or getattr(entity, "deity_name", "")
             or getattr(entity, "character", "")
         )
 
