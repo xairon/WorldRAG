@@ -22,7 +22,7 @@ export interface ExtractionConfig {
   language: string
   genre: string
   series_name: string
-  provider: string
+  provider?: string
 }
 
 interface ExtractionConfigPanelProps {
@@ -79,7 +79,7 @@ export function ExtractionConfigPanel({
       language,
       genre,
       series_name: seriesName,
-      provider: provider || undefined as unknown as string,
+      provider: provider || undefined,
     })
   }
 

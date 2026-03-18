@@ -1581,7 +1581,7 @@ async def extract_chapter_v4(
         "source_language": source_language,
         "model_override": model_override,
         "entity_registry": entity_registry or {},
-        "series_entities": [],
+        "series_entities": {},
         "ontology": ontology,
     }
 

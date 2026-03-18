@@ -66,12 +66,9 @@ def _get_name_from_flat_entity(entity: dict) -> str | None:
 
     Different entity types use different name fields:
     - Most types: "name"
-    - church: "deity_name"
     - level_change, stat_change: "character"
     """
     entity_type = entity.get("entity_type", "")
-    if entity_type == "church":
-        return entity.get("deity_name") or entity.get("name")
     if entity_type in ("level_change", "stat_change"):
         return entity.get("character") or entity.get("name")
     return entity.get("name")

@@ -1676,6 +1676,12 @@ class EntityRepository(Neo4jRepository):
 
         counts: dict[str, int] = {}
 
+        # Remap genre_entity → sub_type for dispatch (V4 GenreEntity catch-all)
+        # e.g. {entity_type: "genre_entity", sub_type: "skill"} → dispatch as "skill"
+        for e in entities:
+            if e.get("entity_type") == "genre_entity":
+                e["entity_type"] = e.get("sub_type", "concept")
+
         # Group entities by entity_type
         by_type: dict[str, list[dict]] = {}
         for e in entities:

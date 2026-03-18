@@ -1,6 +1,6 @@
 """Step 1: Entity extraction node for the v4 pipeline.
 
-Extracts all entity types (15 types) from chapter text using Instructor.
+Extracts all entity types (12 types) from chapter text using Instructor.
 Post-validates grounding offsets. Returns entities + grounded_entities.
 """
 
@@ -61,9 +61,10 @@ async def extract_entities_node(state: dict[str, Any]) -> dict[str, Any]:
             from app.services.extraction.regex_extractor import RegexExtractor
 
             extractor = RegexExtractor.from_ontology(ontology)
-            stored_hints = extractor.extract(chapter_text)
-        except Exception:
-            pass  # regex is optional
+            matches = extractor.extract(chapter_text, chapter_number)
+            stored_hints = [m.model_dump() for m in matches]
+        except (ImportError, AttributeError, ValueError, TypeError):
+            logger.warning("regex_fallback_failed", exc_info=True)
     phase0_hints = stored_hints
 
     # Router hints (import here exists at module level)
