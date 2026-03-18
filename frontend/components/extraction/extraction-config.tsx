@@ -44,12 +44,15 @@ const GENRES = [
   { value: "core", label: "Générique (core only)" },
 ] as const
 
-const PROVIDERS = [
-  { value: "", label: "Default (config)" },
-  { value: "openrouter:deepseek/deepseek-v3.2", label: "DeepSeek V3.2 (OpenRouter)" },
-  { value: "gemini:gemini-2.5-flash", label: "Gemini 2.5 Flash (free)" },
-  { value: "gemini:gemini-2.5-pro", label: "Gemini 2.5 Pro" },
-  { value: "local:qwen3:32b", label: "Qwen3 32B (local)" },
+const MODELS = [
+  { value: "", label: "Default (DeepSeek V3.2)" },
+  { value: "openrouter:deepseek/deepseek-v3.2", label: "DeepSeek V3.2 — $0.26/M in" },
+  { value: "openrouter:deepseek/deepseek-r1", label: "DeepSeek R1 — $0.55/M in (reasoning)" },
+  { value: "openrouter:google/gemini-2.5-flash", label: "Gemini 2.5 Flash — $0.15/M in" },
+  { value: "openrouter:google/gemini-2.5-pro", label: "Gemini 2.5 Pro — $1.25/M in" },
+  { value: "openrouter:anthropic/claude-sonnet-4", label: "Claude Sonnet 4 — $3/M in" },
+  { value: "openrouter:qwen/qwen3-235b-a22b", label: "Qwen3 235B — $0.20/M in" },
+  { value: "openrouter:meta-llama/llama-4-maverick", label: "Llama 4 Maverick — $0.20/M in" },
 ] as const
 
 function detectLanguage(title: string): string {
@@ -144,15 +147,15 @@ export function ExtractionConfigPanel({
         </CollapsibleTrigger>
         <CollapsibleContent className="pt-3">
           <div className="space-y-2">
-            <Label htmlFor="provider">LLM Provider</Label>
+            <Label htmlFor="model">LLM Model (via OpenRouter)</Label>
             <Select value={provider} onValueChange={setProvider}>
-              <SelectTrigger id="provider">
-                <SelectValue placeholder="Default (config)" />
+              <SelectTrigger id="model">
+                <SelectValue placeholder="Default (DeepSeek V3.2)" />
               </SelectTrigger>
               <SelectContent>
-                {PROVIDERS.map((p) => (
-                  <SelectItem key={p.value} value={p.value}>
-                    {p.label}
+                {MODELS.map((m) => (
+                  <SelectItem key={m.value} value={m.value}>
+                    {m.label}
                   </SelectItem>
                 ))}
               </SelectContent>
