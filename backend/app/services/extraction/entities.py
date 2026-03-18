@@ -35,7 +35,7 @@ async def _call_instructor(
             {"role": "system", "content": prompt},
             {"role": "user", "content": chapter_text},
         ],
-        max_retries=1,
+        max_retries=2,
     )
 
 

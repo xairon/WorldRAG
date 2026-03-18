@@ -10,7 +10,6 @@ from functools import lru_cache
 
 import instructor
 from anthropic import AsyncAnthropic
-from langchain_ollama import ChatOllama
 from openai import AsyncOpenAI
 from pydantic import SecretStr
 
@@ -56,7 +55,7 @@ def get_instructor_client(
     """Get an Instructor client for structured extraction.
 
     Args:
-        provider: LLM provider ("openai", "anthropic", "gemini").
+        provider: LLM provider ("openai", "anthropic", "gemini", "openrouter").
         model: Model name override.
 
     Returns:
@@ -71,6 +70,14 @@ def get_instructor_client(
     elif provider == "gemini":
         client = get_gemini_client()
         return instructor.from_gemini(client)
+    elif provider == "openrouter":
+        if not settings.openrouter_api_key:
+            raise ValueError("OPENROUTER_API_KEY required for openrouter provider")
+        client = AsyncOpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=settings.openrouter_api_key,
+        )
+        return instructor.from_openai(client, mode=instructor.Mode.JSON)
     else:
         logger.warning("instructor_unknown_provider", provider=provider, fallback="openai")
         client = get_openai_client()
@@ -104,34 +111,56 @@ def get_instructor_for_extraction(
 ) -> tuple[instructor.AsyncInstructor, str]:
     """Get Instructor client for v4 extraction steps.
 
-    Default: Gemini 2.5 Flash (settings.langextract_model)
-    Override: ollama (qwen3:32b) via OpenAI-compatible endpoint with 'local:' prefix
+    Resolves the effective spec from *model_override* (API request) or
+    *settings.langextract_model* (config default).  Both accept the
+    standard ``provider:model`` format.
+
+    Supported providers: ``openrouter``, ``local`` (Ollama), ``gemini`` (default).
 
     Args:
-        model_override: Optional model override. Use 'local:<model_name>' to route
-            to the local Ollama endpoint instead of Gemini.
+        model_override: Optional 'provider:model' override from the API request.
 
     Returns:
         Tuple of (instructor_client, model_name).
     """
-    if model_override and model_override.startswith("local:"):
-        model_name = model_override.removeprefix("local:")
+    spec = model_override or settings.langextract_model
+    provider, model = settings.parse_llm_spec(spec)
+
+    if provider == "local":
+        import httpx
+
         client = instructor.from_openai(
             AsyncOpenAI(
                 base_url=settings.ollama_base_url,
                 api_key="ollama",
+                timeout=httpx.Timeout(600.0, connect=30.0),
             ),
             mode=instructor.Mode.JSON,
         )
-        return client, model_name
+        return client, model
 
-    # Default: Gemini
+    if provider == "openrouter":
+        if not settings.openrouter_api_key:
+            raise ValueError("OPENROUTER_API_KEY required for openrouter provider")
+        import httpx
+
+        client = instructor.from_openai(
+            AsyncOpenAI(
+                base_url="https://openrouter.ai/api/v1",
+                api_key=settings.openrouter_api_key,
+                timeout=httpx.Timeout(600.0, connect=30.0),  # 10 min read, 30s connect
+            ),
+            mode=instructor.Mode.JSON,
+        )
+        return client, model
+
+    # Gemini (default) — provider is "gemini" or bare model name
     client = instructor.from_genai(
         get_gemini_client(),
         mode=instructor.Mode.GENAI_TOOLS,
         use_async=True,
     )
-    return client, settings.langextract_model
+    return client, model
 
 
 def get_langchain_llm(spec: str | None = None):
@@ -219,6 +248,8 @@ def get_langchain_llm(spec: str | None = None):
         )
 
     elif provider == "local":
+        from langchain_ollama import ChatOllama
+
         return ChatOllama(
             model=model,
             base_url=settings.ollama_base_url,
