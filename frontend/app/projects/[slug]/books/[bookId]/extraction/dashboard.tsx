@@ -6,6 +6,7 @@ import { AlertTriangle } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Progress } from "@/components/ui/progress"
 import { ExtractionAction } from "@/components/extraction/extraction-action"
+import { ExtractionConfigPanel, type ExtractionConfig } from "@/components/extraction/extraction-config"
 import { ExtractionHeader } from "@/components/extraction/extraction-header"
 import { ExtractionDonut } from "@/components/extraction/extraction-donut"
 import { ChapterTable, type ChapterData } from "@/components/extraction/chapter-table"
@@ -20,6 +21,8 @@ interface BookInfo {
   total_chapters: number
   status: string
   total_cost_usd: number
+  genre?: string
+  series_name?: string | null
 }
 
 interface ChapterInfo {
@@ -129,25 +132,34 @@ export function ExtractionDashboard({
   // ── Handlers ─────────────────────────────────────────────────────────
   const extractUrl = `/api/books/${bookId}/extract/v4`
 
-  const handleStart = useCallback(async () => {
-    setStarting(true)
-    useExtractionStore.getState().reset()
-    try {
-      const res = await fetch(extractUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      })
-      if (!res.ok) throw new Error(`Extract failed: ${res.status}`)
-      connect()
-      // Refresh to pick up "extracting" status
-      router.refresh()
-    } catch {
-      disconnect()
-    } finally {
-      setStarting(false)
-    }
-  }, [extractUrl, connect, disconnect, router])
+  const handleStart = useCallback(
+    async (config?: ExtractionConfig) => {
+      setStarting(true)
+      useExtractionStore.getState().reset()
+      try {
+        const body: Record<string, unknown> = {}
+        if (config) {
+          if (config.language) body.language = config.language
+          if (config.genre) body.genre = config.genre
+          if (config.series_name) body.series_name = config.series_name
+          if (config.provider) body.provider = config.provider
+        }
+        const res = await fetch(extractUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        })
+        if (!res.ok) throw new Error(`Extract failed: ${res.status}`)
+        connect()
+        router.refresh()
+      } catch {
+        disconnect()
+      } finally {
+        setStarting(false)
+      }
+    },
+    [extractUrl, connect, disconnect, router],
+  )
 
   const handleCancel = useCallback(() => {
     disconnect()
@@ -162,15 +174,28 @@ export function ExtractionDashboard({
           <h1 className="text-2xl font-semibold tracking-tight">{book.title}</h1>
           <p className="text-sm text-muted-foreground">Extraction pipeline</p>
         </div>
-        <ExtractionAction
-          bookStatus={effectiveStatus}
-          hasProfile={hasProfile}
-          isFirstBook={isFirstBook}
+        {isExtracting && (
+          <ExtractionAction
+            bookStatus={effectiveStatus}
+            hasProfile={hasProfile}
+            isFirstBook={isFirstBook}
+            onStart={() => handleStart()}
+            onCancel={handleCancel}
+            disabled={starting}
+          />
+        )}
+      </div>
+
+      {/* Config panel — shown when not extracting */}
+      {!isExtracting && (
+        <ExtractionConfigPanel
+          bookGenre={book.genre || "litrpg"}
+          bookSeriesName={book.series_name || null}
+          bookTitle={book.title}
           onStart={handleStart}
-          onCancel={handleCancel}
           disabled={starting}
         />
-      </div>
+      )}
 
       {/* Error banner */}
       {isError && (

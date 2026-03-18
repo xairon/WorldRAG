@@ -4,19 +4,24 @@ import { ExtractionDashboard } from "./dashboard"
 async function getBookDetail(bookId: string) {
   try {
     return await apiFetch<{
-      book: { id: string; title: string; total_chapters: number; status: string; total_cost_usd: number }
+      book: {
+        id: string; title: string; total_chapters: number; status: string
+        total_cost_usd: number; genre?: string; series_name?: string | null
+      }
       chapters: Array<{
         number: number
         title: string
         words: number
+        word_count: number
         entity_count: number
+        relation_count: number
         status: string
         entities: { type: string; count: number }[]
       }>
     }>(`/books/${bookId}`)
   } catch {
     return {
-      book: { id: bookId, title: "Unknown", total_chapters: 0, status: "pending", total_cost_usd: 0 },
+      book: { id: bookId, title: "Unknown", total_chapters: 0, status: "pending", total_cost_usd: 0, genre: "litrpg", series_name: null },
       chapters: [],
     }
   }
