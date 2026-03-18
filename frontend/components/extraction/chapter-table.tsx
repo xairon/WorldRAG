@@ -1,4 +1,3 @@
-import type { UIStatus } from "@/lib/constants"
 import { ChapterRow } from "./chapter-row"
 
 export interface ChapterData {
@@ -12,9 +11,10 @@ export interface ChapterData {
 
 interface ChapterTableProps {
   chapters: ChapterData[]
+  bookId: string
 }
 
-export function ChapterTable({ chapters }: ChapterTableProps) {
+export function ChapterTable({ chapters, bookId }: ChapterTableProps) {
   return (
     <div className="max-h-[500px] overflow-auto rounded-md border">
       <table className="w-full text-sm">
@@ -29,7 +29,7 @@ export function ChapterTable({ chapters }: ChapterTableProps) {
         </thead>
         <tbody>
           {chapters.map((chapter) => (
-            <ChapterRow key={chapter.number} chapter={chapter} />
+            <ChapterRow key={chapter.number} chapter={chapter} bookId={bookId} />
           ))}
         </tbody>
       </table>

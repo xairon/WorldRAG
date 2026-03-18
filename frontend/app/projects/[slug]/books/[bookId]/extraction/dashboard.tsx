@@ -230,7 +230,7 @@ export function ExtractionDashboard({
       {/* Chapter table */}
       <div>
         <h2 className="mb-2 text-sm font-medium text-muted-foreground">Chapters</h2>
-        <ChapterTable chapters={chapterRows} />
+        <ChapterTable chapters={chapterRows} bookId={bookId} />
       </div>
     </div>
   )
