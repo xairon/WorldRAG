@@ -28,6 +28,7 @@ interface ChapterInfo {
   words?: number
   word_count?: number
   entity_count?: number
+  relation_count?: number
   status: string
   entities?: { type: string; count: number }[]
 }
@@ -51,53 +52,24 @@ export function ExtractionDashboard({
 }: ExtractionDashboardProps) {
   const router = useRouter()
   const [starting, setStarting] = useState(false)
-  const {
-    connect,
-    disconnect,
-    status,
-    feedMessages,
-    chaptersDone,
-    chaptersTotal,
-    entitiesFound,
-    errorDetail,
-  } = useExtractionStream(bookId)
+  const { connect, disconnect, status, feedMessages, errorDetail } =
+    useExtractionStream(bookId)
 
-  // Poll server data while extraction is running (SSE events can be missed)
-  useEffect(() => {
-    if (status === "done") {
-      router.refresh()
-      return
-    }
-    // Poll every 10s while extracting (book.status or SSE status indicates running)
-    const shouldPoll = status === "running" || book.status === "extracting"
-    if (!shouldPoll) return
+  // ── Derived from server data (polled every 10s) ──────────────────────
+  const chaptersDone = useMemo(
+    () => chapters.filter((c) => c.status === "extracted").length,
+    [chapters],
+  )
+  const chaptersTotal = book.total_chapters
 
-    const interval = setInterval(() => {
-      router.refresh() // Re-fetches server component data
-    }, 10_000)
-
-    return () => clearInterval(interval)
-  }, [status, book.status, router])
-
-  const extractUrl = `/api/books/${bookId}/extract/v4`
-
-  // Auto-connect SSE if extraction is already running (page reload during extraction)
-  useEffect(() => {
-    if (book.status === "extracting" && status === "idle") {
-      useExtractionStore.getState().setProgress({ chaptersTotal: book.total_chapters })
-      useExtractionStore.getState().setStatus("running")
-      connect()
-    }
-  }, [book.status, status, book.total_chapters, connect])
-
-  const isRunning = status === "running"
-  const isError = status === "error" || status === "error_quota"
-
-  const effectiveStatus = isRunning
-    ? "extracting"
-    : isError
-      ? "error"
-      : book.status
+  const totalEntities = useMemo(
+    () => chapters.reduce((sum, ch) => sum + (ch.entity_count ?? 0), 0),
+    [chapters],
+  )
+  const totalRelations = useMemo(
+    () => chapters.reduce((sum, ch) => sum + (ch.relation_count ?? 0), 0),
+    [chapters],
+  )
 
   const chapterRows: ChapterData[] = useMemo(
     () =>
@@ -122,12 +94,40 @@ export function ExtractionDashboard({
     return Object.entries(totals).map(([type, count]) => ({ type, count }))
   }, [chapters])
 
-  const totalEntities = useMemo(
-    () => chapters.reduce((sum, ch) => sum + (ch.entity_count ?? 0), 0),
-    [chapters],
-  )
+  // ── Status logic ─────────────────────────────────────────────────────
+  const isExtracting = book.status === "extracting"
+  const isError = book.status === "failed" || book.status === "partial" || book.status === "error_quota"
+  const isDone = book.status === "extracted" || book.status === "embedded"
 
-  const totalRelations = 0 // TODO: wire from API when available
+  const effectiveStatus = isExtracting
+    ? "extracting"
+    : isError
+      ? "error"
+      : book.status
+
+  // ── Polling: refresh server data every 10s while extracting ──────────
+  useEffect(() => {
+    if (!isExtracting) return
+    const interval = setInterval(() => router.refresh(), 10_000)
+    return () => clearInterval(interval)
+  }, [isExtracting, router])
+
+  // Auto-connect SSE when page loads during active extraction
+  useEffect(() => {
+    if (isExtracting && status === "idle") {
+      connect()
+    }
+  }, [isExtracting, status, connect])
+
+  // Refresh once when extraction completes (detected via SSE "done" or status change)
+  useEffect(() => {
+    if (status === "done" || (isDone && status !== "idle")) {
+      router.refresh()
+    }
+  }, [status, isDone, router])
+
+  // ── Handlers ─────────────────────────────────────────────────────────
+  const extractUrl = `/api/books/${bookId}/extract/v4`
 
   const handleStart = useCallback(async () => {
     setStarting(true)
@@ -139,21 +139,21 @@ export function ExtractionDashboard({
         body: JSON.stringify({}),
       })
       if (!res.ok) throw new Error(`Extract failed: ${res.status}`)
-      // Set total from known chapter count (avoids race with SSE "started" event)
-      useExtractionStore.getState().setProgress({ chaptersTotal: book.total_chapters })
-      // Now connect SSE for live progress updates
       connect()
+      // Refresh to pick up "extracting" status
+      router.refresh()
     } catch {
       disconnect()
     } finally {
       setStarting(false)
     }
-  }, [extractUrl, connect, disconnect, book.total_chapters])
+  }, [extractUrl, connect, disconnect, router])
 
   const handleCancel = useCallback(() => {
     disconnect()
   }, [disconnect])
 
+  // ── Render ───────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col gap-6">
       {/* Title row */}
@@ -173,29 +173,29 @@ export function ExtractionDashboard({
       </div>
 
       {/* Error banner */}
-      {isError && errorDetail && (
+      {isError && (
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
           <AlertTitle>Extraction stopped</AlertTitle>
           <AlertDescription>
             {chaptersDone} / {chaptersTotal} chapters extracted.{" "}
-            {errorDetail.message || "An error occurred."}
+            {errorDetail?.message || `Status: ${book.status}`}
           </AlertDescription>
         </Alert>
       )}
 
-      {/* Progress bar */}
-      {(isRunning || isError) && chaptersTotal > 0 && (
+      {/* Progress bar — visible when extracting or partially done */}
+      {(isExtracting || (chaptersDone > 0 && !isDone)) && chaptersTotal > 0 && (
         <div className="space-y-2">
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">
-              {isRunning ? "Extracting..." : "Stopped"}
+              {isExtracting ? "Extracting..." : "Stopped"}
             </span>
             <span className="tabular-nums font-medium">
               {chaptersDone} / {chaptersTotal} chapters
-              {entitiesFound > 0 && (
+              {totalEntities > 0 && (
                 <span className="ml-2 text-muted-foreground">
-                  · {entitiesFound} entities
+                  · {totalEntities} entities
                 </span>
               )}
             </span>
@@ -210,17 +210,17 @@ export function ExtractionDashboard({
       {/* Stats + Donut */}
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
         <ExtractionHeader
-          entities={isRunning ? entitiesFound : totalEntities}
+          entities={totalEntities}
           relations={totalRelations}
-          chaptersDone={isRunning ? chaptersDone : chapters.filter((c) => mapBackendStatus(c.status) === "done").length}
-          chaptersTotal={isRunning ? chaptersTotal : book.total_chapters}
+          chaptersDone={chaptersDone}
+          chaptersTotal={chaptersTotal}
           cost={book.total_cost_usd}
         />
         <ExtractionDonut data={donutData} />
       </div>
 
       {/* Live feed — visible while running or after error */}
-      {(isRunning || isError) && feedMessages.length > 0 && (
+      {(isExtracting || isError) && feedMessages.length > 0 && (
         <div>
           <h2 className="mb-2 text-sm font-medium text-muted-foreground">Live feed</h2>
           <LiveFeed messages={feedMessages} />

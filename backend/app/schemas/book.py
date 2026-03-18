@@ -157,6 +157,7 @@ class ChapterInfo(BaseModel):
     word_count: int = 0
     chunk_count: int = 0
     entity_count: int = 0
+    relation_count: int = 0
     status: ProcessingStatus = ProcessingStatus.PENDING
     regex_matches: int = 0
     entities: list[EntityTypeCount] = Field(default_factory=list)

@@ -297,12 +297,14 @@ class BookRepository(Neo4jRepository):
         return bool(result)
 
     async def list_chapters(self, book_id: str) -> list[dict[str, Any]]:
-        """List all chapters for a book."""
+        """List all chapters for a book with chunk and relation counts."""
         return await self.execute_read(
             """
             MATCH (b:Book {id: $book_id})-[:HAS_CHAPTER]->(c:Chapter)
             OPTIONAL MATCH (c)-[:HAS_CHUNK]->(ck:Chunk)
-            RETURN c, count(ck) AS chunk_count
+            WITH c, count(DISTINCT ck) AS chunk_count
+            OPTIONAL MATCH (c)<-[:MENTIONED_IN]-()-[r]->()
+            RETURN c, chunk_count, count(DISTINCT r) AS relation_count
             ORDER BY c.number
             """,
             {"book_id": book_id},

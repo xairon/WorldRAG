@@ -281,6 +281,7 @@ async def get_book(
             word_count=dict(row["c"]).get("word_count", 0),
             chunk_count=row.get("chunk_count", 0),
             entity_count=dict(row["c"]).get("entity_count", 0),
+            relation_count=row.get("relation_count", 0),
             status=dict(row["c"]).get("status", "pending"),
             regex_matches=dict(row["c"]).get("regex_matches", 0),
             entities=[
