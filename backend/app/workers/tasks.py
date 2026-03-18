@@ -558,6 +558,11 @@ async def process_book_extraction_v4(
                 ontology_version,
             )
 
+            # Update chapter status in Neo4j (Bug 3 fix)
+            await book_repo.update_chapter_status(
+                book_id, chapter.number, "extracted", chapter_entity_count
+            )
+
             chapter_stats.append(
                 {
                     "chapter": chapter.number,

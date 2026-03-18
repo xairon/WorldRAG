@@ -1,6 +1,7 @@
 "use client"
 
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import { AlertTriangle } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Progress } from "@/components/ui/progress"
@@ -48,6 +49,7 @@ export function ExtractionDashboard({
   hasProfile,
   isFirstBook,
 }: ExtractionDashboardProps) {
+  const router = useRouter()
   const [starting, setStarting] = useState(false)
   const {
     connect,
@@ -60,15 +62,22 @@ export function ExtractionDashboard({
     errorDetail,
   } = useExtractionStream(bookId)
 
-  const extractUrl = `/api/books/${bookId}/extract/v3`
+  // Refresh server component data when extraction completes
+  useEffect(() => {
+    if (status === "done") {
+      router.refresh()
+    }
+  }, [status, router])
+
+  const extractUrl = `/api/books/${bookId}/extract/v4`
 
   const isRunning = status === "running"
-  const isQuotaError = status === "error_quota"
+  const isError = status === "error" || status === "error_quota"
 
   const effectiveStatus = isRunning
     ? "extracting"
-    : isQuotaError
-      ? "error_quota"
+    : isError
+      ? "error"
       : book.status
 
   const chapterRows: ChapterData[] = useMemo(
@@ -104,36 +113,23 @@ export function ExtractionDashboard({
   const handleStart = useCallback(async () => {
     setStarting(true)
     useExtractionStore.getState().reset()
-    connect()
     try {
-      await fetch(extractUrl, {
+      const res = await fetch(extractUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
       })
+      if (!res.ok) throw new Error(`Extract failed: ${res.status}`)
+      // Set total from known chapter count (avoids race with SSE "started" event)
+      useExtractionStore.getState().setProgress({ chaptersTotal: book.total_chapters })
+      // Now connect SSE for live progress updates
+      connect()
     } catch {
       disconnect()
     } finally {
       setStarting(false)
     }
-  }, [extractUrl, connect, disconnect])
-
-  const handleRetryOllama = useCallback(async () => {
-    setStarting(true)
-    useExtractionStore.getState().reset()
-    connect()
-    try {
-      await fetch(extractUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider: "local" }),
-      })
-    } catch {
-      disconnect()
-    } finally {
-      setStarting(false)
-    }
-  }, [extractUrl, connect, disconnect])
+  }, [extractUrl, connect, disconnect, book.total_chapters])
 
   const handleCancel = useCallback(() => {
     disconnect()
@@ -153,27 +149,24 @@ export function ExtractionDashboard({
           isFirstBook={isFirstBook}
           onStart={handleStart}
           onCancel={handleCancel}
-          onRetryOllama={handleRetryOllama}
           disabled={starting}
         />
       </div>
 
-      {/* Quota error banner */}
-      {isQuotaError && errorDetail && (
+      {/* Error banner */}
+      {isError && errorDetail && (
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>
-            Extraction stopped — {errorDetail.provider || "API"} quota exceeded
-          </AlertTitle>
+          <AlertTitle>Extraction stopped</AlertTitle>
           <AlertDescription>
-            {chaptersDone} / {chaptersTotal} chapters extracted before the API quota was hit.
-            You can retry with a local Ollama model (lower quality but no quota limits).
+            {chaptersDone} / {chaptersTotal} chapters extracted.{" "}
+            {errorDetail.message || "An error occurred."}
           </AlertDescription>
         </Alert>
       )}
 
       {/* Progress bar */}
-      {(isRunning || isQuotaError) && chaptersTotal > 0 && (
+      {(isRunning || isError) && chaptersTotal > 0 && (
         <div className="space-y-2">
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">
@@ -190,7 +183,7 @@ export function ExtractionDashboard({
           </div>
           <Progress
             value={(chaptersDone / chaptersTotal) * 100}
-            className={isQuotaError ? "[&>div]:bg-destructive" : ""}
+            className={isError ? "[&>div]:bg-destructive" : ""}
           />
         </div>
       )}
@@ -207,8 +200,8 @@ export function ExtractionDashboard({
         <ExtractionDonut data={donutData} />
       </div>
 
-      {/* Live feed — visible while running or after quota error */}
-      {(isRunning || isQuotaError) && feedMessages.length > 0 && (
+      {/* Live feed — visible while running or after error */}
+      {(isRunning || isError) && feedMessages.length > 0 && (
         <div>
           <h2 className="mb-2 text-sm font-medium text-muted-foreground">Live feed</h2>
           <LiveFeed messages={feedMessages} />

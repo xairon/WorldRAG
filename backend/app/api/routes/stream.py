@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter, Depends
 from sse_starlette.sse import EventSourceResponse
 
-from app.api.auth import require_auth
 from app.api.dependencies import get_redis
 from app.core.logging import get_logger
 
@@ -23,7 +22,7 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/stream", tags=["stream"])
 
 
-@router.get("/extraction/{book_id}", dependencies=[Depends(require_auth)])
+@router.get("/extraction/{book_id}")  # Auth-optional: progress data is read-only, not sensitive
 async def stream_extraction_progress(
     book_id: str,
     redis: Redis = Depends(get_redis),

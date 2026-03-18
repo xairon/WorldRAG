@@ -125,6 +125,49 @@ class BookRepository(Neo4jRepository):
             {"id": book_id, "total": total},
         )
 
+    async def reset_extraction(self, book_id: str) -> int:
+        """Delete all extracted entities for a book and reset chapter statuses.
+
+        Removes every node tagged with this book_id except Book/Chapter/Chunk/Paragraph,
+        resets all chapter statuses to 'pending', and clears book-level counters.
+        Returns the number of entity nodes deleted.
+        """
+        # 1. Delete all extracted entity nodes (DETACH removes their relationships too)
+        result = await self.execute_write(
+            """
+            MATCH (n {book_id: $id})
+            WHERE NOT n:Book AND NOT n:Chapter AND NOT n:Chunk AND NOT n:Paragraph
+            DETACH DELETE n
+            RETURN count(n) AS deleted
+            """,
+            {"id": book_id},
+        )
+        deleted = result[0]["deleted"] if result else 0
+
+        # 2. Reset all chapter statuses and entity counts
+        await self.execute_write(
+            """
+            MATCH (b:Book {id: $id})-[:HAS_CHAPTER]->(c:Chapter)
+            SET c.status = 'pending', c.entity_count = 0
+            """,
+            {"id": book_id},
+        )
+
+        # 3. Clear book-level extraction metadata
+        await self.execute_write(
+            """
+            MATCH (b:Book {id: $id})
+            SET b.status = 'completed',
+                b.chapters_processed = 0,
+                b.entity_registry = null,
+                b.total_cost_usd = null
+            """,
+            {"id": book_id},
+        )
+
+        logger.info("extraction_reset", book_id=book_id, entities_deleted=deleted)
+        return deleted
+
     async def delete_book(self, book_id: str) -> int:
         """Delete a book and all its chapters, chunks, and extracted entities."""
         # First: delete all extracted entities with this book_id
@@ -264,6 +307,29 @@ class BookRepository(Neo4jRepository):
             """,
             {"book_id": book_id},
         )
+
+    async def get_chapter_entity_breakdown(self, book_id: str) -> dict[int, list[dict[str, Any]]]:
+        """Get entity type counts per chapter for a book.
+
+        Returns dict mapping chapter_number -> [{type, count}, ...].
+        """
+        results = await self.execute_read(
+            """
+            MATCH (c:Chapter {book_id: $book_id})<-[:MENTIONED_IN]-(e)
+            WITH c.number AS chapter_number, [l IN labels(e) WHERE l <> 'Entity'][0] AS etype
+            WHERE etype IS NOT NULL
+            RETURN chapter_number, etype AS type, count(*) AS count
+            ORDER BY chapter_number, count DESC
+            """,
+            {"book_id": book_id},
+        )
+        breakdown: dict[int, list[dict[str, Any]]] = {}
+        for row in results:
+            ch_num = row["chapter_number"]
+            if ch_num not in breakdown:
+                breakdown[ch_num] = []
+            breakdown[ch_num].append({"type": row["type"], "count": row["count"]})
+        return breakdown
 
     async def update_chapter_status(
         self,

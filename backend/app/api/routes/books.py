@@ -21,11 +21,11 @@ from app.api.dependencies import get_arq_pool, get_neo4j
 from app.core.exceptions import ConflictError, ExtractionError, NotFoundError, ValidationError
 from app.core.logging import get_logger
 from app.repositories.book_repo import BookRepository
-from app.services.extraction.regex_extractor import RegexExtractor
 from app.schemas.book import (
     BookDetail,
     BookInfo,
     ChapterInfo,
+    EntityTypeCount,
     IngestionResult,
     JobEnqueuedResult,
     ProcessingStatus,
@@ -38,6 +38,7 @@ from app.schemas.pipeline import (  # noqa: TC001 — runtime use by FastAPI
 )
 from app.schemas.saga_profile import ExtractGraphitiRequest
 from app.services.chunking import chunk_chapter
+from app.services.extraction.regex_extractor import RegexExtractor
 from app.services.ingestion import extract_epub_metadata, ingest_file
 
 if TYPE_CHECKING:
@@ -272,6 +273,7 @@ async def get_book(
         raise NotFoundError("Book not found")
 
     chapters_data = await repo.list_chapters(book_id)
+    entity_breakdown = await repo.get_chapter_entity_breakdown(book_id)
     chapters = [
         ChapterInfo(
             number=dict(row["c"]).get("number", 0),
@@ -281,6 +283,10 @@ async def get_book(
             entity_count=dict(row["c"]).get("entity_count", 0),
             status=dict(row["c"]).get("status", "pending"),
             regex_matches=dict(row["c"]).get("regex_matches", 0),
+            entities=[
+                EntityTypeCount(type=e["type"], count=e["count"])
+                for e in entity_breakdown.get(dict(row["c"]).get("number", 0), [])
+            ],
         )
         for row in chapters_data
     ]
@@ -296,6 +302,7 @@ async def get_book(
             total_chapters=book.get("total_chapters", 0),
             status=book.get("status", "pending"),
             chapters_processed=book.get("chapters_processed", 0),
+            total_cost_usd=book.get("total_cost_usd") or 0.0,
         ),
         chapters=chapters,
     )

@@ -142,6 +142,13 @@ class SeriesInfo(BaseModel):
     books: list[BookInfo] = Field(default_factory=list)
 
 
+class EntityTypeCount(BaseModel):
+    """Count of entities by type for a chapter."""
+
+    type: str
+    count: int
+
+
 class ChapterInfo(BaseModel):
     """Chapter information for API responses."""
 
@@ -152,6 +159,7 @@ class ChapterInfo(BaseModel):
     entity_count: int = 0
     status: ProcessingStatus = ProcessingStatus.PENDING
     regex_matches: int = 0
+    entities: list[EntityTypeCount] = Field(default_factory=list)
 
 
 class BookDetail(BaseModel):
