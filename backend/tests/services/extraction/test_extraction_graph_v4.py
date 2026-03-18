@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, patch
 from app.schemas.extraction_v4 import (
     EntityExtractionResult,
     ExtractedCharacter,
-    ExtractedSkill,
+    ExtractedGenreEntity,
     RelationExtractionResult,
     ExtractedRelation,
 )
@@ -20,7 +20,8 @@ MOCK_ENTITIES = EntityExtractionResult(
             char_offset_start=0,
             char_offset_end=12,
         ),
-        ExtractedSkill(
+        ExtractedGenreEntity(
+            sub_type="skill",
             name="Shadow Step",
             owner="jake",
             extraction_text="Shadow Step",
