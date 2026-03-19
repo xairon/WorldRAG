@@ -62,8 +62,8 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-worldrag}:${POSTGRES_PASSWORD:-worldrag}@postgres:5432/langfuse
       NEXTAUTH_URL: http://localhost:49517
-      NEXTAUTH_SECRET: worldrag-langfuse-secret-change-in-prod
-      SALT: worldrag-langfuse-salt-change-in-prod
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-worldrag-langfuse-dev-secret}
+      SALT: ${LANGFUSE_SALT:-worldrag-langfuse-dev-salt}
       TELEMETRY_ENABLED: "false"
     depends_on:
       postgres:
@@ -129,9 +129,10 @@ services:
     mem_limit: 4g
     healthcheck:
       test: ["CMD", "python", "-c", "import redis; r=redis.from_url('redis://:${REDIS_PASSWORD}@redis:6379'); r.ping()"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
+      interval: 60s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
   frontend:
     build:

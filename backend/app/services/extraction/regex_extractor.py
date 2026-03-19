@@ -77,7 +77,7 @@ class RegexExtractor:
                     )
                 )
             except re.error as e:
-                logger.warning("regex_compile_failed", pattern_name=name, error=str(e))
+                logger.warning("regex_compile_failed", pattern_name=name, error=type(e).__name__)
 
         logger.info("regex_patterns_loaded", count=len(patterns), source=yaml_path)
         return cls(patterns=patterns)

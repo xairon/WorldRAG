@@ -53,6 +53,7 @@ logs/
 # Claude Code (keep settings.json and rules, ignore local state)
 .claude/settings.local.json
 .claude/*.jsonl
+.claude/worktrees/
 
 # Playwright MCP artifacts
 .playwright-mcp/

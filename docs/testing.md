@@ -1,6 +1,6 @@
 # Testing Strategy
 
-> Test architecture, golden dataset design, fixture patterns, and quality metrics for WorldRAG's 211-test suite.
+> Test architecture, golden dataset design, fixture patterns, and quality metrics for WorldRAG's 1000+ test suite.
 
 **Back to**: [Documentation Hub](./README.md)
 
@@ -61,7 +61,7 @@ graph TB
     style Unit fill:#1e3a5f,stroke:#4a90d9,color:#fff
 ```
 
-**Total: 211 tests** — all pass, all fast (< 30 seconds total), zero network calls.
+**Total: 1000+ tests** — all pass, all fast, zero network calls.
 
 ---
 
@@ -320,7 +320,7 @@ python -m uv run pyright backend/
 
 ### CI Expectations
 
-- **211 tests pass** in < 30 seconds
+- **1000+ tests pass**
 - **Zero network calls** (no LLM, no Neo4j, no Redis)
 - **ruff check** passes with zero warnings
 - **ruff format** leaves zero changes

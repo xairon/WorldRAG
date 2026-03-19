@@ -11,15 +11,15 @@ Run diagnostic Cypher queries to inspect the WorldRAG knowledge graph.
 ## Connection
 
 ```bash
-# Interactive Cypher shell
-docker exec -it rag-neo4j-1 cypher-shell -u neo4j -p worldrag
+# Interactive Cypher shell (find container name with: docker compose ps)
+docker exec -it worldrag-neo4j-1 cypher-shell -u neo4j -p worldrag
 
 # Single query
-docker exec rag-neo4j-1 cypher-shell -u neo4j -p worldrag "YOUR QUERY HERE"
+docker exec worldrag-neo4j-1 cypher-shell -u neo4j -p worldrag "YOUR QUERY HERE"
 ```
 
-- **Bolt**: bolt://127.0.0.1:7687
-- **Browser**: http://localhost:7474
+- **Bolt**: bolt://127.0.0.1:49521
+- **Browser**: http://localhost:49520
 - **Credentials**: neo4j / worldrag
 
 ## Diagnostic Queries

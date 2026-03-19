@@ -385,7 +385,7 @@ Get the ego graph (neighborhood) of a node within `depth` hops. Uses APOC when a
 
 ### `GET /graph/subgraph/{book_id}` — Book Subgraph
 
-Get the full entity subgraph for a book for D3 force graph visualization.
+Get the full entity subgraph for a book for Sigma.js graph visualization.
 
 **Parameters**:
 

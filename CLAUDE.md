@@ -11,11 +11,12 @@ WorldRAG is a SOTA Knowledge Graph construction system for fiction novel univers
 - **Backend**: Python 3.12+ / FastAPI (async everywhere)
 - **Frontend**: Next.js 16 / React 19 / TypeScript
 - **Graph DB**: Neo4j 5.x (direct Cypher, no ORM)
-- **Extraction**: LangExtract (grounded) + Instructor (reconciliation)
+- **Extraction**: Instructor (structured output) — V4 single-pass KGGen-style (15 entity types, 16 relation types)
+- **LLM Providers**: Gemini (default), OpenRouter (DeepSeek V3.2 etc.), Ollama (local) — all via `provider:model` spec
 - **Orchestration**: LangGraph (3 separate graphs: extraction, reader, chat)
 - **Monitoring**: LangFuse (self-hosted) + structlog
 - **Task Queue**: arq + Redis
-- **Embeddings**: VoyageAI (voyage-3.5) via batch pipeline
+- **Embeddings**: BGE-m3 (local, sentence-transformers) via batch pipeline, VoyageAI (voyage-3.5) as alt
 - **Reranker**: zerank-1-small (local CrossEncoder, sentence-transformers) — wired to chat pipeline
 - **Checkpointing**: PostgreSQL (LangGraph AsyncPostgresSaver) — active in chat pipeline
 
@@ -23,14 +24,14 @@ WorldRAG is a SOTA Knowledge Graph construction system for fiction novel univers
 
 ```bash
 # Backend
-python -m uv run uvicorn backend.app.main:app --reload --port 8000
-python -m uv run pytest backend/tests/ -x -v
-python -m uv run ruff check backend/ --fix
-python -m uv run ruff format backend/
-python -m uv run pyright backend/
+uv run uvicorn backend.app.main:app --reload --port 8000
+uv run pytest backend/tests/ -x -v
+uv run ruff check backend/ --fix
+uv run ruff format backend/
+uv run pyright backend/
 
 # arq worker (requires Redis + Neo4j running)
-python -m uv run arq app.workers.settings.WorkerSettings
+uv run arq app.workers.settings.WorkerSettings
 
 # Frontend
 cd frontend && npm run dev
@@ -40,8 +41,8 @@ cd frontend && npm run build
 docker compose up -d          # Neo4j + Redis + PostgreSQL + LangFuse
 docker compose down
 
-# Neo4j Browser: http://localhost:7474 (neo4j/worldrag)
-# LangFuse: http://localhost:3001
+# Neo4j Browser: http://localhost:49520 (neo4j/worldrag)
+# LangFuse: http://localhost:49517
 ```
 
 ## Code Conventions
@@ -60,7 +61,7 @@ WorldRAG/
 ├── backend/app/          # FastAPI backend
 │   ├── api/              # Routes + middleware + auth + dependencies
 │   ├── core/             # Logging, resilience, rate limiting, cost tracking, DLQ
-│   ├── llm/              # LLM providers, embeddings (Voyage), reranker (Cohere)
+│   ├── llm/              # LLM providers, embeddings (local BGE-m3), reranker (zerank-1-small)
 │   ├── schemas/          # Pydantic models
 │   ├── repositories/     # Neo4j data access (base, book_repo, entity_repo)
 │   ├── services/         # Business logic + extraction pipeline + embedding
@@ -85,12 +86,14 @@ Loaded at runtime by `OntologyLoader` (app/core/ontology_loader.py) with enum va
 
 ## Important Patterns
 
-- **Two-pass extraction**: Regex (Passe 0) for blue boxes/stats → LLM (Passes 1-4) for narrative
+- **V4 extraction (SOTA)**: Single-pass Instructor pipeline — entities → relations → mention_detect → reconcile_persist
+- **V3 extraction (legacy)**: 4-pass LangExtract parallel fan-out (characters|systems|events|lore) — still available via `use_v3_pipeline=True`
+- **Provider routing**: `provider:model` spec everywhere (e.g. `openrouter:deepseek/deepseek-chat-v3-0324`, `local:qwen3:32b`, `gemini:gemini-2.5-flash`)
 - **Entity resolution**: Exact match → Fuzzy (thefuzz) → Embedding similarity + LLM-as-Judge
 - **Temporality**: Chapter-based (valid_from_chapter/valid_to_chapter), not datetime
 - **Source grounding**: Every entity links back to its source chunk with char offsets
-- **Cost optimization**: Gemini 2.5 Flash for extraction, GPT-4o-mini for reconciliation
-- **Async workers**: POST /books/{id}/extract enqueues arq job, auto-chains embedding on completion
+- **Cost optimization**: Gemini 2.5 Flash (free tier) or DeepSeek V3.2 via OpenRouter ($0.26/M input)
+- **Async workers**: POST /books/{id}/extract/v4 enqueues arq job, auto-chains embedding on completion
 - **Fulltext search**: entity_fulltext Neo4j index with Lucene escaping + CONTAINS fallback
 - **Graph visualization**: Sigma.js + graphology (ForceAtlas2 layout) — not D3
 
@@ -104,12 +107,14 @@ Upload (epub/pdf/txt)
   → Store in Neo4j (book_repo.py)
   → [Status: completed]
 
-Extract (arq worker — async)
-  → LangGraph: route → [characters|systems|events|lore] (parallel fan-out)
-  → Reconcile in-graph (deduplicate all 10 entity types via LangGraph node)
-  → Apply alias_map normalization (names, owners, stat_changes)
-  → Persist entities to Neo4j (entity_repo.py — 11 types)
-  → Create GROUNDED_IN relationships (label-aware UNWIND)
+Extract V4 (arq worker — async, POST /books/{id}/extract/v4)
+  → LangGraph 4-node linear pipeline per chapter:
+      1. extract_entities (Instructor — 15 entity types in one call)
+      2. extract_relations (Instructor — 16 relation types)
+      3. mention_detect (programmatic name/alias matching)
+      4. reconcile_persist (3-tier dedup + alias_map + Neo4j upsert)
+  → EntityRegistry context accumulates across chapters
+  → Book-level post-processing: clustering → summaries → communities
   → DLQ for failed chapters
   → [Status: extracted]
   → Auto-enqueue embedding job
@@ -124,7 +129,7 @@ Embed (arq worker — async)
 
 ## What's Done vs TODO
 
-**Done**: Full extraction pipeline (LangGraph 4-pass + regex), 11 entity types, 3-tier dedup, reconciler, embedding pipeline (VoyageAI), arq workers, book ingestion API, graph explorer API, admin API (costs + DLQ), ontology loader, frontend (books + Sigma.js graph explorer + chat UI), Docker Compose, 810 tests.
+**Done**: V4 extraction pipeline (Instructor, 4-node LangGraph, 15 entity types, 16 relation types), V3 legacy pipeline (LangExtract, 4-pass), 3-tier dedup, reconciler, book-level post-processing (clustering + summaries + communities), embedding pipeline (VoyageAI), arq workers, book ingestion API, graph explorer API, admin API (costs + DLQ), ontology loader, frontend (books + Sigma.js graph explorer + chat UI), Docker Compose, OpenRouter/Gemini/Ollama multi-provider support, 1000+ tests.
 
 **Also done**:
 - ~~Chat/RAG query API~~ ✅ Done (hybrid retrieval: vector → rerank → LLM)

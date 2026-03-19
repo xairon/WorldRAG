@@ -139,4 +139,4 @@ Key files to inspect:
 If entities are missing or wrong:
 1. Check router keywords (is the relevant pass being triggered?)
 2. Check reconciler alias_map (are entities being merged incorrectly?)
-3. Check LangFuse traces at http://localhost:3001 for LLM call details
+3. Check LangFuse traces at http://localhost:49517 for LLM call details

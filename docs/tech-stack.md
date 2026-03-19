@@ -8,11 +8,11 @@ Every technology in WorldRAG was chosen with specific trade-offs in mind. This d
 |-------|-----------|---------|------|----------------------|
 | API Framework | FastAPI | >= 0.115 | Async REST API | Django, Flask |
 | Graph Database | Neo4j | 5.x | Entity & relationship storage | PostgreSQL + pg_graphql, ArangoDB |
-| Extraction (Grounded) | LangExtract | >= 0.1 | Grounded entity extraction with source offsets | Raw LLM prompting, spaCy NER |
+| Extraction (V4 SOTA) | Instructor | >= 1.7 | Single-pass KGGen-style extraction (15 entity types, 16 relation types) | LangExtract, raw LLM prompting, spaCy NER |
 | Extraction (Structured) | Instructor | >= 1.7 | Pydantic-validated LLM output | LangChain output parsers |
 | Orchestration | LangGraph | >= 0.3 | Parallel extraction with typed state | Raw asyncio.gather, Celery |
 | Embeddings | Voyage AI | voyage-3.5 | 1024d document/query embeddings | OpenAI text-embedding-3, Cohere embed |
-| Reranking | Cohere | rerank-v3.5 | Re-rank retrieved chunks | Voyage rerank, cross-encoder |
+| Reranking | zerank-1-small | local CrossEncoder | Re-rank retrieved chunks (sentence-transformers) | Cohere rerank-v3.5, Voyage rerank |
 | Task Queue | arq | >= 0.26 | Async background jobs | Celery, Dramatiq, Huey |
 | Frontend | Next.js | 16 | React SSR/SSG with App Router | Nuxt, SvelteKit, Remix |
 | Monitoring | LangFuse | 2.x | LLM observability (self-hosted) | Weights & Biases, custom logging |
@@ -36,22 +36,21 @@ graph TB
 
     subgraph "Extraction Layer"
         LangGraph[LangGraph StateGraph]
-        LangExtract[LangExtract]
         Instructor[Instructor]
         thefuzz[thefuzz]
     end
 
     subgraph "LLM Provider Layer"
-        OpenAI[OpenAI GPT-4o / 4o-mini]
         Gemini[Google Gemini 2.5 Flash]
-        Anthropic[Anthropic Claude 3.5]
+        OpenRouter[OpenRouter<br/>DeepSeek V3.2 etc.]
+        Ollama[Ollama<br/>qwen3:32b etc.]
         Voyage[Voyage AI 3.5]
-        Cohere[Cohere Rerank v3.5]
+        Reranker[zerank-1-small<br/>local CrossEncoder]
     end
 
     subgraph "Frontend Layer"
         NextJS[Next.js 16 + React 19]
-        D3[react-force-graph-2d]
+        SigmaJS[Sigma.js 3.0 + graphology]
         Tailwind[Tailwind CSS 4]
     end
 
@@ -59,10 +58,10 @@ graph TB
     FastAPI --> Neo4j
     FastAPI --> Redis
     arq --> Neo4j
-    LangGraph --> LangExtract
     LangGraph --> Instructor
-    LangExtract --> Gemini
-    Instructor --> OpenAI
+    Instructor --> Gemini
+    Instructor --> OpenRouter
+    Instructor --> Ollama
 ```
 
 ## Backend: FastAPI over Django or Flask
@@ -98,22 +97,17 @@ graph TB
 
 **Why not ArangoDB**: Multi-model (document + graph + search) sounds appealing, but the Cypher-like AQL is less mature, the ecosystem is smaller, and vector index support is newer.
 
-## Extraction: LangExtract + Instructor over Raw LLM
+## Extraction: Instructor (V4 SOTA) over Raw LLM
 
-**Choice**: LangExtract for grounded extraction, Instructor for structured reconciliation
+**Choice**: Instructor for single-pass KGGen-style extraction (V4 pipeline). LangExtract remains available as V3 legacy.
 
 **Why not raw LLM prompting**: Raw prompt engineering produces unstructured text that requires fragile regex parsing. When the LLM output format changes slightly, the parser breaks.
 
-**Why LangExtract**:
-- **Source grounding**: Every extracted entity comes with `char_interval` (start_pos, end_pos) -- exact character offsets into the source text. This is critical for provenance: we can always show the user exactly where an entity was found.
-- **Multi-pass extraction**: LangExtract supports configurable extraction passes (`langextract_passes: 2`) that refine results across multiple LLM calls.
-- **Native Gemini support**: LangExtract accepts an `api_key` parameter for direct Gemini integration -- no LangChain wrapper needed for extraction passes. All 4 passes forward `settings.gemini_api_key`.
-- **Model-agnostic**: Works with any LLM provider (we use Gemini 2.5 Flash for cost optimization).
-
 **Why Instructor**:
 - **Pydantic output validation**: Define the expected output as a Pydantic model, and Instructor ensures the LLM returns exactly that schema. If validation fails, it retries with the error message.
-- **Type safety**: `CharacterExtractionResult`, `SystemExtractionResult`, etc. are all Pydantic models with field-level validation.
-- **Multi-provider**: `providers.py` provides `get_instructor_client(provider)` supporting OpenAI, Anthropic, and Gemini backends. The Gemini backend uses `instructor.from_gemini(google.genai.Client(...))`.
+- **Type safety**: 15 entity types and 16 relation types are all Pydantic models with field-level validation.
+- **Multi-provider**: `providers.py` provides `get_instructor_client(provider)` supporting Gemini, OpenRouter, and Ollama backends via `provider:model` spec (e.g. `gemini:gemini-2.5-flash`, `openrouter:deepseek/deepseek-chat-v3-0324`, `local:qwen3:32b`).
+- **V4 pipeline**: Single-pass extraction through a 4-node LangGraph pipeline: extract_entities, extract_relations, mention_detect, reconcile_persist.
 - **Used for reconciliation**: The 3-tier deduplication's LLM-as-Judge step uses Instructor to produce `EntityMergeCandidate` objects with structured confidence scores.
 
 ## Orchestration: LangGraph over asyncio.gather or Celery
@@ -165,7 +159,7 @@ graph TB
 - **Ecosystem**: Tailwind CSS 4 for styling, shadcn/ui compatible component patterns, lucide-react for icons.
 - **API proxy**: `next.config.ts` rewrites `/api/*` to the backend, eliminating CORS issues in development.
 
-**Graph visualization**: `react-force-graph-2d` wraps D3 force simulation with React bindings. Nodes are color-coded by entity type, labels are rendered on canvas, and click events trigger entity detail views.
+**Graph visualization**: Sigma.js 3.0 with graphology (ForceAtlas2 layout). Nodes are color-coded by entity type, labels are rendered on WebGL canvas, and click events trigger entity detail views.
 
 ## Monitoring: LangFuse over Weights & Biases
 
@@ -215,7 +209,7 @@ graph TB
 | API | sse-starlette | >= 2.0 | Server-sent events |
 | Graph DB | neo4j | >= 5.27 | Neo4j async driver |
 | Graph DB | neo4j-graphrag | >= 1.0 | Neo4j RAG utilities |
-| Extraction | langextract | >= 0.1 | Grounded extraction |
+| Extraction | instructor | >= 1.7 | V4 single-pass extraction |
 | Extraction | instructor | >= 1.7 | Structured LLM output |
 | LLM | openai | >= 1.60 | OpenAI async client |
 | LLM | anthropic | >= 0.40 | Anthropic async client |
@@ -226,7 +220,7 @@ graph TB
 | Orchestration | langchain-anthropic | >= 0.3 | LangChain Anthropic |
 | Orchestration | langgraph-checkpoint-postgres | >= 2.0 | PostgreSQL checkpointing |
 | Embeddings | voyageai | >= 0.3 | Voyage AI embeddings |
-| Reranking | cohere | >= 5.0 | Cohere reranker |
+| Reranking | sentence-transformers | >= 3.0 | zerank-1-small local CrossEncoder |
 | Queue | arq | >= 0.26 | Async task queue |
 | Queue | redis | >= 5.0 | Redis async client |
 | Monitoring | langfuse | >= 2.27 | LLM observability |
@@ -251,7 +245,9 @@ graph TB
 | next | 16.1.6 | React framework |
 | react | 19.2.3 | UI library |
 | react-dom | 19.2.3 | React DOM renderer |
-| react-force-graph-2d | ^1.29.1 | D3 force graph |
+| @sigma/react | ^3.0 | Sigma.js graph visualization |
+| graphology | ^0.25 | Graph data structure for Sigma.js |
+| graphology-layout-forceatlas2 | ^0.10 | ForceAtlas2 layout algorithm |
 | clsx | ^2.1.1 | Class name utility |
 | tailwind-merge | ^3.5.0 | Tailwind class merging |
 | lucide-react | ^0.575.0 | Icon library |

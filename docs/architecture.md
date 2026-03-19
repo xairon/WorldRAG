@@ -16,16 +16,16 @@ graph TB
     Backend -->|Task Queue| Redis[(Redis 7<br/>Queue + DLQ)]
     Backend -->|Checkpoints| PG[(PostgreSQL 16)]
 
-    Backend -->|Extraction| OpenAI[OpenAI API]
     Backend -->|Extraction| Gemini[Google Gemini API]
-    Backend -->|Extraction| Anthropic[Anthropic API]
+    Backend -->|Extraction| OpenRouter[OpenRouter API]
+    Backend -->|Extraction| Ollama[Ollama Local]
     Backend -->|Embeddings| Voyage[Voyage AI API]
     Backend -->|Monitoring| LangFuse[LangFuse 2<br/>:3001]
 
     Redis --> Workers[arq Workers]
     Workers -->|Cypher| Neo4j
-    Workers -->|LLM calls| OpenAI
     Workers -->|LLM calls| Gemini
+    Workers -->|LLM calls| OpenRouter
     Workers -->|Embeddings| Voyage
 ```
 
@@ -51,10 +51,11 @@ graph TB
     end
 
     subgraph "External LLM APIs"
-        OpenAI[OpenAI<br/>GPT-4o / GPT-4o-mini]
         Gemini[Google Gemini<br/>2.5 Flash]
+        OpenRouter[OpenRouter<br/>DeepSeek V3.2 etc.]
+        Ollama[Ollama<br/>qwen3:32b etc.]
         Voyage[Voyage AI<br/>voyage-3.5]
-        Cohere[Cohere<br/>rerank-v3.5]
+        Reranker[zerank-1-small<br/>local CrossEncoder]
     end
 
     Frontend -->|HTTP /api proxy| Backend
@@ -65,8 +66,8 @@ graph TB
 
     Worker -->|Bolt| Neo4j
     Worker -->|Redis protocol| Redis
-    Worker -->|HTTP| OpenAI
     Worker -->|HTTP| Gemini
+    Worker -->|HTTP| OpenRouter
     Worker -->|HTTP| Voyage
 
     Backend -->|enqueue jobs| Redis
@@ -230,20 +231,20 @@ graph TB
         Layout[RootLayout<br/>Sidebar Navigation]
         Layout --> Home[/ Dashboard<br/>Stats + Health]
         Layout --> Books[/books<br/>Upload + List + Extract]
-        Layout --> Graph[/graph<br/>D3 Force Graph Explorer]
+        Layout --> Graph[/graph<br/>Sigma.js Graph Explorer]
         Layout --> Chat[/chat<br/>Placeholder]
     end
 
     subgraph "Components"
         NavLink[NavLink<br/>Active route detection]
-        ForceGraph[ForceGraph<br/>react-force-graph-2d<br/>Color-coded by entity type]
+        SigmaGraph[SigmaGraph<br/>Sigma.js + graphology<br/>ForceAtlas2 layout]
     end
 
     subgraph "API Client lib/api.ts"
         Fetch[Typed fetch functions<br/>20 endpoint wrappers]
     end
 
-    Graph --> ForceGraph
+    Graph --> SigmaGraph
     Layout --> NavLink
     Books --> Fetch
     Graph --> Fetch
@@ -290,7 +291,7 @@ stateDiagram-v2
 | Gemini | 500 | 20 | `gemini_breaker` |
 | Anthropic | 40 | 10 | `anthropic_breaker` |
 | Voyage AI | 200 | 15 | `voyage_breaker` |
-| Cohere | 80 | 10 | `cohere_breaker` |
+| OpenRouter | 200 | 20 | `openrouter_breaker` |
 
 **Dead Letter Queue**: Failed chapter extractions are pushed to a Redis-backed DLQ (`DeadLetterQueue`) with metadata (book_id, chapter, error_type, timestamp, attempt_count). Entries can be inspected via `GET /api/admin/dlq`, cleared via `POST /api/admin/dlq/clear`, retried individually via `POST /api/admin/dlq/retry/{book_id}/{chapter}`, or bulk-retried via `POST /api/admin/dlq/retry-all`.
 
@@ -311,7 +312,7 @@ All logging uses `structlog` with JSON output in production and colored console 
 
 The `CostTracker` records every LLM API call with model, provider, token counts, and computed cost. It enforces configurable ceilings per chapter (`$0.50` default) and per book (`$50.00` default) to prevent runaway costs.
 
-Pre-configured pricing for 8 models: GPT-4o, GPT-4o-mini, Gemini 2.5 Flash, Gemini 2.0 Flash, Claude 3.5 Sonnet, Claude 3.5 Haiku, Voyage 3.5, Cohere Rerank v3.5.
+Pre-configured pricing for models across Gemini, OpenRouter, and Voyage AI providers.
 
 ### Authentication
 

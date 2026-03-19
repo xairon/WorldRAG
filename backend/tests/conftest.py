@@ -9,8 +9,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.schemas.book import ChapterData
-
 # -- Infrastructure mocks -------------------------------------------------
 
 
@@ -78,16 +76,6 @@ def mock_redis():
 
 
 @pytest.fixture
-def mock_langfuse():
-    """Mock LangFuse client."""
-    langfuse = MagicMock()
-    trace = MagicMock()
-    langfuse.trace.return_value = trace
-    trace.span.return_value = MagicMock()
-    return langfuse
-
-
-@pytest.fixture
 def mock_instructor_client():
     """AsyncMock for instructor.AsyncInstructor."""
     client = AsyncMock()
@@ -95,23 +83,6 @@ def mock_instructor_client():
     client.chat.completions = MagicMock()
     client.chat.completions.create = AsyncMock()
     return client
-
-
-# -- Factory fixtures -----------------------------------------------------
-
-
-@pytest.fixture
-def make_chapter():
-    """Factory for ChapterData with sensible defaults."""
-
-    def _factory(
-        number: int = 1,
-        title: str = "Test Chapter",
-        text: str = "Default paragraph one.\n\nDefault paragraph two.",
-    ) -> ChapterData:
-        return ChapterData(number=number, title=title, text=text)
-
-    return _factory
 
 
 # -- Sample data ----------------------------------------------------------

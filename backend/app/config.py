@@ -101,6 +101,7 @@ class Settings(BaseSettings):
     extraction_language: str = "en"
     ontology_version: str = "3.0.0"
     default_genre: str = "litrpg"
+    default_series: str = "primal_hunter"
 
     # --- KG v2 (Graphiti) ---
     graphiti_enabled: bool = False  # Toggle Graphiti pipeline
@@ -114,9 +115,14 @@ class Settings(BaseSettings):
     @field_validator("cors_origins", mode="before")
     @classmethod
     def parse_cors_origins(cls, v: str | list[str]) -> list[str]:
-        if isinstance(v, str):
-            return [origin.strip() for origin in v.split(",")]
-        return v
+        if isinstance(v, list):
+            return v
+        stripped = v.strip()
+        if stripped.startswith("["):
+            import json
+
+            return json.loads(stripped)
+        return [origin.strip() for origin in stripped.split(",")]
 
     def parse_llm_spec(self, spec: str) -> tuple[str, str]:
         """Parse 'provider:model' spec into (provider, model) tuple."""

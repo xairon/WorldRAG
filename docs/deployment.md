@@ -55,11 +55,11 @@ docker compose up -d
 cp .env.example .env             # Edit with your API keys
 
 # 4. Initialize Neo4j schema
-# Open http://localhost:7474 (neo4j/worldrag)
+# Open http://localhost:49520 (neo4j/worldrag)
 # Paste and run scripts/init_neo4j.cypher
 
 # 5. Start backend
-python -m uv run uvicorn backend.app.main:app --reload --port 8000
+python -m uv run uvicorn backend.app.main:app --reload --port 49515
 
 # 6. Start frontend (separate terminal)
 cd frontend && npm run dev
@@ -68,7 +68,7 @@ cd frontend && npm run dev
 python -m uv run arq app.workers.settings.WorkerSettings
 
 # 8. Verify
-curl http://localhost:8000/health
+curl http://localhost:49515/health
 # → {"status": "healthy", "services": {"neo4j": "ok", "redis": "ok", ...}}
 ```
 
@@ -79,14 +79,14 @@ curl http://localhost:8000/health
 ```mermaid
 graph LR
     subgraph Docker["Docker Compose"]
-        Neo4j["Neo4j 5<br/>:7474 / :7687"]
-        Redis["Redis 7<br/>:6379"]
-        PG["PostgreSQL 16<br/>:5432"]
-        LF["LangFuse 2<br/>:3001"]
+        Neo4j["Neo4j 5<br/>:49520 / :49521"]
+        Redis["Redis 7<br/>:49522"]
+        PG["PostgreSQL 16<br/>:49523"]
+        LF["LangFuse 2<br/>:49517"]
         LFDB["LangFuse DB<br/>(internal)"]
     end
 
-    Backend["FastAPI<br/>:8000"] --> Neo4j
+    Backend["FastAPI<br/>:49515"] --> Neo4j
     Backend --> Redis
     Backend --> PG
     Backend --> LF
@@ -109,8 +109,8 @@ graph LR
 neo4j:
   image: neo4j:5-community
   ports:
-    - "127.0.0.1:7474:7474"   # Browser UI
-    - "127.0.0.1:7687:7687"   # Bolt protocol
+    - "127.0.0.1:49520:7474"   # Browser UI
+    - "127.0.0.1:49521:7687"   # Bolt protocol
   environment:
     NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-REDACTED}
     NEO4J_PLUGINS: '["apoc"]'
@@ -121,7 +121,7 @@ neo4j:
   mem_limit: 4g
 ```
 
-- **Browser**: http://localhost:7474
+- **Browser**: http://localhost:49520
 - **Credentials**: `neo4j` / `worldrag` (default)
 - **APOC plugin**: Enabled for `apoc.path.subgraphAll` (graph exploration)
 - **Memory**: 2G heap + 1G page cache (adjust for larger datasets)
@@ -132,7 +132,7 @@ neo4j:
 redis:
   image: redis:7-alpine
   ports:
-    - "127.0.0.1:6379:6379"
+    - "127.0.0.1:49522:6379"
   command: redis-server --requirepass ${REDIS_PASSWORD:-REDACTED}
   mem_limit: 512m
 ```
@@ -147,7 +147,7 @@ redis:
 postgres:
   image: postgres:16-alpine
   ports:
-    - "127.0.0.1:5432:5432"
+    - "127.0.0.1:49523:5432"
   environment:
     POSTGRES_USER: ${POSTGRES_USER:-REDACTED}
     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-REDACTED}
@@ -157,7 +157,7 @@ postgres:
 
 - **Credentials**: `worldrag` / `worldrag`
 - **Database**: `worldrag`
-- **Usage**: LangGraph checkpointing (planned — AsyncPostgresSaver)
+- **Usage**: LangGraph checkpointing (AsyncPostgresSaver), chat feedback
 
 #### LangFuse 2
 
@@ -165,12 +165,12 @@ postgres:
 langfuse:
   image: langfuse/langfuse:2
   ports:
-    - "127.0.0.1:3001:3000"
+    - "127.0.0.1:49517:3000"
   depends_on:
     langfuse-db: { condition: service_healthy }
 ```
 
-- **UI**: http://localhost:3001
+- **UI**: http://localhost:49517
 - **Usage**: LLM observability, trace inspection, cost monitoring
 - **Has its own PostgreSQL** (`langfuse-db`) — separate from the app database
 
@@ -206,13 +206,13 @@ OPENAI_API_KEY=your-openai-key             # GPT-4o-mini
 VOYAGE_API_KEY=your-voyage-key             # voyage-3.5
 
 # ── Infrastructure ───────────────────────────────────────────
-NEO4J_URI=bolt://localhost:7687
+NEO4J_URI=bolt://localhost:49521
 NEO4J_USER=neo4j
 NEO4J_PASSWORD=worldrag
 
-REDIS_URL=redis://:worldrag@localhost:6379/0
+REDIS_URL=redis://:worldrag@localhost:49522/0
 
-POSTGRES_URL=postgresql://worldrag:worldrag@localhost:5432/worldrag
+POSTGRES_URL=postgresql://worldrag:worldrag@localhost:49523/worldrag
 
 # ── Auth ─────────────────────────────────────────────────────
 WORLDRAG_API_KEY=your-api-key              # Bearer token for API
@@ -221,7 +221,7 @@ WORLDRAG_ADMIN_KEY=your-admin-key          # Admin endpoints
 # ── LangFuse (optional) ─────────────────────────────────────
 LANGFUSE_PUBLIC_KEY=pk-lf-...
 LANGFUSE_SECRET_KEY=sk-lf-...
-LANGFUSE_HOST=http://localhost:3001
+LANGFUSE_HOST=http://localhost:49517
 
 # ── Cost Ceilings ────────────────────────────────────────────
 COST_CEILING_PER_CHAPTER=0.50              # Max $ per chapter
@@ -247,7 +247,7 @@ On first setup (or after a full reset), initialize the Neo4j schema:
 
 **Option 1: Neo4j Browser** (recommended)
 
-1. Open http://localhost:7474
+1. Open http://localhost:49520
 2. Login with `neo4j` / `worldrag`
 3. Copy-paste the contents of `scripts/init_neo4j.cypher`
 4. Execute
@@ -283,13 +283,13 @@ SHOW INDEXES;      -- Should show 40+ indexes
 
 ```bash
 # Development (auto-reload)
-python -m uv run uvicorn backend.app.main:app --reload --port 8000
+python -m uv run uvicorn backend.app.main:app --reload --port 49515
 
 # Production-like
-python -m uv run uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --workers 4
+python -m uv run uvicorn backend.app.main:app --host 0.0.0.0 --port 49515 --workers 4
 ```
 
-**API docs**: http://localhost:8000/docs (Swagger UI)
+**API docs**: http://localhost:49515/docs (Swagger UI)
 
 ### Frontend (Next.js)
 
@@ -330,7 +330,7 @@ redis-cli -a worldrag KEYS "arq:*"
 
 # Check job status via API
 curl -H "Authorization: Bearer $API_KEY" \
-  http://localhost:8000/api/v1/books/{book_id}/jobs
+  http://localhost:49515/api/v1/books/{book_id}/jobs
 ```
 
 ### Scaling
@@ -350,19 +350,19 @@ Workers are idempotent — multiple instances safely process different chapters.
 ```bash
 # Check failed chapters
 curl -H "Authorization: Bearer $ADMIN_KEY" \
-  http://localhost:8000/api/v1/admin/dlq
+  http://localhost:49515/api/v1/admin/dlq
 
 # Retry a single failed chapter
 curl -X POST -H "Authorization: Bearer $ADMIN_KEY" \
-  http://localhost:8000/api/v1/admin/dlq/retry/{book_id}/{chapter}
+  http://localhost:49515/api/v1/admin/dlq/retry/{book_id}/{chapter}
 
 # Retry all failed chapters (one job per book)
 curl -X POST -H "Authorization: Bearer $ADMIN_KEY" \
-  http://localhost:8000/api/v1/admin/dlq/retry-all
+  http://localhost:49515/api/v1/admin/dlq/retry-all
 
 # Clear all failures without retrying
 curl -X POST -H "Authorization: Bearer $ADMIN_KEY" \
-  http://localhost:8000/api/v1/admin/dlq/clear
+  http://localhost:49515/api/v1/admin/dlq/clear
 ```
 
 ---
@@ -373,13 +373,13 @@ curl -X POST -H "Authorization: Bearer $ADMIN_KEY" \
 
 | Service | Port | Protocol | URL |
 |---------|------|----------|-----|
-| FastAPI | 8000 | HTTP | http://localhost:8000 |
+| FastAPI | 49515 | HTTP | http://localhost:49515 |
 | Next.js | 3000 | HTTP | http://localhost:3000 |
-| Neo4j Browser | 7474 | HTTP | http://localhost:7474 |
-| Neo4j Bolt | 7687 | Bolt | bolt://localhost:7687 |
-| Redis | 6379 | RESP | redis://localhost:6379 |
-| PostgreSQL | 5432 | TCP | postgresql://localhost:5432 |
-| LangFuse | 3001 | HTTP | http://localhost:3001 |
+| Neo4j Browser | 49520 | HTTP | http://localhost:49520 |
+| Neo4j Bolt | 49521 | Bolt | bolt://localhost:49521 |
+| Redis | 49522 | RESP | redis://localhost:49522 |
+| PostgreSQL | 49523 | TCP | postgresql://localhost:49523 |
+| LangFuse | 49517 | HTTP | http://localhost:49517 |
 
 ### Health Checks
 
@@ -387,7 +387,7 @@ All Docker services have health checks configured:
 
 ```bash
 # Quick check — all services
-curl http://localhost:8000/health
+curl http://localhost:49515/health
 ```
 
 Expected response when all services are healthy:
@@ -422,7 +422,7 @@ Expected response when all services are healthy:
 docker compose logs neo4j
 
 # Common: port already in use
-lsof -i :7474    # or netstat -ano | findstr 7474 on Windows
+lsof -i :49520    # or netstat -ano | findstr 49520 on Windows
 
 # Reset Neo4j data
 docker compose down
@@ -467,7 +467,7 @@ pwd  # should be .../WorldRAG
 uv sync
 
 # Run with uv (resolves PYTHONPATH)
-python -m uv run uvicorn backend.app.main:app --reload --port 8000
+python -m uv run uvicorn backend.app.main:app --reload --port 49515
 ```
 
 ### "Book status is 'pending'" error on extraction

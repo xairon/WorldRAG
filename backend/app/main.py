@@ -21,7 +21,18 @@ from neo4j import AsyncGraphDatabase
 from redis.asyncio import Redis
 
 from app.api.middleware import RequestContextMiddleware
-from app.api.routes import admin, books, chat, graph, health, projects, reader, saga_profiles, stream
+from app.api.routes import (
+    admin,
+    books,
+    characters,
+    chat,
+    graph,
+    health,
+    projects,
+    reader,
+    saga_profiles,
+    stream,
+)
 from app.config import settings
 from app.core.cost_tracker import CostTracker
 from app.core.dead_letter import DeadLetterQueue
@@ -140,7 +151,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
                 logger.info("postgres_migration_applied", file=sql_file.name)
     except (ConnectionError, OSError) as e:
         logger.warning(
-            "postgres_connection_failed", host=_safe_host(settings.postgres_uri), error=str(e)
+            "postgres_connection_failed",
+            host=_safe_host(settings.postgres_uri),
+            error=type(e).__name__,
+            exc_info=True,
         )
     except Exception as e:
         logger.warning("postgres_connection_failed", error=type(e).__name__)
@@ -212,7 +226,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     # --- Ontology ---
     from app.core.ontology_loader import get_ontology
 
-    ontology = get_ontology(genre="litrpg", series="primal_hunter")
+    ontology = get_ontology(
+        genre=settings.default_genre,
+        series=settings.default_series,
+    )
     app.state.ontology = ontology
 
     # --- Graphiti (KG v2) ---
@@ -295,6 +312,7 @@ def create_app() -> FastAPI:
     app.include_router(saga_profiles.router, prefix="/api")
     app.include_router(projects.router, prefix="/api")
     app.include_router(reader.router, prefix="/api")
+    app.include_router(characters.router, prefix="/api")
 
     return app
 

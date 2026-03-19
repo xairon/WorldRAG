@@ -3,187 +3,82 @@
   <img src="https://img.shields.io/badge/FastAPI-0.115+-009688?logo=fastapi&logoColor=white" alt="FastAPI">
   <img src="https://img.shields.io/badge/Neo4j-5.x-008CC1?logo=neo4j&logoColor=white" alt="Neo4j">
   <img src="https://img.shields.io/badge/Next.js-16-000000?logo=next.js&logoColor=white" alt="Next.js 16">
-  <img src="https://img.shields.io/badge/Graphiti-0.5+-6D28D9?logoColor=white" alt="Graphiti">
   <img src="https://img.shields.io/badge/LangGraph-0.3+-1C3C3C?logo=langchain&logoColor=white" alt="LangGraph">
-  <img src="https://img.shields.io/badge/License-MIT-yellow" alt="License">
+  <img src="https://img.shields.io/badge/Instructor-1.x-6D28D9?logoColor=white" alt="Instructor">
 </p>
 
 # WorldRAG
 
 **Automatic Knowledge Graph construction + RAG chat for fiction novel universes.**
 
-WorldRAG ingests novels (LitRPG, fantasy, sci-fi), automatically discovers the ontology of each fictional universe, builds a temporal Knowledge Graph in Neo4j, and exposes a chat interface for querying the graph with hybrid retrieval.
-
-The core innovation is the **SagaProfileInducer** -- a module that analyzes the first book of a saga and induces the ontology automatically (character classes, magic systems, factions, progression systems...), then uses it to guide extraction of subsequent books.
+WorldRAG ingests novels (LitRPG, fantasy, sci-fi), extracts entities and relationships using structured LLM output (Instructor), builds a temporal Knowledge Graph in Neo4j, and exposes a chat interface powered by a 17-node LangGraph agent with hybrid retrieval and NLI faithfulness checking.
 
 > Research project -- LIFAT, Universite de Tours.
 
 ---
 
-## How It Works
+## Pipeline
 
 ```mermaid
 flowchart TB
     subgraph Ingestion
         EPUB["EPUB / PDF / TXT"] --> PARSE["Parse chapters"]
-        PARSE --> CHUNK["Chunk (~500 tokens)"]
+        PARSE --> CHUNK["Chunk (~2000 chars)"]
+        CHUNK --> REGEX["Regex pre-extract (Pass 0)"]
+        REGEX --> NEO4J_STORE["Store in Neo4j"]
     end
 
-    subgraph Discovery["Discovery Mode (1st book)"]
-        CHUNK --> GRAPHITI_D["Graphiti add_episode_bulk<br/>(universal types only)"]
-        GRAPHITI_D --> NEO4J_D["Neo4j<br/>Entity + Episodic + Temporal edges"]
-        NEO4J_D --> INDUCER["SagaProfileInducer"]
-        INDUCER --> |"Clustering + LLM"| PROFILE["SagaProfile<br/>(Spell, House, Skill, ...)"]
-    end
-
-    subgraph Guided["Guided Mode (books 2+)"]
-        CHUNK --> GRAPHITI_G["Graphiti add_episode_bulk<br/>(universal + induced types)"]
-        GRAPHITI_G --> NEO4J_G["Neo4j<br/>Typed entities + temporal edges"]
+    subgraph Extraction["V4 Extraction (arq worker)"]
+        NEO4J_STORE --> ENTITIES["1. Extract entities<br/>(Instructor — 15 types)"]
+        ENTITIES --> RELATIONS["2. Extract relations<br/>(Instructor — 16 types)"]
+        RELATIONS --> MENTIONS["3. Mention detect<br/>(programmatic matching)"]
+        MENTIONS --> RECONCILE["4. Reconcile + persist<br/>(3-tier dedup → Neo4j)"]
     end
 
     subgraph PostProcess["Post-processing"]
-        NEO4J_D --> LEIDEN["Leiden clustering<br/>(Neo4j GDS)"]
-        NEO4J_G --> LEIDEN
-        LEIDEN --> COMMUNITY["Community summaries<br/>(LLM)"]
+        RECONCILE --> CLUSTER["Community clustering"]
+        CLUSTER --> SUMMARIES["LLM summaries"]
+        SUMMARIES --> EMBED["VoyageAI batch embed"]
     end
 
-    subgraph Chat["Chat Pipeline (8-node LangGraph)"]
-        QUERY["User question"] --> ROUTER["Intent router"]
-        ROUTER --> |"open-ended"| GRAPHITI_S["Graphiti search<br/>(semantic + BM25 + BFS)"]
-        ROUTER --> |"structured"| CYPHER["Cypher lookup<br/>(typed entities)"]
-        ROUTER --> |"conversational"| DIRECT["No retrieval"]
-        GRAPHITI_S --> CTX["Context assembly"]
+    subgraph Chat["Chat (17-node LangGraph)"]
+        QUERY["User question"] --> ROUTER["Intent router<br/>(6 routes)"]
+        ROUTER --> VECTOR["Vector search"]
+        ROUTER --> CYPHER["Cypher lookup"]
+        ROUTER --> DIRECT["No retrieval"]
+        VECTOR --> RERANK["Rerank<br/>(zerank-1-small)"]
+        RERANK --> CTX["Context assembly"]
         CYPHER --> CTX
         DIRECT --> CTX
         CTX --> GEN["Generate (CoT)"]
-        GEN --> FAITH["Faithfulness check (NLI)"]
+        GEN --> FAITH{"NLI faithfulness<br/>(DeBERTa-v3)"}
         FAITH --> |"pass"| ANSWER["Answer + citations"]
-        FAITH --> |"fail (max 2)"| GRAPHITI_S
-    end
-
-    PROFILE -.-> GRAPHITI_G
-    NEO4J_D -.-> GRAPHITI_S
-    NEO4J_G -.-> GRAPHITI_S
-    COMMUNITY -.-> CTX
-```
-
----
-
-## Key Concepts
-
-### SagaProfileInducer
-
-The original contribution. When you ingest the first book of a saga, WorldRAG:
-
-1. Extracts entities with **universal types** only (Character, Location, Object, Organization, Event, Concept)
-2. Clusters semantically similar entities (e.g., "Expelliarmus", "Patronus", "Lumos" form a cluster)
-3. An LLM formalizes each cluster into an **induced type** (Spell, House, MagicalCreature...)
-4. Detects **textual patterns** (`[Skill Acquired: X]`, `[Level N -> M]`)
-5. Produces a **SagaProfile** -- a Pydantic model that is injected into Graphiti for all subsequent books
-
-```mermaid
-flowchart LR
-    subgraph "Discovery (Book 1)"
-        RAW["Raw entities<br/>(generic Concept nodes)"]
-        RAW --> CLUSTER["Semantic clustering<br/>(BGE-m3 embeddings)"]
-        CLUSTER --> LLM["LLM formalization"]
-        LLM --> TYPES["Induced types:<br/>Spell, House, Skill..."]
-        TYPES --> PYDANTIC["Dynamic Pydantic models"]
-    end
-
-    subgraph "Guided (Books 2+)"
-        PYDANTIC --> GRAPHITI["Graphiti<br/>entity_types={Spell: SpellModel, ...}"]
+        FAITH --> |"fail"| VECTOR
     end
 ```
-
-**Examples of induced profiles:**
-
-| Saga | Induced Types | Patterns |
-|------|---------------|----------|
-| Harry Potter | Spell, House, MagicalCreature | -- (prose only) |
-| Primal Hunter | Skill, Class, Bloodline | `[Skill Acquired: X]`, `[Level N -> M]` |
-| L'Assassin Royal | MagicSystem (2 instances) | -- (low-magic) |
-
-### Temporal Model
-
-Graphiti maintains a **bi-temporal** graph -- every fact has validity timestamps. WorldRAG maps narrative time (book, chapter, scene) to datetime via `NarrativeTemporalMapper`:
-
-```
-(book=1, chapter=5) -> datetime(2000-01-06)
-(book=2, chapter=1) -> datetime(2027-05-19)
-```
-
-This enables queries like "What skills did Jake have at chapter 30?" with native temporal filtering.
-
-### Dual Retrieval
-
-The chat pipeline uses two complementary retrieval strategies:
-
-| Strategy | When | How |
-|----------|------|-----|
-| **Graphiti search** | Open-ended questions | Semantic + BM25 + BFS graph traversal |
-| **Cypher lookup** | Structured questions | Typed queries on induced labels |
-
-Both hit the same Neo4j database -- Graphiti nodes are augmented with saga-specific labels.
 
 ---
 
 ## Tech Stack
 
-```mermaid
-graph LR
-    subgraph Backend
-        FASTAPI["FastAPI"] --> LANGGRAPH["LangGraph"]
-        FASTAPI --> ARQ["arq workers"]
-        LANGGRAPH --> GRAPHITI_LIB["graphiti-core"]
-        GRAPHITI_LIB --> NEO4J["Neo4j 5.x + GDS"]
-        ARQ --> GRAPHITI_LIB
-        ARQ --> REDIS["Redis"]
-    end
-
-    subgraph "LLM Layer"
-        GEMINI["Gemini 2.5 Flash"]
-        OLLAMA["Ollama (Qwen3.5-4B)"]
-        DEBERTA["DeBERTa-v3 (NLI)"]
-        BGEM3["BGE-m3 (embeddings)"]
-    end
-
-    subgraph Frontend
-        NEXTJS["Next.js 16"] --> SIGMA["Sigma.js"]
-        NEXTJS --> ZUSTAND["Zustand"]
-    end
-
-    subgraph Observability
-        LANGSMITH["LangSmith"]
-        LANGFUSE["LangFuse"]
-    end
-
-    Backend --> |"LLM calls"| GEMINI
-    Backend --> |"local models"| OLLAMA
-    Backend --> |"faithfulness"| DEBERTA
-    Backend --> |"embeddings"| BGEM3
-    Frontend --> |"API"| FASTAPI
-    Backend --> LANGSMITH
-    Backend --> LANGFUSE
-```
-
 | Component | Technology | Purpose |
 |-----------|-----------|---------|
 | **API** | FastAPI (async) | REST API, SSE streaming, file upload |
-| **KG Engine** | Graphiti (graphiti-core) | Extraction, entity resolution, temporal storage, hybrid retrieval |
-| **Graph DB** | Neo4j 5.x + GDS + APOC | Storage, Cypher queries, Leiden clustering |
-| **Orchestration** | LangGraph 0.3+ | 8-node chat pipeline, async workers |
-| **Extraction LLM** | Gemini 2.5 Flash | Entity/relation extraction via Graphiti |
-| **Chat LLM** | Gemini 2.5 Flash | Answer generation with CoT |
-| **Local LLM** | Qwen3.5-4B (Ollama) | Conversation memory summarization |
-| **NLI** | DeBERTa-v3-large (local) | Faithfulness checking |
-| **Embeddings** | BGE-m3 (local) | Semantic search via Graphiti |
-| **Task Queue** | arq + Redis | Async book ingestion + clustering |
-| **Checkpointing** | PostgreSQL | LangGraph conversation state |
-| **Monitoring** | LangSmith + LangFuse | Traces, costs, KG pipeline vs RAG pipeline |
-| **Frontend** | Next.js 16 / React 19 | Chat UI, graph explorer |
+| **Extraction** | Instructor (structured output) | Single-pass KGGen-style pipeline (V4) |
+| **Orchestration** | LangGraph | 4-node extraction pipeline, 17-node chat agent |
+| **Graph DB** | Neo4j 5.x + GDS + APOC | Entity/relation storage, Cypher queries, community detection |
+| **Extraction LLM** | DeepSeek V3.2 (OpenRouter) | Entity + relation extraction via Instructor |
+| **Chat LLM** | Gemini 2.5 Flash | Answer generation with chain-of-thought |
+| **Local LLM** | Ollama (Qwen3.5-4B) | Auxiliary tasks (summarization) |
+| **NLI** | DeBERTa-v3-large (local) | Faithfulness checking in chat pipeline |
+| **Embeddings** | VoyageAI (voyage-3.5) | Batch semantic embeddings for retrieval |
+| **Reranker** | zerank-1-small (local CrossEncoder) | Reranking in chat retrieval pipeline |
+| **Task Queue** | arq + Redis | Async extraction + embedding jobs |
+| **Checkpointing** | PostgreSQL | LangGraph conversation state (AsyncPostgresSaver) |
+| **Monitoring** | LangFuse (self-hosted) + structlog | Traces, costs, structured logging |
+| **Frontend** | Next.js 16 / React 19 | Chat UI, graph explorer, book management |
+| **Graph Viz** | Sigma.js + graphology (ForceAtlas2) | Interactive graph exploration |
 | **State** | Zustand | Frontend state management |
-| **Clustering** | Leiden (Neo4j GDS) | Community detection + LLM summaries |
 
 ---
 
@@ -191,10 +86,9 @@ graph LR
 
 ### Prerequisites
 
-- **Python 3.12+**
+- **Python 3.12+** with [uv](https://github.com/astral-sh/uv)
 - **Node.js 20+**
 - **Docker** + Docker Compose
-- **uv**: `pip install uv`
 - **Ollama** (optional, for local models): [ollama.ai](https://ollama.ai)
 
 ### 1. Clone and install
@@ -211,25 +105,25 @@ cd frontend && npm install     # Frontend deps
 
 ```bash
 cp .env.example .env
-# Edit .env:
-#   GEMINI_API_KEY=...          (required - extraction + chat)
-#   GRAPHITI_ENABLED=true       (activate KG v2 pipeline)
+# Edit .env — at minimum:
+#   GEMINI_API_KEY=...              (chat generation)
+#   OPENROUTER_API_KEY=...          (extraction — DeepSeek V3.2)
 ```
 
 ### 3. Start infrastructure
 
 ```bash
 docker compose up -d
-# Starts: Neo4j + GDS, Redis, PostgreSQL, LangFuse
+# Starts: Neo4j (49520/49521), Redis (49522), PostgreSQL (49523), LangFuse (49517)
 ```
 
 ### 4. Start services
 
 ```bash
-# Terminal 1: API
+# Terminal 1: API server
 uv run uvicorn backend.app.main:app --reload --port 8000
 
-# Terminal 2: Workers
+# Terminal 2: arq worker (extraction + embedding jobs)
 uv run arq app.workers.settings.WorkerSettings
 
 # Terminal 3: Frontend
@@ -241,142 +135,15 @@ cd frontend && npm run dev
 ```bash
 # Upload
 curl -X POST http://localhost:8000/api/books \
-  -F "file=@primal_hunter_book1.epub" \
+  -F "file=@book.epub" \
   -F "title=The Primal Hunter" \
   -F "genre=litrpg"
 
-# Trigger Graphiti extraction (Discovery Mode)
-curl -X POST http://localhost:8000/api/books/{book_id}/extract-graphiti \
-  -H "Content-Type: application/json" \
-  -d '{"saga_id": "primal-hunter", "saga_name": "The Primal Hunter", "book_num": 1}'
+# Trigger V4 extraction (async — returns immediately)
+curl -X POST http://localhost:8000/api/books/{book_id}/extract/v4
 
-# Check induced profile
-curl http://localhost:8000/api/saga-profiles/primal-hunter
-```
-
----
-
-## API Reference
-
-### Books
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/books` | Upload book (ePub/PDF/TXT) |
-| `GET` | `/api/books` | List all books |
-| `GET` | `/api/books/{id}` | Book details + chapters |
-| `POST` | `/api/books/{id}/extract-graphiti` | Trigger Graphiti extraction (Discovery/Guided) |
-| `DELETE` | `/api/books/{id}` | Delete book + data |
-
-### Chat
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/chat/query` | Send question, get answer (sync) |
-| `GET` | `/api/chat/stream` | SSE streaming (tokens + sources) |
-| `POST` | `/api/chat/feedback` | Submit thumbs up/down |
-| `GET` | `/api/chat/feedback/{thread_id}` | Get feedback for thread |
-
-### Saga Profiles
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/saga-profiles` | List all induced profiles |
-| `GET` | `/api/saga-profiles/{id}` | Get profile details |
-| `PUT` | `/api/saga-profiles/{id}` | Update profile manually |
-| `DELETE` | `/api/saga-profiles/{id}` | Delete profile |
-
-### Graph & Admin
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/graph/{book_id}` | Graph data for Sigma.js |
-| `GET` | `/api/graph/{book_id}/search` | Entity search |
-| `GET` | `/api/health` | Health check (all services) |
-| `GET` | `/api/admin/costs` | Cost tracking |
-| `GET` | `/api/admin/dlq` | Dead letter queue |
-
----
-
-## Architecture
-
-### Pipeline Modes
-
-```mermaid
-stateDiagram-v2
-    [*] --> Upload: EPUB uploaded
-    Upload --> Discovery: First book of saga
-    Upload --> Guided: SagaProfile exists
-
-    state Discovery {
-        [*] --> GraphitiUniversal: add_episode_bulk\n(6 universal types)
-        GraphitiUniversal --> Induce: SagaProfileInducer
-        Induce --> Profile: SagaProfile\n(types + patterns + relations)
-        Profile --> Leiden: Community clustering
-        Leiden --> [*]
-    }
-
-    state Guided {
-        [*] --> GraphitiTyped: add_episode_bulk\n(universal + induced types)
-        GraphitiTyped --> DeltaInduce: SagaProfileInducer delta
-        DeltaInduce --> LeidenG: Community clustering
-        LeidenG --> [*]
-    }
-
-    Discovery --> ChatReady
-    Guided --> ChatReady
-    ChatReady --> [*]: Ready for queries
-```
-
-### Chat Pipeline (8-node LangGraph)
-
-```mermaid
-graph TD
-    A["Router<br/>(3 routes)"] --> B["Graphiti Search<br/>(semantic + BM25 + BFS)"]
-    A --> C["Cypher Lookup<br/>(typed entities)"]
-    A --> D["Direct<br/>(no retrieval)"]
-    B --> E["Context Assembly<br/>(summaries + chunks)"]
-    C --> E
-    D --> E
-    E --> F["Generate<br/>(CoT reasoning)"]
-    F --> G{"Faithfulness<br/>NLI check"}
-    G --> |"pass"| H["Done"]
-    G --> |"fail<br/>(max 2 retries)"| B
-
-    style A fill:#6366f1,color:#fff
-    style G fill:#f59e0b,color:#000
-    style H fill:#10b981,color:#fff
-```
-
-### Data Flow
-
-```mermaid
-graph LR
-    subgraph "Storage Layer"
-        NEO4J["Neo4j<br/>(Graphiti schema)"]
-        REDIS["Redis<br/>(saga profiles + cache)"]
-        PG["PostgreSQL<br/>(checkpoints + feedback)"]
-    end
-
-    subgraph "Processing"
-        WORKER["arq Worker<br/>(extraction + clustering)"]
-        GRAPHITI["Graphiti Engine"]
-    end
-
-    subgraph "API"
-        FAST["FastAPI"]
-        CHAT["Chat v2 Service"]
-    end
-
-    FAST --> |"enqueue"| WORKER
-    WORKER --> |"add_episode"| GRAPHITI
-    GRAPHITI --> NEO4J
-    WORKER --> |"SagaProfile"| REDIS
-    WORKER --> |"Leiden"| NEO4J
-    CHAT --> |"search"| GRAPHITI
-    CHAT --> |"Cypher"| NEO4J
-    CHAT --> |"checkpoints"| PG
-    FAST --> CHAT
+# Monitor progress via book status
+curl http://localhost:8000/api/books/{book_id}
 ```
 
 ---
@@ -386,103 +153,62 @@ graph LR
 ```
 WorldRAG/
 ├── backend/app/
-│   ├── main.py                              # FastAPI + lifespan (Neo4j, Redis, PG, Graphiti)
-│   ├── config.py                            # Pydantic Settings (.env)
-│   ├── api/routes/
-│   │   ├── books.py                         # Upload + extract-graphiti endpoint
-│   │   ├── chat.py                          # Query + stream + feedback (v1/v2 switch)
-│   │   ├── saga_profiles.py                 # CRUD for induced ontology profiles
-│   │   ├── graph.py                         # Graph explorer for Sigma.js
-│   │   └── health.py, admin.py, ...
-│   ├── core/
-│   │   ├── graphiti_client.py               # Graphiti singleton wrapper
-│   │   ├── logging.py                       # structlog setup
-│   │   ├── resilience.py                    # Circuit breakers + retries
-│   │   └── cost_tracker.py, dead_letter.py
-│   ├── services/
-│   │   ├── saga_profile/
-│   │   │   ├── models.py                    # SagaProfile, InducedEntityType, ...
-│   │   │   ├── inducer.py                   # SagaProfileInducer (5-step algorithm)
-│   │   │   ├── pydantic_generator.py        # SagaProfile -> Graphiti entity_types
-│   │   │   └── temporal.py                  # NarrativeTemporalMapper
-│   │   ├── ingestion/
-│   │   │   └── graphiti_ingest.py           # Discovery / Guided mode orchestrator
-│   │   ├── chat_service_v2.py               # ChatServiceV2 (Graphiti retrieval)
-│   │   └── community_clustering.py          # Leiden + LLM community summaries
-│   ├── agents/chat_v2/
-│   │   ├── graph.py                         # 8-node LangGraph builder
-│   │   └── state.py                         # ChatV2State TypedDict
-│   └── workers/
-│       ├── tasks.py                         # process_book_graphiti + legacy tasks
-│       └── settings.py                      # arq config + Graphiti init
-├── frontend/                                # Next.js 16 / React 19
-│   ├── components/chat/                     # Thread sidebar, sources, citations, feedback
-│   ├── components/graph/                    # Sigma.js graph explorer
-│   └── lib/utils.ts                         # Dynamic entity type colors/icons
-├── docker-compose.prod.yml                  # Production (ports 495xx, GPU, GDS)
-├── docker-compose.yml                       # Development
-└── docs/
-    └── superpowers/specs/                   # Design specs + implementation plans
+│   ├── main.py                 # FastAPI + lifespan (Neo4j, Redis, PG, LangFuse)
+│   ├── config.py               # Pydantic Settings (.env)
+│   ├── api/routes/             # books, chat, graph, admin, health, stream, ...
+│   ├── core/                   # Logging, resilience, cost tracking, DLQ, ontology
+│   ├── llm/                    # LLM providers, embeddings (VoyageAI), reranker
+│   ├── schemas/                # Pydantic models (15 entity types, 16 relation types)
+│   ├── repositories/           # Neo4j data access (book, entity, graph repos)
+│   ├── services/               # Extraction pipeline, embedding, ingestion, chat
+│   ├── agents/                 # LangGraph graphs (extraction, chat)
+│   ├── prompts/                # LLM prompt templates
+│   └── workers/                # arq tasks (extraction + embedding)
+├── frontend/                   # Next.js 16 / React 19
+│   ├── components/chat/        # Thread sidebar, citations, confidence, feedback
+│   ├── components/graph/       # Sigma.js graph explorer (ForceAtlas2)
+│   └── components/extraction/  # Extraction controls + progress
+├── ontology/                   # YAML ontology (core, genre, series layers)
+├── scripts/                    # Neo4j init, PostgreSQL migrations
+└── docker-compose.yml          # Infrastructure (ports 495xx)
 ```
 
 ---
 
-## Configuration
+## Extraction Pipeline
 
-### Required
+The V4 pipeline uses **Instructor** for structured LLM output in a 4-node LangGraph graph, processing one chapter at a time:
 
-| Variable | Description |
-|----------|-------------|
-| `GEMINI_API_KEY` | Google AI API key (extraction + chat) |
-| `GRAPHITI_ENABLED` | `true` to activate KG v2 pipeline |
+1. **Extract entities** -- 15 types (Character, Location, Item, Skill, Class, Event, ...) in a single Instructor call
+2. **Extract relations** -- 16 relation types between extracted entities
+3. **Mention detect** -- Programmatic name/alias matching for source grounding
+4. **Reconcile + persist** -- 3-tier entity resolution (exact, fuzzy, embedding similarity) then Neo4j upsert
 
-### Optional
+An `EntityRegistry` accumulates context across chapters. After all chapters, book-level post-processing runs clustering, community summaries, and embedding generation.
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `NEO4J_URI` | `bolt://localhost:7687` | Neo4j connection |
-| `NEO4J_PASSWORD` | `worldrag` | Neo4j password |
-| `REDIS_URL` | `redis://localhost:6379` | Redis connection |
-| `POSTGRES_URI` | `postgresql://...` | PostgreSQL connection |
-| `LLM_CHAT` | `gemini:gemini-2.5-flash` | Chat generation model |
-| `LLM_GENERATION` | `gemini:gemini-2.5-flash-lite` | Auxiliary LLM |
-| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server |
-| `LANGFUSE_HOST` | -- | LangFuse host (self-hosted) |
-| `LANGCHAIN_API_KEY` | -- | LangSmith API key |
+The legacy V3 pipeline (4-pass LangExtract parallel fan-out) remains available via `use_v3_pipeline=True`.
 
 ---
 
 ## Testing
 
 ```bash
-# Run all tests
-uv run python -m pytest backend/tests/ -v
+# Run all tests (1000+)
+uv run pytest backend/tests/ -x -v
 
-# Linting
+# Linting + formatting
 uv run ruff check backend/ --fix
 uv run ruff format backend/
+
+# Type checking
+uv run pyright backend/
 ```
 
 ---
 
 ## Research Context
 
-WorldRAG is developed at **LIFAT** (Laboratoire d'Informatique Fondamentale et Appliquee de Tours), Universite de Tours, France.
-
-The project explores automatic Knowledge Graph construction from fiction novels using SOTA tools (Graphiti, Leiden, LangGraph) with a focus on **ontology induction** -- discovering the rules and systems of fictional universes automatically rather than hardcoding them.
-
-### References
-
-- Mo et al. "KGGen: Extracting Knowledge Graphs from Plain Text with Language Models." NeurIPS 2025.
-- Rasmussen et al. "Zep: A Temporal Knowledge Graph Architecture for Agent Memory." arXiv:2501.13956.
-- Bai et al. "AutoSchemaKG: Automatic Schema-based Knowledge Graph Construction." HKUST, 2025.
-- Bian et al. "LLM-empowered Knowledge Graph Construction: A Survey." arXiv:2510.20345.
-
----
-
-## License
-
-MIT License. See [LICENSE](LICENSE) for details.
+WorldRAG is developed at **LIFAT** (Laboratoire d'Informatique Fondamentale et Appliquee de Tours), Universite de Tours, France. The project explores automatic Knowledge Graph construction from fiction novels, with a focus on structured extraction, entity resolution, and temporal modeling of narrative worlds.
 
 ---
 
