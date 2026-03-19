@@ -664,7 +664,10 @@ async def process_book_extraction_v4(
         book_batch_id = f"book-level:{book_id}:{int(time.time())}"
 
         # 1. Iterative clustering
-        cluster_aliases = await iterative_cluster(driver, book_id)
+        from app.llm.embeddings import LocalEmbedder
+
+        embedder = LocalEmbedder()
+        cluster_aliases = await iterative_cluster(driver, book_id, embedder=embedder)
         logger.info("v4_book_clustering_done", merges=len(cluster_aliases))
 
         # 2. Entity summaries

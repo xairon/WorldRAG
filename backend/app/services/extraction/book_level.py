@@ -158,7 +158,7 @@ async def generate_entity_summaries(
 ) -> list[EntitySummary]:
     """Generate LLM summaries for significant entities.
 
-    1. Fetch entities with >= min_mentions GROUNDED_IN relationships
+    1. Fetch entities with >= min_mentions MENTIONED_IN relationships
     2. For each: collect extraction_texts, generate summary via Instructor
     3. Store summary on Neo4j node
     """
@@ -171,13 +171,13 @@ async def generate_entity_summaries(
     async with driver.session() as session:
         result = await session.run(
             """
-            MATCH (e)-[g:GROUNDED_IN]->(c:Chunk)
+            MATCH (e)-[g:MENTIONED_IN]->(c:Chapter)
             WHERE e.book_id = $book_id
               AND e.canonical_name IS NOT NULL
             WITH e, count(g) AS mention_count,
-                 collect(g.extraction_text)[..10] AS texts,
-                 min(c.chapter_number) AS first_ch,
-                 max(c.chapter_number) AS last_ch
+                 collect(g.mention_text)[..10] AS texts,
+                 min(c.number) AS first_ch,
+                 max(c.number) AS last_ch
             WHERE mention_count >= $min_mentions
             RETURN e.canonical_name AS name,
                    labels(e)[0] AS entity_type,

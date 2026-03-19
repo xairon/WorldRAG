@@ -10,6 +10,7 @@ Only escalates to the next tier when the previous one is inconclusive.
 
 from __future__ import annotations
 
+import unicodedata
 from typing import TYPE_CHECKING
 
 from thefuzz import fuzz
@@ -32,7 +33,7 @@ def normalize_name(name: str) -> str:
     Lowercases, strips whitespace, removes common articles/prefixes
     in both English and French.
     """
-    name = name.strip().lower()
+    name = unicodedata.normalize("NFC", name).strip().lower()
     # Remove common prefixes (English + French)
     for prefix in (
         # English
@@ -104,7 +105,7 @@ FUZZY_DEFINITE = 95  # auto-merge without LLM confirmation
 def fuzzy_dedup(
     entities: list[dict[str, str]],
     threshold: int = FUZZY_THRESHOLD,
-) -> tuple[list[dict[str, str]], list[tuple[str, str, int]]]:
+) -> tuple[list[dict[str, str]], list[tuple[str, str, int]], dict[str, str]]:
     """Tier 2: Find fuzzy duplicate pairs using thefuzz.
 
     Args:
@@ -115,6 +116,7 @@ def fuzzy_dedup(
         Tuple of:
           - Entities with definite matches merged.
           - Candidate pairs for LLM review: (name_a, name_b, score).
+          - Alias map from auto-merged names to their canonical form.
     """
     names = [e.get("name", "") for e in entities]
     merged_indices: set[int] = set()
@@ -128,9 +130,12 @@ def fuzzy_dedup(
             if j in merged_indices:
                 continue
 
-            score = fuzz.ratio(
-                normalize_name(names[i]),
-                normalize_name(names[j]),
+            name_a = normalize_name(names[i])
+            name_b = normalize_name(names[j])
+            score = max(
+                fuzz.ratio(name_a, name_b),
+                fuzz.partial_ratio(name_a, name_b),
+                fuzz.token_sort_ratio(name_a, name_b),
             )
 
             if score >= FUZZY_DEFINITE:
@@ -153,7 +158,7 @@ def fuzzy_dedup(
             candidates_for_llm=len(candidates),
         )
 
-    return deduped, candidates
+    return deduped, candidates, alias_map
 
 
 # ── Tier 3: LLM dedup ──────────────────────────────────────────────────
@@ -277,7 +282,8 @@ async def deduplicate_entities(
         return entities, alias_map
 
     # Tier 2: fuzzy
-    entities, candidates = fuzzy_dedup(entities)
+    entities, candidates, fuzzy_alias_map = fuzzy_dedup(entities)
+    alias_map.update(fuzzy_alias_map)
 
     # Tier 3: LLM (only if client provided and candidates exist)
     if candidates and client is not None:
@@ -306,6 +312,10 @@ async def deduplicate_entities(
             entity_type=entity_type,
             count=len(candidates),
         )
+
+    # Normalize alias_map keys to lowercase so V4's apply_alias_map_v4
+    # (which does alias_map.get(name.lower(), name)) can find them.
+    alias_map = {k.lower(): v for k, v in alias_map.items()}
 
     logger.info(
         "dedup_pipeline_completed",

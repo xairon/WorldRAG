@@ -135,9 +135,16 @@ async def generate_answer(state: dict[str, Any]) -> dict[str, Any]:
         system_prompt = GENERATOR_SYSTEM.format(spoiler_guard=spoiler_text)
 
     llm = get_langchain_llm(settings.llm_generation)
+
+    # Inject conversation summary for multi-turn context if available
+    conversation_summary = state.get("conversation_summary", "")
+    user_content = f"{context}\n\n---\n\nQuestion: {query}"
+    if conversation_summary:
+        user_content = f"Conversation context: {conversation_summary}\n\n{user_content}"
+
     messages = [
         SystemMessage(content=system_prompt),
-        HumanMessage(content=f"{context}\n\n---\n\nQuestion: {query}"),
+        HumanMessage(content=user_content),
     ]
 
     response = await llm.ainvoke(messages)

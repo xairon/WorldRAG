@@ -87,22 +87,24 @@ class TestExactDedup:
 
 class TestFuzzyDedup:
     def test_empty(self):
-        deduped, candidates = fuzzy_dedup([])
+        deduped, candidates, alias_map = fuzzy_dedup([])
         assert deduped == []
         assert candidates == []
+        assert alias_map == {}
 
     def test_definite_merge(self):
         """Very similar names (score >= 95) auto-merge."""
         entities = [{"name": "Jake Thayne"}, {"name": "Jake Thayn"}]
-        deduped, candidates = fuzzy_dedup(entities)
+        deduped, candidates, alias_map = fuzzy_dedup(entities)
         # One should be merged away
         assert len(deduped) == 1
         assert len(candidates) == 0
+        assert len(alias_map) == 1
 
     def test_candidate_pair(self):
         """Names scoring 85-94 appear as candidates for LLM review."""
         entities = [{"name": "Alexander"}, {"name": "Aleksander"}]
-        deduped, candidates = fuzzy_dedup(entities)
+        deduped, candidates, _alias_map = fuzzy_dedup(entities)
         # Should be in candidates (not auto-merged, not ignored)
         if candidates:
             # At least one candidate pair
@@ -111,14 +113,14 @@ class TestFuzzyDedup:
     def test_below_threshold_ignored(self):
         """Completely different names: no candidates."""
         entities = [{"name": "Jake"}, {"name": "Sylphie"}]
-        deduped, candidates = fuzzy_dedup(entities)
+        deduped, candidates, _alias_map = fuzzy_dedup(entities)
         assert len(deduped) == 2
         assert len(candidates) == 0
 
     def test_canonical_is_longer_name(self):
         """When auto-merging, the longer name should be canonical."""
         entities = [{"name": "Jake"}, {"name": "Jake T"}]
-        deduped, _ = fuzzy_dedup(entities)
+        deduped, _, _alias_map = fuzzy_dedup(entities)
         if len(deduped) == 1:
             # The longer name "Jake T" should survive
             assert deduped[0]["name"] == "Jake T"
@@ -127,14 +129,14 @@ class TestFuzzyDedup:
         """Custom threshold parameter is respected."""
         entities = [{"name": "test"}, {"name": "tess"}]
         # With very low threshold, these might be candidates
-        _, candidates_low = fuzzy_dedup(entities, threshold=50)
-        _, candidates_high = fuzzy_dedup(entities, threshold=99)
+        _, candidates_low, _ = fuzzy_dedup(entities, threshold=50)
+        _, candidates_high, _ = fuzzy_dedup(entities, threshold=99)
         # Low threshold should catch more candidates
         assert len(candidates_low) >= len(candidates_high)
 
     def test_three_entities_all_different(self):
         entities = [{"name": "Jake"}, {"name": "Villy"}, {"name": "Sylphie"}]
-        deduped, candidates = fuzzy_dedup(entities)
+        deduped, candidates, _alias_map = fuzzy_dedup(entities)
         assert len(deduped) == 3
         assert len(candidates) == 0
 

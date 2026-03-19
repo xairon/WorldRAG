@@ -145,7 +145,7 @@ async def _graph_search(
                chap.number AS chapter_number,
                chap.title AS chapter_title,
                chunk.position AS position,
-               1.0 AS score
+               entity_score AS score
         LIMIT $top_k
         """,
         {

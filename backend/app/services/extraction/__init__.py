@@ -1585,5 +1585,6 @@ async def extract_chapter_v4(
         "ontology": ontology,
     }
 
-    result = await graph.ainvoke(initial_state)
+    invoke_config = _build_langfuse_config(book_id, chapter_number, "extraction-v4")
+    result = await graph.ainvoke(initial_state, config=invoke_config or None)
     return result

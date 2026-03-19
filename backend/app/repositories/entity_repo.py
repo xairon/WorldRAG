@@ -1676,6 +1676,23 @@ class EntityRepository(Neo4jRepository):
 
         counts: dict[str, int] = {}
 
+        # ── Normalize names to lowercase to prevent case-sensitive MERGE duplicates ──
+        for e in entities:
+            if "canonical_name" in e and isinstance(e["canonical_name"], str):
+                e["canonical_name"] = e["canonical_name"].lower().strip()
+            if "name" in e and isinstance(e["name"], str):
+                e["name"] = e["name"].lower().strip()
+        for r in relations:
+            if "source" in r and isinstance(r["source"], str):
+                r["source"] = r["source"].lower().strip()
+            if "target" in r and isinstance(r["target"], str):
+                r["target"] = r["target"].lower().strip()
+        for er in ended_relations:
+            if "source" in er and isinstance(er["source"], str):
+                er["source"] = er["source"].lower().strip()
+            if "target" in er and isinstance(er["target"], str):
+                er["target"] = er["target"].lower().strip()
+
         # Remap genre_entity → sub_type for dispatch (V4 GenreEntity catch-all)
         # e.g. {entity_type: "genre_entity", sub_type: "skill"} → dispatch as "skill"
         for e in entities:

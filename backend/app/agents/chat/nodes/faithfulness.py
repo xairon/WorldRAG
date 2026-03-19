@@ -44,7 +44,7 @@ _ROUTE_THRESHOLDS: dict[str, float] = {
 }
 _DEFAULT_THRESHOLD = 0.7
 # Truncate context to avoid OOM in NLI model
-_CTX_MAX_CHARS = 2000
+_CTX_MAX_CHARS = 6000
 # Min words per claim to bother scoring (skip very short fragments)
 _MIN_CLAIM_WORDS = 4
 

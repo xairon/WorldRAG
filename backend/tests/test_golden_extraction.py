@@ -397,30 +397,36 @@ class TestDedupWithWikiNames:
             {"name": "Villy"},
             {"name": "Vilastromoz"},
         ]
-        _, candidates = fuzzy_dedup(entities)
+        _, candidates, _alias_map = fuzzy_dedup(entities)
         # Score should be below threshold — these are very different strings
         # The fuzzy dedup should NOT auto-merge them
         assert len([c for c in candidates if c[2] >= 95]) == 0
 
     def test_fuzzy_miranda_wells_miranda(self):
-        """'Miranda Wells' and 'Miranda' might be fuzzy candidates."""
+        """'Miranda Wells' and 'Miranda' — partial_ratio catches the match."""
         entities = [
             {"name": "Miranda Wells"},
             {"name": "Miranda"},
         ]
-        deduped, candidates = fuzzy_dedup(entities)
-        # At minimum they should remain as 2 separate entities
-        # (fuzzy score of "miranda wells" vs "miranda" is not high enough for auto-merge)
-        assert len(deduped) >= 1
+        deduped, candidates, alias_map = fuzzy_dedup(entities)
+        # With partial_ratio, "Miranda" matches inside "Miranda Wells" (score 100)
+        # so they auto-merge — the longer name survives as canonical
+        assert len(deduped) == 1
+        assert deduped[0]["name"] == "Miranda Wells"
+        assert alias_map.get("Miranda") == "Miranda Wells"
 
     def test_fuzzy_caleb_thayne_caleb(self):
-        """'Caleb Thayne' and 'Caleb' — different enough to keep separate."""
+        """'Caleb Thayne' and 'Caleb' — partial_ratio catches the match."""
         entities = [
             {"name": "Caleb Thayne"},
             {"name": "Caleb"},
         ]
-        deduped, _ = fuzzy_dedup(entities)
-        assert len(deduped) == 2
+        deduped, _, alias_map = fuzzy_dedup(entities)
+        # With partial_ratio, "Caleb" matches inside "Caleb Thayne" (score 100)
+        # so they auto-merge — the longer name survives as canonical
+        assert len(deduped) == 1
+        assert deduped[0]["name"] == "Caleb Thayne"
+        assert alias_map.get("Caleb") == "Caleb Thayne"
 
     def test_exact_dedup_multiple_wiki_characters(self):
         """Dedup a batch of wiki characters — no false merges."""
@@ -447,7 +453,7 @@ class TestDedupWithWikiNames:
     def test_fuzzy_dedup_no_false_positives_wiki_characters(self):
         """No two wiki characters should auto-merge via fuzzy dedup."""
         entities = [{"name": c.canonical_name} for c in CHARACTERS]
-        deduped, candidates = fuzzy_dedup(entities)
+        deduped, candidates, _alias_map = fuzzy_dedup(entities)
         # No auto-merges — all wiki characters are distinct
         assert len(deduped) == len(CHARACTERS)
 
