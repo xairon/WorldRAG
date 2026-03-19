@@ -8,8 +8,27 @@
 // Temporal model: chapter-based integers (valid_from_chapter / valid_to_chapter)
 // ============================================================
 
+// === DROP OLD SINGLE-PROPERTY CONSTRAINTS (B9 migration) ===
+// These old constraints allowed cross-book collisions. Drop them before
+// creating the new composite (name, book_id) constraints.
+DROP CONSTRAINT character_unique IF EXISTS;
+DROP CONSTRAINT faction_unique IF EXISTS;
+DROP CONSTRAINT location_unique IF EXISTS;
+DROP CONSTRAINT concept_unique IF EXISTS;
+DROP CONSTRAINT title_unique IF EXISTS;
+DROP CONSTRAINT skill_unique IF EXISTS;
+DROP CONSTRAINT class_unique IF EXISTS;
+DROP CONSTRAINT item_unique IF EXISTS;
+DROP CONSTRAINT creature_unique IF EXISTS;
+DROP CONSTRAINT event_unique IF EXISTS;
+DROP CONSTRAINT bloodline_unique IF EXISTS;
+DROP CONSTRAINT church_unique IF EXISTS;
+DROP CONSTRAINT quest_unique IF EXISTS;
+DROP CONSTRAINT achievement_unique IF EXISTS;
+
 // === UNIQUENESS CONSTRAINTS ===
-// Prevent duplicate entities during concurrent extraction
+// Prevent duplicate entities during concurrent extraction.
+// All entity types use composite (name, book_id) to prevent cross-book collisions.
 
 CREATE CONSTRAINT series_unique IF NOT EXISTS
 FOR (s:Series) REQUIRE s.name IS UNIQUE;
@@ -20,20 +39,20 @@ FOR (b:Book) REQUIRE b.title IS UNIQUE;
 CREATE CONSTRAINT chapter_unique IF NOT EXISTS
 FOR (c:Chapter) REQUIRE (c.book_id, c.number) IS UNIQUE;
 
-CREATE CONSTRAINT character_unique IF NOT EXISTS
-FOR (c:Character) REQUIRE c.canonical_name IS UNIQUE;
+CREATE CONSTRAINT character_book_unique IF NOT EXISTS
+FOR (c:Character) REQUIRE (c.canonical_name, c.book_id) IS UNIQUE;
 
-CREATE CONSTRAINT faction_unique IF NOT EXISTS
-FOR (f:Faction) REQUIRE f.name IS UNIQUE;
+CREATE CONSTRAINT faction_book_unique IF NOT EXISTS
+FOR (f:Faction) REQUIRE (f.name, f.book_id) IS UNIQUE;
 
-CREATE CONSTRAINT location_unique IF NOT EXISTS
-FOR (l:Location) REQUIRE l.name IS UNIQUE;
+CREATE CONSTRAINT location_book_unique IF NOT EXISTS
+FOR (l:Location) REQUIRE (l.name, l.book_id) IS UNIQUE;
 
-CREATE CONSTRAINT concept_unique IF NOT EXISTS
-FOR (c:Concept) REQUIRE c.name IS UNIQUE;
+CREATE CONSTRAINT concept_book_unique IF NOT EXISTS
+FOR (c:Concept) REQUIRE (c.name, c.book_id) IS UNIQUE;
 
-CREATE CONSTRAINT title_unique IF NOT EXISTS
-FOR (t:Title) REQUIRE t.name IS UNIQUE;
+CREATE CONSTRAINT title_book_unique IF NOT EXISTS
+FOR (t:Title) REQUIRE (t.name, t.book_id) IS UNIQUE;
 
 CREATE CONSTRAINT system_unique IF NOT EXISTS
 FOR (s:System) REQUIRE s.name IS UNIQUE;
@@ -41,22 +60,22 @@ FOR (s:System) REQUIRE s.name IS UNIQUE;
 CREATE CONSTRAINT race_unique IF NOT EXISTS
 FOR (r:Race) REQUIRE r.name IS UNIQUE;
 
-// Skills and classes — MERGE by name (system_name optional property)
-CREATE CONSTRAINT skill_unique IF NOT EXISTS
-FOR (s:Skill) REQUIRE s.name IS UNIQUE;
+// Skills and classes — composite on (name, book_id)
+CREATE CONSTRAINT skill_book_unique IF NOT EXISTS
+FOR (s:Skill) REQUIRE (s.name, s.book_id) IS UNIQUE;
 
-CREATE CONSTRAINT class_unique IF NOT EXISTS
-FOR (c:Class) REQUIRE c.name IS UNIQUE;
+CREATE CONSTRAINT class_book_unique IF NOT EXISTS
+FOR (c:Class) REQUIRE (c.name, c.book_id) IS UNIQUE;
 
-CREATE CONSTRAINT item_unique IF NOT EXISTS
-FOR (i:Item) REQUIRE i.name IS UNIQUE;
+CREATE CONSTRAINT item_book_unique IF NOT EXISTS
+FOR (i:Item) REQUIRE (i.name, i.book_id) IS UNIQUE;
 
-CREATE CONSTRAINT creature_unique IF NOT EXISTS
-FOR (cr:Creature) REQUIRE cr.name IS UNIQUE;
+CREATE CONSTRAINT creature_book_unique IF NOT EXISTS
+FOR (cr:Creature) REQUIRE (cr.name, cr.book_id) IS UNIQUE;
 
-// Events — composite on name + chapter_start (same event name in different chapters)
-CREATE CONSTRAINT event_unique IF NOT EXISTS
-FOR (e:Event) REQUIRE (e.name, e.chapter_start) IS UNIQUE;
+// Events — composite on name + chapter_start + book_id
+CREATE CONSTRAINT event_book_unique IF NOT EXISTS
+FOR (e:Event) REQUIRE (e.name, e.chapter_start, e.book_id) IS UNIQUE;
 
 // Paragraphs — composite on book_id + chapter_number + index
 CREATE CONSTRAINT paragraph_unique IF NOT EXISTS
@@ -82,17 +101,24 @@ CREATE INDEX state_change_category IF NOT EXISTS
 CREATE CONSTRAINT bluebox_unique IF NOT EXISTS
   FOR (bb:BlueBox) REQUIRE (bb.book_id, bb.chapter, bb.index) IS UNIQUE;
 
-// Layer 3: Bloodline
-CREATE CONSTRAINT bloodline_unique IF NOT EXISTS
-  FOR (b:Bloodline) REQUIRE b.name IS UNIQUE;
+// Layer 3: Bloodline — composite on (name, book_id)
+CREATE CONSTRAINT bloodline_book_unique IF NOT EXISTS
+  FOR (b:Bloodline) REQUIRE (b.name, b.book_id) IS UNIQUE;
 
-// Layer 3: Profession
+// Layer 3: Profession — already composite
 CREATE CONSTRAINT profession_unique IF NOT EXISTS
   FOR (p:Profession) REQUIRE (p.name, p.book_id) IS UNIQUE;
 
-// Layer 3: PrimordialChurch
-CREATE CONSTRAINT church_unique IF NOT EXISTS
-  FOR (pc:PrimordialChurch) REQUIRE pc.deity_name IS UNIQUE;
+// Layer 3: PrimordialChurch — composite on (deity_name, book_id)
+CREATE CONSTRAINT church_book_unique IF NOT EXISTS
+  FOR (pc:PrimordialChurch) REQUIRE (pc.deity_name, pc.book_id) IS UNIQUE;
+
+// V3 entity types — composite on (name, book_id)
+CREATE CONSTRAINT quest_book_unique IF NOT EXISTS
+  FOR (q:QuestObjective) REQUIRE (q.name, q.book_id) IS UNIQUE;
+
+CREATE CONSTRAINT achievement_book_unique IF NOT EXISTS
+  FOR (a:Achievement) REQUIRE (a.name, a.book_id) IS UNIQUE;
 
 // Batch ID indexes for new types
 CREATE INDEX state_change_batch IF NOT EXISTS
@@ -288,11 +314,7 @@ FOR ()-[r:MENTIONED_IN]-() ON (r.mention_type);
 CREATE CONSTRAINT stat_block_unique IF NOT EXISTS
   FOR (s:StatBlock) REQUIRE (s.character_name, s.chapter) IS UNIQUE;
 
-CREATE CONSTRAINT quest_unique IF NOT EXISTS
-  FOR (q:QuestObjective) REQUIRE q.name IS UNIQUE;
-
-CREATE CONSTRAINT achievement_unique IF NOT EXISTS
-  FOR (a:Achievement) REQUIRE a.name IS UNIQUE;
+// quest_unique and achievement_unique now defined above as composite (name, book_id)
 
 CREATE CONSTRAINT realm_unique IF NOT EXISTS
   FOR (r:Realm) REQUIRE r.name IS UNIQUE;

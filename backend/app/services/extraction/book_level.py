@@ -5,6 +5,7 @@ Runs after all chapters are extracted. Three operations:
 2. Entity summaries (LLM-generated per significant entity)
 3. Community clustering (Leiden + LLM summaries)
 """
+import asyncio
 import time
 from typing import Any
 
@@ -204,43 +205,55 @@ async def generate_entity_summaries(
         logger.warning("entity_summary_no_client", exc_info=True)
         return summaries
 
-    for record in records:
-        try:
-            texts_joined = "\n".join(record["texts"])
-            summary_result = await client.chat.completions.create(
-                model=model,
-                response_model=EntitySummary,
-                messages=[{
-                    "role": "user",
-                    "content": (
-                        f"Résume cette entité en 2-5 phrases basées sur les extraits suivants.\n"
-                        f"Entité: {record['name']} (type: {record['entity_type']})\n"
-                        f"Extraits:\n{texts_joined}"
-                    ),
-                }],
-                max_retries=2,
-            )
-            summary_result.entity_name = record["name"]
-            summary_result.entity_type = record["entity_type"]
-            summary_result.first_chapter = record["first_ch"] or 0
-            summary_result.last_chapter = record["last_ch"] or 0
-            summary_result.mention_count = record["mention_count"]
-            summaries.append(summary_result)
+    from app.repositories.entity_repo import EntityRepository
 
-            # Persist to Neo4j
-            from app.repositories.entity_repo import EntityRepository
+    repo = EntityRepository(driver)
+    sem = asyncio.Semaphore(10)  # max 10 concurrent LLM calls
 
-            repo = EntityRepository(driver)
-            await repo.upsert_entity_summary(
-                entity_name=record["name"],
-                summary=summary_result.summary,
-                key_facts=summary_result.key_facts,
-                mention_count=record["mention_count"],
-                batch_id=batch_id,
-                book_id=book_id,
-            )
-        except Exception:
-            logger.warning("entity_summary_failed", entity=record["name"], exc_info=True)
+    async def _summarize_one(record: dict) -> EntitySummary | None:
+        async with sem:
+            try:
+                texts_joined = "\n".join(record["texts"])
+                summary_result = await client.chat.completions.create(
+                    model=model,
+                    response_model=EntitySummary,
+                    messages=[{
+                        "role": "user",
+                        "content": (
+                            f"Résume cette entité en 2-5 phrases basées sur les extraits suivants.\n"
+                            f"Entité: {record['name']} (type: {record['entity_type']})\n"
+                            f"Extraits:\n{texts_joined}"
+                        ),
+                    }],
+                    max_retries=2,
+                )
+                summary_result.entity_name = record["name"]
+                summary_result.entity_type = record["entity_type"]
+                summary_result.first_chapter = record["first_ch"] or 0
+                summary_result.last_chapter = record["last_ch"] or 0
+                summary_result.mention_count = record["mention_count"]
+
+                # Persist to Neo4j
+                await repo.upsert_entity_summary(
+                    entity_name=record["name"],
+                    summary=summary_result.summary,
+                    key_facts=summary_result.key_facts,
+                    mention_count=record["mention_count"],
+                    batch_id=batch_id,
+                    book_id=book_id,
+                )
+                return summary_result
+            except Exception:
+                logger.warning("entity_summary_failed", entity=record["name"], exc_info=True)
+                return None
+
+    results = await asyncio.gather(
+        *(_summarize_one(record) for record in records),
+        return_exceptions=True,
+    )
+    for result in results:
+        if isinstance(result, EntitySummary):
+            summaries.append(result)
 
     logger.info("entity_summaries_done", book_id=book_id, count=len(summaries))
     return summaries

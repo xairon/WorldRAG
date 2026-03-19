@@ -136,6 +136,30 @@ class Neo4jRepository:
             return records
 
     @retry_neo4j_write(max_attempts=4)
+    async def execute_write_with_summary(
+        self,
+        query: str,
+        parameters: dict[str, Any] | None = None,
+    ) -> tuple[list[dict[str, Any]], Any]:
+        """Execute a write query and return both records and result summary.
+
+        Like execute_write but also returns the Neo4j ResultSummary so callers
+        can inspect counters (e.g. relationships_created).
+        """
+        async with self.driver.session() as session:
+            result = await session.run(query, parameters or {})  # type: ignore[arg-type]
+            records = await result.data()
+            summary = await result.consume()
+            logger.info(
+                "neo4j_write",
+                query=query[:100],
+                nodes_created=summary.counters.nodes_created,
+                relationships_created=summary.counters.relationships_created,
+                properties_set=summary.counters.properties_set,
+            )
+            return records, summary
+
+    @retry_neo4j_write(max_attempts=4)
     async def execute_batch(
         self,
         queries: list[tuple[str, dict[str, Any]]],

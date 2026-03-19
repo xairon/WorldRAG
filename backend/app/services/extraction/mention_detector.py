@@ -16,6 +16,19 @@ from app.schemas.extraction import GroundedEntity
 
 logger = get_logger(__name__)
 
+# Module-level regex cache to avoid recompiling the same pattern every call.
+# Key = raw search term, value = compiled word-boundary pattern.
+_REGEX_CACHE: dict[str, re.Pattern[str]] = {}
+
+
+def _get_pattern(term: str) -> re.Pattern[str]:
+    """Return a compiled word-boundary regex for *term*, cached."""
+    pat = _REGEX_CACHE.get(term)
+    if pat is None:
+        pat = re.compile(r"\b" + re.escape(term) + r"\b", re.IGNORECASE)
+        _REGEX_CACHE[term] = pat
+    return pat
+
 
 @dataclass
 class MentionMatch:
@@ -87,8 +100,8 @@ def detect_mentions(
     occupied: list[tuple[int, int]] = []  # track occupied spans to avoid overlaps
 
     for term, canonical, entity_type, mention_type in search_terms:
-        # Use word boundary regex for exact matching
-        pattern = re.compile(r"\b" + re.escape(term) + r"\b", re.IGNORECASE)
+        # Use word boundary regex for exact matching (cached)
+        pattern = _get_pattern(term)
 
         for match in pattern.finditer(chapter_text):
             start, end = match.start(), match.end()

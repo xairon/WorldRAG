@@ -72,7 +72,7 @@ class EntityRepository(Neo4jRepository):
         await self.execute_write(
             f"""
             UNWIND $chars AS c
-            MERGE (ch:Character {{canonical_name: c.canonical_name}})
+            MERGE (ch:Character {{canonical_name: c.canonical_name, book_id: $book_id}})
             ON CREATE SET
                 ch.name = c.name,
                 ch.aliases = c.aliases,
@@ -80,7 +80,6 @@ class EntityRepository(Neo4jRepository):
                 ch.role = c.role,
                 ch.species = c.species,
                 ch.first_appearance_chapter = c.first_chapter,
-                ch.book_id = $book_id,
                 ch.batch_id = $batch_id,
                 ch.created_at = timestamp()
                 {version_clause}
@@ -141,11 +140,11 @@ class EntityRepository(Neo4jRepository):
         if not data:
             return 0
 
-        await self.execute_write(
+        _, summary = await self.execute_write_with_summary(
             """
             UNWIND $rels AS r
-            MATCH (a:Character {canonical_name: r.source})
-            MATCH (b:Character {canonical_name: r.target})
+            MATCH (a:Character {canonical_name: r.source, book_id: $book_id})
+            MATCH (b:Character {canonical_name: r.target, book_id: $book_id})
             MERGE (a)-[rel:RELATES_TO {
                 type: r.rel_type,
                 valid_from_chapter: r.since_chapter
@@ -159,11 +158,22 @@ class EntityRepository(Neo4jRepository):
             {"rels": data, "book_id": book_id, "batch_id": batch_id},
         )
 
+        created = summary.counters.relationships_created
+        if created == 0 and len(data) > 0:
+            logger.warning(
+                "v4_relations_zero_created",
+                book_id=book_id,
+                chapter=chapter_number,
+                attempted=len(data),
+                hint="source/target canonical_name may not match any existing entity",
+            )
+
         logger.info(
             "relationships_upserted",
             book_id=book_id,
             chapter=chapter_number,
             count=len(data),
+            created=created,
         )
         return len(data)
 
@@ -200,12 +210,11 @@ class EntityRepository(Neo4jRepository):
         await self.execute_write(
             f"""
             UNWIND $skills AS s
-            MERGE (sk:Skill {{name: s.name}})
+            MERGE (sk:Skill {{name: s.name, book_id: $book_id}})
             ON CREATE SET
                 sk.description = s.description,
                 sk.skill_type = s.skill_type,
                 sk.rank = s.rank,
-                sk.book_id = $book_id,
                 sk.batch_id = $batch_id,
                 sk.created_at = timestamp()
                 {version_clause}
@@ -219,7 +228,7 @@ class EntityRepository(Neo4jRepository):
                 {version_clause}
             WITH sk, s
             WHERE s.owner <> ''
-            MATCH (ch:Character {{canonical_name: s.owner}})
+            MATCH (ch:Character {{canonical_name: s.owner, book_id: $book_id}})
             MERGE (ch)-[r:HAS_SKILL]->(sk)
             ON CREATE SET r.valid_from_chapter = s.chapter
             """,
@@ -280,16 +289,15 @@ class EntityRepository(Neo4jRepository):
         await self.execute_write(
             """
             UNWIND $classes AS c
-            MERGE (cls:Class {name: c.name})
+            MERGE (cls:Class {name: c.name, book_id: $book_id})
             ON CREATE SET
                 cls.description = c.description,
                 cls.tier = c.tier,
-                cls.book_id = $book_id,
                 cls.batch_id = $batch_id,
                 cls.created_at = timestamp()
             WITH cls, c
             WHERE c.owner <> ''
-            MATCH (ch:Character {canonical_name: c.owner})
+            MATCH (ch:Character {canonical_name: c.owner, book_id: $book_id})
             MERGE (ch)-[r:HAS_CLASS]->(cls)
             ON CREATE SET r.valid_from_chapter = c.chapter
             """,
@@ -345,16 +353,15 @@ class EntityRepository(Neo4jRepository):
         await self.execute_write(
             """
             UNWIND $titles AS t
-            MERGE (ti:Title {name: t.name})
+            MERGE (ti:Title {name: t.name, book_id: $book_id})
             ON CREATE SET
                 ti.description = t.description,
                 ti.effects = t.effects,
-                ti.book_id = $book_id,
                 ti.batch_id = $batch_id,
                 ti.created_at = timestamp()
             WITH ti, t
             WHERE t.owner <> ''
-            MATCH (ch:Character {canonical_name: t.owner})
+            MATCH (ch:Character {canonical_name: t.owner, book_id: $book_id})
             MERGE (ch)-[r:HAS_TITLE]->(ti)
             ON CREATE SET r.acquired_chapter = t.chapter
             """,
@@ -413,13 +420,12 @@ class EntityRepository(Neo4jRepository):
         await self.execute_write(
             f"""
             UNWIND $events AS e
-            MERGE (ev:Event {{name: e.name, chapter_start: e.chapter}})
+            MERGE (ev:Event {{name: e.name, chapter_start: e.chapter, book_id: $book_id}})
             ON CREATE SET
                 ev.description = e.description,
                 ev.event_type = e.event_type,
                 ev.significance = e.significance,
                 ev.is_flashback = e.is_flashback,
-                ev.book_id = $book_id,
                 ev.batch_id = $batch_id,
                 ev.created_at = timestamp()
                 {version_clause}
@@ -450,11 +456,11 @@ class EntityRepository(Neo4jRepository):
             await self.execute_write(
                 """
                 UNWIND $links AS l
-                MATCH (ev:Event {name: l.event_name, chapter_start: l.chapter})
-                MATCH (ch:Character {canonical_name: l.participant})
+                MATCH (ev:Event {name: l.event_name, chapter_start: l.chapter, book_id: $book_id})
+                MATCH (ch:Character {canonical_name: l.participant, book_id: $book_id})
                 MERGE (ch)-[:PARTICIPATES_IN]->(ev)
                 """,
-                {"links": participant_data},
+                {"links": participant_data, "book_id": book_id},
             )
 
         # Link locations
@@ -468,11 +474,11 @@ class EntityRepository(Neo4jRepository):
             await self.execute_write(
                 """
                 UNWIND $links AS l
-                MATCH (ev:Event {name: l.event_name, chapter_start: l.chapter})
-                MATCH (loc:Location {name: l.location})
+                MATCH (ev:Event {name: l.event_name, chapter_start: l.chapter, book_id: $book_id})
+                MATCH (loc:Location {name: l.location, book_id: $book_id})
                 MERGE (ev)-[:OCCURS_AT]->(loc)
                 """,
-                {"links": location_data},
+                {"links": location_data, "book_id": book_id},
             )
 
         logger.info(
@@ -509,11 +515,10 @@ class EntityRepository(Neo4jRepository):
         await self.execute_write(
             """
             UNWIND $locs AS l
-            MERGE (loc:Location {name: l.name})
+            MERGE (loc:Location {name: l.name, book_id: $book_id})
             ON CREATE SET
                 loc.description = l.description,
                 loc.location_type = l.location_type,
-                loc.book_id = $book_id,
                 loc.batch_id = $batch_id,
                 loc.created_at = timestamp()
             ON MATCH SET
@@ -536,11 +541,11 @@ class EntityRepository(Neo4jRepository):
             await self.execute_write(
                 """
                 UNWIND $links AS l
-                MATCH (child:Location {name: l.name})
-                MERGE (parent:Location {name: l.parent})
+                MATCH (child:Location {name: l.name, book_id: $book_id})
+                MERGE (parent:Location {name: l.parent, book_id: $book_id})
                 MERGE (child)-[:LOCATION_PART_OF]->(parent)
                 """,
-                {"links": parent_data},
+                {"links": parent_data, "book_id": book_id},
             )
 
         return len(locations)
@@ -572,17 +577,16 @@ class EntityRepository(Neo4jRepository):
         await self.execute_write(
             """
             UNWIND $items AS i
-            MERGE (it:Item {name: i.name})
+            MERGE (it:Item {name: i.name, book_id: $book_id})
             ON CREATE SET
                 it.description = i.description,
                 it.item_type = i.item_type,
                 it.rarity = i.rarity,
-                it.book_id = $book_id,
                 it.batch_id = $batch_id,
                 it.created_at = timestamp()
             WITH it, i
             WHERE i.owner <> ''
-            MATCH (ch:Character {canonical_name: i.owner})
+            MATCH (ch:Character {canonical_name: i.owner, book_id: $book_id})
             MERGE (ch)-[r:POSSESSES]->(it)
             ON CREATE SET r.valid_from_chapter = $chapter
             """,
@@ -637,13 +641,12 @@ class EntityRepository(Neo4jRepository):
         await self.execute_write(
             """
             UNWIND $creatures AS c
-            MERGE (cr:Creature {name: c.name})
+            MERGE (cr:Creature {name: c.name, book_id: $book_id})
             ON CREATE SET
                 cr.description = c.description,
                 cr.species = c.species,
                 cr.threat_level = c.threat_level,
                 cr.habitat = c.habitat,
-                cr.book_id = $book_id,
                 cr.batch_id = $batch_id,
                 cr.created_at = timestamp()
             """,
@@ -678,12 +681,11 @@ class EntityRepository(Neo4jRepository):
         await self.execute_write(
             """
             UNWIND $factions AS f
-            MERGE (fa:Faction {name: f.name})
+            MERGE (fa:Faction {name: f.name, book_id: $book_id})
             ON CREATE SET
                 fa.description = f.description,
                 fa.type = f.faction_type,
                 fa.alignment = f.alignment,
-                fa.book_id = $book_id,
                 fa.batch_id = $batch_id,
                 fa.created_at = timestamp()
             """,
@@ -717,11 +719,10 @@ class EntityRepository(Neo4jRepository):
         await self.execute_write(
             """
             UNWIND $concepts AS c
-            MERGE (co:Concept {name: c.name})
+            MERGE (co:Concept {name: c.name, book_id: $book_id})
             ON CREATE SET
                 co.description = c.description,
                 co.domain = c.domain,
-                co.book_id = $book_id,
                 co.batch_id = $batch_id,
                 co.created_at = timestamp()
             ON MATCH SET
@@ -766,10 +767,11 @@ class EntityRepository(Neo4jRepository):
         await self.execute_write(
             """
             UNWIND $changes AS lc
-            MATCH (ch:Character {canonical_name: lc.character})
+            MATCH (ch:Character {canonical_name: lc.character, book_id: $book_id})
             MERGE (ev:Event {
                 name: ch.canonical_name + ' levels to ' + coalesce(toString(lc.new_level), '?'),
-                chapter_start: lc.chapter
+                chapter_start: lc.chapter,
+                book_id: $book_id
             })
             ON CREATE SET
                 ev.event_type = 'level_change',
@@ -780,7 +782,6 @@ class EntityRepository(Neo4jRepository):
                 ev.old_level = lc.old_level,
                 ev.new_level = lc.new_level,
                 ev.realm = lc.realm,
-                ev.book_id = $book_id,
                 ev.batch_id = $batch_id,
                 ev.created_at = timestamp()
             MERGE (ch)-[:PARTICIPATES_IN]->(ev)
@@ -847,11 +848,10 @@ class EntityRepository(Neo4jRepository):
         await self.execute_write(
             """
             UNWIND $changes AS sc
-            MATCH (ch:Character {canonical_name: sc.character})
-            MERGE (stat:Concept {name: sc.stat_name, domain: 'stat'})
+            MATCH (ch:Character {canonical_name: sc.character, book_id: $book_id})
+            MERGE (stat:Concept {name: sc.stat_name, domain: 'stat', book_id: $book_id})
             ON CREATE SET
                 stat.description = sc.stat_name + ' stat',
-                stat.book_id = $book_id,
                 stat.batch_id = $batch_id,
                 stat.created_at = timestamp()
             MERGE (ch)-[r:HAS_STAT]->(stat)
@@ -958,7 +958,7 @@ class EntityRepository(Neo4jRepository):
             query = f"""
                 UNWIND $entries AS e
                 MATCH (chapter:Chapter {{book_id: $book_id, number: $chapter_num}})
-                MATCH (entity:{label} {{{prop_name}: e.entity_name}})
+                MATCH (entity:{label} {{{prop_name}: e.entity_name, book_id: $book_id}})
                 CREATE (entity)-[:MENTIONED_IN {{
                     char_start: e.char_start,
                     char_end: e.char_end,
@@ -1168,7 +1168,7 @@ class EntityRepository(Neo4jRepository):
                 s.source = sb.source,
                 s.batch_id = $batch_id
             WITH s, sb
-            MATCH (ch:Character {canonical_name: sb.character_name})
+            MATCH (ch:Character {canonical_name: sb.character_name, book_id: $book_id})
             MERGE (ch)-[:HAS_STAT_BLOCK]->(s)
             """,
             {
@@ -1206,13 +1206,12 @@ class EntityRepository(Neo4jRepository):
         await self.execute_write(
             """
             UNWIND $quests AS q
-            MERGE (qo:QuestObjective {name: q.name})
+            MERGE (qo:QuestObjective {name: q.name, book_id: $book_id})
             ON CREATE SET
                 qo.description = q.description,
                 qo.status = q.status,
                 qo.giver = q.giver,
                 qo.chapter_started = q.chapter,
-                qo.book_id = $book_id,
                 qo.batch_id = $batch_id,
                 qo.created_at = timestamp()
             ON MATCH SET
@@ -1220,7 +1219,7 @@ class EntityRepository(Neo4jRepository):
                 qo.batch_id = $batch_id
             WITH qo, q
             WHERE q.giver IS NOT NULL AND q.giver <> ''
-            MATCH (ch:Character {canonical_name: q.giver})
+            MATCH (ch:Character {canonical_name: q.giver, book_id: $book_id})
             MERGE (ch)-[:GIVES_QUEST]->(qo)
             """,
             {
@@ -1258,11 +1257,10 @@ class EntityRepository(Neo4jRepository):
         await self.execute_write(
             """
             UNWIND $achievements AS a
-            MERGE (ach:Achievement {name: a.name})
+            MERGE (ach:Achievement {name: a.name, book_id: $book_id})
             ON CREATE SET
                 ach.description = a.description,
                 ach.rarity = a.rarity,
-                ach.book_id = $book_id,
                 ach.batch_id = $batch_id,
                 ach.created_at = timestamp()
             ON MATCH SET
@@ -1272,7 +1270,7 @@ class EntityRepository(Neo4jRepository):
                 ach.batch_id = $batch_id
             WITH ach, a
             WHERE a.earner IS NOT NULL AND a.earner <> ''
-            MATCH (ch:Character {canonical_name: a.earner})
+            MATCH (ch:Character {canonical_name: a.earner, book_id: $book_id})
             MERGE (ch)-[r:EARNED]->(ach)
             ON CREATE SET r.chapter = a.chapter
             """,
@@ -1316,6 +1314,7 @@ class EntityRepository(Neo4jRepository):
         self,
         provenances: list,  # list[SkillProvenance]
         batch_id: str = "",
+        book_id: str = "",
     ) -> int:
         """Create GRANTS_SKILL relationships from provenance data.
 
@@ -1347,12 +1346,12 @@ class EntityRepository(Neo4jRepository):
             await self.execute_write(
                 f"""
                 UNWIND $data AS d
-                MATCH (src:{label} {{name: d.source_name}})
-                MATCH (sk:Skill {{name: d.skill_name}})
+                MATCH (src:{label} {{name: d.source_name, book_id: $book_id}})
+                MATCH (sk:Skill {{name: d.skill_name, book_id: $book_id}})
                 MERGE (src)-[r:GRANTS_SKILL]->(sk)
                 ON CREATE SET r.batch_id = $batch_id, r.created_at = timestamp()
                 """,
-                {"data": data, "batch_id": batch_id},
+                {"data": data, "batch_id": batch_id, "book_id": book_id},
             )
             created += len(type_provenances)
 
@@ -1387,12 +1386,11 @@ class EntityRepository(Neo4jRepository):
         await self.execute_write(
             """
             UNWIND $bloodlines AS b
-            MERGE (bl:Bloodline {name: b.name})
+            MERGE (bl:Bloodline {name: b.name, book_id: $book_id})
             ON CREATE SET
                 bl.description = b.description,
                 bl.effects = b.effects,
                 bl.origin = b.origin,
-                bl.book_id = $book_id,
                 bl.batch_id = $batch_id,
                 bl.created_at = timestamp()
             ON MATCH SET
@@ -1402,7 +1400,7 @@ class EntityRepository(Neo4jRepository):
                 bl.batch_id = $batch_id
             WITH bl, b
             WHERE b.owner <> ''
-            MATCH (ch:Character {canonical_name: b.owner})
+            MATCH (ch:Character {canonical_name: b.owner, book_id: $book_id})
             MERGE (ch)-[r:HAS_BLOODLINE]->(bl)
             ON CREATE SET r.awakened_chapter = b.awakened_chapter
             """,
@@ -1463,7 +1461,7 @@ class EntityRepository(Neo4jRepository):
                 pr.created_at = timestamp()
             WITH pr, p
             WHERE p.owner <> ''
-            MATCH (ch:Character {canonical_name: p.owner})
+            MATCH (ch:Character {canonical_name: p.owner, book_id: $book_id})
             MERGE (ch)-[r:HAS_PROFESSION]->(pr)
             ON CREATE SET r.valid_from_chapter = p.chapter
             """,
@@ -1515,14 +1513,14 @@ class EntityRepository(Neo4jRepository):
         await self.execute_write(
             """
             UNWIND $churches AS c
-            MERGE (pc:PrimordialChurch {deity_name: c.deity_name})
+            MERGE (pc:PrimordialChurch {deity_name: c.deity_name, book_id: $book_id})
             ON CREATE SET
                 pc.domain = c.domain,
                 pc.batch_id = $batch_id,
                 pc.created_at = timestamp()
             WITH pc, c
             WHERE c.worshipper <> ''
-            MATCH (ch:Character {canonical_name: c.worshipper})
+            MATCH (ch:Character {canonical_name: c.worshipper, book_id: $book_id})
             MERGE (ch)-[r:WORSHIPS]->(pc)
             ON CREATE SET r.blessing = c.blessing, r.valid_from_chapter = c.chapter
             """,
@@ -1574,7 +1572,7 @@ class EntityRepository(Neo4jRepository):
         await self.execute_write(
             """
             UNWIND $changes AS sc
-            MATCH (ch:Character {canonical_name: sc.character_name})
+            MATCH (ch:Character {canonical_name: sc.character_name, book_id: $book_id})
             MERGE (s:StateChange {
                 character_name: sc.character_name,
                 book_id: $book_id,
@@ -1630,11 +1628,12 @@ class EntityRepository(Neo4jRepository):
         Since relation_type comes from a controlled Literal enum (16 values),
         the f-string interpolation is safe — not user input.
         """
-        book_filter = "AND r.book_id = $book_id" if book_id else ""
+        node_book_filter = ", book_id: $book_id" if book_id else ""
+        rel_book_filter = "AND r.book_id = $book_id" if book_id else ""
         query = f"""
-            MATCH (a {{canonical_name: $source}})-[r:{relation_type}]->(b {{name: $target}})
+            MATCH (a {{canonical_name: $source{node_book_filter}}})-[r:{relation_type}]->(b {{name: $target{node_book_filter}}})
             WHERE r.valid_to_chapter IS NULL
-            {book_filter}
+            {rel_book_filter}
             SET r.valid_to_chapter = $ended_at_chapter,
                 r.end_reason = $reason
         """
@@ -1695,6 +1694,8 @@ class EntityRepository(Neo4jRepository):
 
         # Remap genre_entity → sub_type for dispatch (V4 GenreEntity catch-all)
         # e.g. {entity_type: "genre_entity", sub_type: "skill"} → dispatch as "skill"
+        # Shallow copy to avoid mutating caller's data (EntityRegistry stores genre_entity)
+        entities = [dict(e) for e in entities]
         for e in entities:
             if e.get("entity_type") == "genre_entity":
                 e["entity_type"] = e.get("sub_type", "concept")
@@ -1711,7 +1712,10 @@ class EntityRepository(Neo4jRepository):
             """Convert a dict to a SimpleNamespace for attribute access."""
             return SimpleNamespace(**d)
 
+        # ── Phase 1: Prepare all entity SimpleNamespace objects ─────────
+
         # Characters
+        chars = []
         if "character" in by_type:
             chars = [_ns(e) for e in by_type["character"]]
             for c in chars:
@@ -1727,11 +1731,9 @@ class EntityRepository(Neo4jRepository):
                     c.species = ""
                 if not hasattr(c, "first_appearance_chapter"):
                     c.first_appearance_chapter = chapter_number
-            counts["characters"] = await self.upsert_characters(
-                book_id, chapter_number, chars, batch_id
-            )
 
         # Skills
+        skills = []
         if "skill" in by_type:
             skills = [_ns(e) for e in by_type["skill"]]
             for s in skills:
@@ -1745,11 +1747,9 @@ class EntityRepository(Neo4jRepository):
                     s.owner = ""
                 if not hasattr(s, "acquired_chapter"):
                     s.acquired_chapter = chapter_number
-            counts["skills"] = await self.upsert_skills(
-                book_id, chapter_number, skills, batch_id
-            )
 
         # Classes
+        classes = []
         if "class" in by_type:
             classes = [_ns(e) for e in by_type["class"]]
             for c in classes:
@@ -1761,11 +1761,9 @@ class EntityRepository(Neo4jRepository):
                     c.owner = ""
                 if not hasattr(c, "acquired_chapter"):
                     c.acquired_chapter = chapter_number
-            counts["classes"] = await self.upsert_classes(
-                book_id, chapter_number, classes, batch_id
-            )
 
         # Titles
+        titles = []
         if "title" in by_type:
             titles = [_ns(e) for e in by_type["title"]]
             for t in titles:
@@ -1777,11 +1775,9 @@ class EntityRepository(Neo4jRepository):
                     t.owner = ""
                 if not hasattr(t, "acquired_chapter"):
                     t.acquired_chapter = chapter_number
-            counts["titles"] = await self.upsert_titles(
-                book_id, chapter_number, titles, batch_id
-            )
 
         # Events
+        events = []
         if "event" in by_type:
             events = [_ns(e) for e in by_type["event"]]
             for ev in events:
@@ -1799,11 +1795,9 @@ class EntityRepository(Neo4jRepository):
                     ev.chapter = chapter_number
                 if not hasattr(ev, "is_flashback"):
                     ev.is_flashback = False
-            counts["events"] = await self.upsert_events(
-                book_id, chapter_number, events, batch_id
-            )
 
         # Locations
+        locations = []
         if "location" in by_type:
             locations = [_ns(e) for e in by_type["location"]]
             for loc in locations:
@@ -1813,11 +1807,9 @@ class EntityRepository(Neo4jRepository):
                     loc.location_type = ""
                 if not hasattr(loc, "parent_location"):
                     loc.parent_location = ""
-            counts["locations"] = await self.upsert_locations(
-                book_id, chapter_number, locations, batch_id
-            )
 
         # Items
+        items = []
         if "item" in by_type:
             items = [_ns(e) for e in by_type["item"]]
             for it in items:
@@ -1829,11 +1821,9 @@ class EntityRepository(Neo4jRepository):
                     it.rarity = ""
                 if not hasattr(it, "owner"):
                     it.owner = ""
-            counts["items"] = await self.upsert_items(
-                book_id, chapter_number, items, batch_id
-            )
 
         # Creatures
+        creatures = []
         if "creature" in by_type:
             creatures = [_ns(e) for e in by_type["creature"]]
             for cr in creatures:
@@ -1845,11 +1835,9 @@ class EntityRepository(Neo4jRepository):
                     cr.threat_level = ""
                 if not hasattr(cr, "habitat"):
                     cr.habitat = ""
-            counts["creatures"] = await self.upsert_creatures(
-                book_id, chapter_number, creatures, batch_id
-            )
 
         # Factions
+        factions = []
         if "faction" in by_type:
             factions = [_ns(e) for e in by_type["faction"]]
             for fa in factions:
@@ -1859,11 +1847,9 @@ class EntityRepository(Neo4jRepository):
                     fa.faction_type = ""
                 if not hasattr(fa, "alignment"):
                     fa.alignment = ""
-            counts["factions"] = await self.upsert_factions(
-                book_id, chapter_number, factions, batch_id
-            )
 
         # Concepts
+        concepts = []
         if "concept" in by_type:
             concepts = [_ns(e) for e in by_type["concept"]]
             for co in concepts:
@@ -1871,11 +1857,9 @@ class EntityRepository(Neo4jRepository):
                     co.description = ""
                 if not hasattr(co, "domain"):
                     co.domain = ""
-            counts["concepts"] = await self.upsert_concepts(
-                book_id, chapter_number, concepts, batch_id
-            )
 
         # LevelChanges
+        level_changes = []
         if "level_change" in by_type:
             level_changes = [_ns(e) for e in by_type["level_change"]]
             for lc in level_changes:
@@ -1887,21 +1871,17 @@ class EntityRepository(Neo4jRepository):
                     lc.realm = ""
                 if not hasattr(lc, "chapter"):
                     lc.chapter = chapter_number
-            counts["level_changes"] = await self.upsert_level_changes(
-                book_id, chapter_number, level_changes, batch_id
-            )
 
         # StatChanges
+        stat_changes = []
         if "stat_change" in by_type:
             stat_changes = [_ns(e) for e in by_type["stat_change"]]
             for sc in stat_changes:
                 if not hasattr(sc, "value"):
                     sc.value = 0
-            counts["stat_changes"] = await self.upsert_stat_changes(
-                book_id, chapter_number, stat_changes, batch_id
-            )
 
         # Bloodlines (Layer 3)
+        bloodlines = []
         if "bloodline" in by_type:
             bloodlines = [_ns(e) for e in by_type["bloodline"]]
             for bl in bloodlines:
@@ -1915,11 +1895,9 @@ class EntityRepository(Neo4jRepository):
                     bl.owner = ""
                 if not hasattr(bl, "awakened_chapter"):
                     bl.awakened_chapter = chapter_number
-            counts["bloodlines"] = await self.upsert_bloodlines(
-                book_id, chapter_number, bloodlines, batch_id
-            )
 
         # Professions (Layer 3)
+        professions = []
         if "profession" in by_type:
             professions = [_ns(e) for e in by_type["profession"]]
             for pr in professions:
@@ -1931,11 +1909,9 @@ class EntityRepository(Neo4jRepository):
                     pr.owner = ""
                 if not hasattr(pr, "acquired_chapter"):
                     pr.acquired_chapter = chapter_number
-            counts["professions"] = await self.upsert_professions(
-                book_id, chapter_number, professions, batch_id
-            )
 
         # Churches (Layer 3)
+        churches = []
         if "church" in by_type:
             churches = [_ns(e) for e in by_type["church"]]
             for ch in churches:
@@ -1947,15 +1923,12 @@ class EntityRepository(Neo4jRepository):
                     ch.worshipper = ""
                 if not hasattr(ch, "valid_from_chapter"):
                     ch.valid_from_chapter = chapter_number
-            counts["churches"] = await self.upsert_churches(
-                book_id, chapter_number, churches, batch_id
-            )
 
-        # Relations (v4 ExtractedRelation dicts)
+        # Relations
+        rel_ns = []
         if relations:
             rel_ns = [_ns(r) for r in relations]
             for r in rel_ns:
-                # Map v4 relation_type to the rel_type field expected by upsert_relationships
                 if not hasattr(r, "rel_type"):
                     r.rel_type = getattr(r, "relation_type", "RELATES_TO")
                 if not hasattr(r, "subtype"):
@@ -1964,21 +1937,84 @@ class EntityRepository(Neo4jRepository):
                     r.context = ""
                 if not hasattr(r, "since_chapter"):
                     r.since_chapter = getattr(r, "valid_from_chapter", None) or chapter_number
+
+        # ── Phase 2: Entity node upserts in parallel ─────────────────
+        # All entity types are independent — safe to run concurrently.
+        entity_coros: list[tuple[str, Any]] = []
+        if chars:
+            entity_coros.append(("characters", self.upsert_characters(
+                book_id, chapter_number, chars, batch_id)))
+        if skills:
+            entity_coros.append(("skills", self.upsert_skills(
+                book_id, chapter_number, skills, batch_id)))
+        if classes:
+            entity_coros.append(("classes", self.upsert_classes(
+                book_id, chapter_number, classes, batch_id)))
+        if titles:
+            entity_coros.append(("titles", self.upsert_titles(
+                book_id, chapter_number, titles, batch_id)))
+        if events:
+            entity_coros.append(("events", self.upsert_events(
+                book_id, chapter_number, events, batch_id)))
+        if locations:
+            entity_coros.append(("locations", self.upsert_locations(
+                book_id, chapter_number, locations, batch_id)))
+        if items:
+            entity_coros.append(("items", self.upsert_items(
+                book_id, chapter_number, items, batch_id)))
+        if creatures:
+            entity_coros.append(("creatures", self.upsert_creatures(
+                book_id, chapter_number, creatures, batch_id)))
+        if factions:
+            entity_coros.append(("factions", self.upsert_factions(
+                book_id, chapter_number, factions, batch_id)))
+        if concepts:
+            entity_coros.append(("concepts", self.upsert_concepts(
+                book_id, chapter_number, concepts, batch_id)))
+        if level_changes:
+            entity_coros.append(("level_changes", self.upsert_level_changes(
+                book_id, chapter_number, level_changes, batch_id)))
+        if stat_changes:
+            entity_coros.append(("stat_changes", self.upsert_stat_changes(
+                book_id, chapter_number, stat_changes, batch_id)))
+        if bloodlines:
+            entity_coros.append(("bloodlines", self.upsert_bloodlines(
+                book_id, chapter_number, bloodlines, batch_id)))
+        if professions:
+            entity_coros.append(("professions", self.upsert_professions(
+                book_id, chapter_number, professions, batch_id)))
+        if churches:
+            entity_coros.append(("churches", self.upsert_churches(
+                book_id, chapter_number, churches, batch_id)))
+
+        if entity_coros:
+            entity_keys = [key for key, _ in entity_coros]
+            entity_results = await asyncio.gather(
+                *(coro for _, coro in entity_coros)
+            )
+            for key, result_count in zip(entity_keys, entity_results):
+                counts[key] = result_count
+
+        # ── Phase 3: Relations (depend on entity nodes existing) ─────
+        if rel_ns:
             counts["relations"] = await self.upsert_relationships(
                 book_id, chapter_number, rel_ns, batch_id
             )
 
-        # Ended relations
-        for er in ended_relations:
-            await self.apply_relation_end(
-                source=er.get("source", ""),
-                target=er.get("target", ""),
-                relation_type=er.get("relation_type", "RELATES_TO"),
-                ended_at_chapter=er.get("ended_at_chapter", chapter_number),
-                reason=er.get("reason", ""),
-                book_id=book_id,
-            )
+        # ── Phase 4: Ended relations in parallel ─────────────────────
         if ended_relations:
+            ended_coros = [
+                self.apply_relation_end(
+                    source=er.get("source", ""),
+                    target=er.get("target", ""),
+                    relation_type=er.get("relation_type", "RELATES_TO"),
+                    ended_at_chapter=er.get("ended_at_chapter", chapter_number),
+                    reason=er.get("reason", ""),
+                    book_id=book_id,
+                )
+                for er in ended_relations
+            ]
+            await asyncio.gather(*ended_coros)
             counts["ended_relations"] = len(ended_relations)
 
         logger.info(

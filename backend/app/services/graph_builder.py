@@ -171,7 +171,7 @@ async def build_chapter_graph(
             prov_result = await extract_provenance(chapter.text, skills_acquired, chapter_entities)
             if prov_result.provenances:
                 grants_count = await entity_repo.upsert_grants_relations(
-                    prov_result.provenances, str(uuid.uuid4())
+                    prov_result.provenances, str(uuid.uuid4()), book_id=book_id
                 )
                 counts["grants"] = grants_count
         except Exception:

@@ -526,25 +526,7 @@ async def process_book_extraction_v4(
             chapter_entity_count = sum(counts.values())
             total_entities += chapter_entity_count
 
-            # Apply ended relations
-            for ended in ended_relations:
-                try:
-                    await entity_repo.apply_relation_end(
-                        source=ended.get("source", ""),
-                        target=ended.get("target", ""),
-                        relation_type=ended.get("relation_type", ""),
-                        ended_at_chapter=chapter.number,
-                        reason=ended.get("reason", ""),
-                        book_id=book_id,
-                    )
-                except Exception:
-                    logger.warning(
-                        "v4_relation_end_failed",
-                        book_id=book_id,
-                        chapter=chapter.number,
-                        ended=ended,
-                        exc_info=True,
-                    )
+            # ended_relations already processed inside upsert_v4_entities — no duplicate loop
 
             # Update entity_registry from result (already updated inside reconcile_persist node)
             updated_registry = result.get("entity_registry")
