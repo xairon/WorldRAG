@@ -70,11 +70,16 @@ class TestInit:
         assert call_kwargs.kwargs.get("embedder") is fake_embedder
 
     def test_init_llm_and_embedder_default_to_none(self):
-        """GraphitiClient passes None for llm_client and embedder by default."""
+        """GraphitiClient passes None for llm_client and embedder when no API keys."""
         mock_instance = _make_mock_graphiti()
         mock_cls = MagicMock(return_value=mock_instance)
 
-        with patch("app.core.graphiti_client.Graphiti", mock_cls):
+        with (
+            patch("app.core.graphiti_client.Graphiti", mock_cls),
+            patch("app.core.graphiti_client._build_default_llm_client", return_value=None),
+            patch("app.core.graphiti_client._build_default_embedder", return_value=None),
+            patch("app.core.graphiti_client._build_default_cross_encoder", return_value=None),
+        ):
             from app.core.graphiti_client import GraphitiClient
 
             GraphitiClient(

@@ -195,5 +195,4 @@ def retry_neo4j_write(max_attempts: int = 4):
 openai_breaker = CircuitBreaker(name="openai", failure_threshold=5, recovery_timeout=60)
 gemini_breaker = CircuitBreaker(name="gemini", failure_threshold=5, recovery_timeout=60)
 anthropic_breaker = CircuitBreaker(name="anthropic", failure_threshold=5, recovery_timeout=60)
-cohere_breaker = CircuitBreaker(name="cohere", failure_threshold=3, recovery_timeout=120)
 voyage_breaker = CircuitBreaker(name="voyage", failure_threshold=3, recovery_timeout=120)

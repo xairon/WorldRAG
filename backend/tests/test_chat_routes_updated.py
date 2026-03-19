@@ -42,7 +42,7 @@ _DUMMY_RESPONSE = ChatResponse(
 
 
 @pytest.mark.asyncio
-@patch("app.api.routes.chat.ChatService")
+@patch("app.services.chat_service.ChatService")
 async def test_post_query_passes_thread_id(mock_service_cls: MagicMock) -> None:
     """POST /chat/query should forward thread_id from the request body to ChatService.query()."""
     mock_instance = AsyncMock()
@@ -73,7 +73,7 @@ async def test_post_query_passes_thread_id(mock_service_cls: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("app.api.routes.chat.ChatService")
+@patch("app.services.chat_service.ChatService")
 async def test_post_query_thread_id_defaults_to_none(mock_service_cls: MagicMock) -> None:
     """POST /chat/query without thread_id should pass None to the service."""
     mock_instance = AsyncMock()
@@ -99,7 +99,7 @@ async def test_post_query_thread_id_defaults_to_none(mock_service_cls: MagicMock
 
 
 @pytest.mark.asyncio
-@patch("app.api.routes.chat.ChatService")
+@patch("app.services.chat_service.ChatService")
 async def test_get_stream_accepts_thread_id(mock_service_cls: MagicMock) -> None:
     """GET /chat/stream should accept thread_id as a query param and pass it to query_stream()."""
     mock_instance = AsyncMock()
@@ -131,7 +131,7 @@ async def test_get_stream_accepts_thread_id(mock_service_cls: MagicMock) -> None
 
 
 @pytest.mark.asyncio
-@patch("app.api.routes.chat.ChatService")
+@patch("app.services.chat_service.ChatService")
 async def test_get_stream_thread_id_defaults_to_none(mock_service_cls: MagicMock) -> None:
     """GET /chat/stream without thread_id should pass None to query_stream()."""
     mock_instance = AsyncMock()

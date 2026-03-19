@@ -33,7 +33,7 @@ def _make_entity(name: str, summary: str, labels: list[str]) -> dict:
 def _mock_neo4j_driver(entities: list[dict]) -> AsyncMock:
     """Build a mock Neo4j AsyncDriver that returns *entities* from session.run().data()."""
     result_mock = AsyncMock()
-    result_mock.data = MagicMock(return_value=entities)
+    result_mock.data = AsyncMock(return_value=entities)
 
     session_mock = AsyncMock()
     session_mock.run = AsyncMock(return_value=result_mock)

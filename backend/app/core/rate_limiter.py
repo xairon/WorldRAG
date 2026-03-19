@@ -81,9 +81,6 @@ anthropic_limiter = ProviderRateLimiter("anthropic", max_rate=40, time_period=60
 # Voyage: 300 RPM
 voyage_limiter = ProviderRateLimiter("voyage", max_rate=200, time_period=60, max_concurrent=15)
 
-# Cohere: 100 RPM
-cohere_limiter = ProviderRateLimiter("cohere", max_rate=80, time_period=60, max_concurrent=10)
-
 
 def get_limiter(provider: str) -> ProviderRateLimiter:
     """Get rate limiter for a provider name."""
@@ -92,7 +89,6 @@ def get_limiter(provider: str) -> ProviderRateLimiter:
         "gemini": gemini_limiter,
         "anthropic": anthropic_limiter,
         "voyage": voyage_limiter,
-        "cohere": cohere_limiter,
     }
     limiter = limiters.get(provider)
     if limiter is None:

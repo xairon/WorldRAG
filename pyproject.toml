@@ -29,7 +29,6 @@ dependencies = [
     # Embeddings & Reranking
     "torch>=2.6",
     "sentence-transformers>=3.0",
-    "cohere>=5.0",
     # Task queue
     "arq>=0.26",
     "redis>=5.0",

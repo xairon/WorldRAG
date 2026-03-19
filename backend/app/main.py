@@ -61,11 +61,14 @@ def _safe_host(uri: str) -> str:
         return "<redacted>"
 
 
+_VERSION = "0.1.0"
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """Manage application lifecycle: connect/disconnect all services."""
     setup_logging(log_level=settings.log_level, log_format=settings.log_format)
-    logger.info("worldrag_starting", version="0.1.0")
+    logger.info("worldrag_starting", version=_VERSION)
 
     # --- Neo4j ---
     neo4j_driver = AsyncGraphDatabase.driver(
@@ -276,7 +279,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="WorldRAG",
         description="Knowledge Graph construction system for fiction novel universes",
-        version="0.1.0",
+        version=_VERSION,
         lifespan=lifespan,
     )
 

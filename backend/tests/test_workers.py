@@ -106,52 +106,38 @@ class TestProcessBookExtraction:
                 await process_book_extraction(mock_ctx, "b1")
 
     async def test_calls_build_book_graph_and_enqueues_embeddings(self, mock_ctx):
+        """V4 pipeline: process_book_extraction delegates to process_book_extraction_v4."""
         fake_result = {
+            "book_id": "b1",
             "chapters_processed": 3,
             "chapters_failed": 0,
             "failed_chapters": [],
             "total_entities": 42,
             "status": "extracted",
+            "pipeline": "v4",
         }
 
         from app.config import settings
 
         with (
-            patch("app.workers.tasks.BookRepository") as mock_repo_cls,
             patch(
-                "app.services.graph_builder.build_book_graph",
+                "app.workers.tasks.process_book_extraction_v4",
                 new_callable=AsyncMock,
                 return_value=fake_result,
-            ) as mock_build,
+            ) as mock_v4,
             patch.object(settings, "use_v3_pipeline", False),
         ):
-            instance = mock_repo_cls.return_value
-            instance.get_book = AsyncMock(
-                return_value={"id": "b1", "status": "completed", "genre": "litrpg"},
-            )
-            instance.get_chapters_for_extraction = AsyncMock(
-                return_value=[MagicMock(number=1)],
-            )
-            instance.get_chapter_regex_json = AsyncMock(return_value={})
-
             result = await process_book_extraction(mock_ctx, "b1", "litrpg", "")
 
-        # Verify build_book_graph was called
-        mock_build.assert_called_once()
-        call_kwargs = mock_build.call_args.kwargs
-        assert call_kwargs["book_id"] == "b1"
-        assert call_kwargs["dlq"] is mock_ctx["dlq"]
-
-        # Verify embedding job was enqueued
-        mock_ctx["redis"].enqueue_job.assert_called_once_with(
-            "process_book_embeddings",
-            "b1",
-            _queue_name=ARQ_QUEUE,
-            _job_id="embed:b1",
-        )
+        # Verify V4 pipeline was called with correct args
+        mock_v4.assert_called_once()
+        call_args = mock_v4.call_args
+        assert call_args[0][0] is mock_ctx  # ctx
+        assert call_args[0][1] == "b1"  # book_id
 
         assert result["chapters_processed"] == 3
         assert result["total_entities"] == 42
+        assert result["pipeline"] == "v4"
 
     async def test_v3_delegation_when_enabled(self, mock_ctx):
         """When use_v3_pipeline=True, process_book_extraction delegates to V3."""

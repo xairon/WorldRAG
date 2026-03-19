@@ -72,9 +72,6 @@ class Settings(BaseSettings):
     embedding_device: str = "cuda"
     embedding_batch_size: int = 64
 
-    # --- Reranking (optional) ---
-    cohere_api_key: str = ""
-
     # --- LangFuse ---
     langfuse_host: str = ""
     langfuse_public_key: str = ""
