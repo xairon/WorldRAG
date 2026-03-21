@@ -808,6 +808,26 @@ async def process_book_embeddings(
             failed_keys=result.failed_keys[:10],
         )
 
+    # Phase 2: Embed relationships (LightRAG technique)
+    try:
+        from app.services.embedding_pipeline import embed_book_relationships
+
+        rel_result = await embed_book_relationships(
+            driver=driver,
+            book_id=book_id,
+            cost_tracker=cost_tracker,
+        )
+        if rel_result.failed > 0:
+            logger.warning(
+                "task_book_rel_embeddings_partial_failure",
+                book_id=book_id,
+                failed=rel_result.failed,
+            )
+    except Exception:
+        logger.warning("task_book_rel_embeddings_failed", book_id=book_id, exc_info=True)
+        from app.services.embedding_pipeline import RelationshipEmbeddingResult
+        rel_result = RelationshipEmbeddingResult(book_id=book_id, total_rels=0, embedded=0, failed=0)
+
     # Update book status
     if result.failed == 0:
         await book_repo.update_book_status(book_id, "embedded")
@@ -820,6 +840,8 @@ async def process_book_embeddings(
         failed=result.failed,
         total_tokens=result.total_tokens,
         cost_usd=round(result.cost_usd, 6),
+        rel_embedded=rel_result.embedded,
+        rel_failed=rel_result.failed,
     )
 
     return {
@@ -828,6 +850,8 @@ async def process_book_embeddings(
         "failed": result.failed,
         "total_tokens": result.total_tokens,
         "cost_usd": result.cost_usd,
+        "rel_embedded": rel_result.embedded,
+        "rel_failed": rel_result.failed,
     }
 
 

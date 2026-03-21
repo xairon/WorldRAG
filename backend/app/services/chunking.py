@@ -1,12 +1,14 @@
-"""Structure-aware chunking service.
+"""Narrative-aware chunking service.
 
 Splits chapters into chunks suitable for embedding and extraction.
-Respects paragraph boundaries and maintains source grounding offsets.
+Respects paragraph boundaries, scene breaks, and temporal/location shifts.
 
 Strategy:
 - Primary unit: chapter (each chapter is processed independently)
 - Chunk size: ~1000 tokens (configurable), soft boundary at paragraphs
 - Overlap: 100 tokens between chunks for context continuity
+- Prefers splitting at scene boundaries (explicit breaks, time jumps,
+  location changes) over arbitrary paragraph boundaries
 - Preserves exact character offsets for source grounding
 """
 
@@ -24,6 +26,152 @@ DEFAULT_CHUNK_SIZE = 1000  # target tokens per chunk
 DEFAULT_OVERLAP = 100  # overlap tokens between chunks
 MIN_CHUNK_SIZE = 200  # minimum tokens for a chunk
 
+# --- Scene boundary detection patterns ---
+
+# Explicit scene dividers: ***, ---, * * *, ###, ~~~, etc.
+_SCENE_DIVIDER_RE = re.compile(
+    r"^[ \t]*(?:"
+    r"\*\s*\*\s*\*"      # * * * or ***
+    r"|---+"              # --- or longer
+    r"|===+"              # === or longer
+    r"|~~~+"              # ~~~ or longer
+    r"|#{1,3}\s*$"        # # or ## or ### (bare heading markers)
+    r"|[◆●■▪]"           # decorative dividers
+    r")[ \t]*$",
+    re.MULTILINE,
+)
+
+# Time jump phrases (at start of paragraph or after dialogue)
+_TIME_JUMP_RE = re.compile(
+    r"(?:^|\n)\s*(?:"
+    r"(?:The\s+)?(?:next|following)\s+(?:morning|day|evening|night|week|hour)"
+    r"|(?:Three|Two|Four|Five|Six|Seven|Several|A\s+few|Many)\s+"
+    r"(?:days?|hours?|weeks?|months?|minutes?|years?)\s+(?:later|passed|went\s+by)"
+    r"|(?:Hours?|Days?|Weeks?|Months?|Minutes?)\s+(?:later|passed)"
+    r"|When\s+(?:they|he|she|it|we|I)\s+(?:arrived|returned|woke|finally)"
+    r"|By\s+the\s+time"
+    r"|(?:Much|Some\s+time|A\s+long\s+time|Not\s+long)\s+later"
+    r"|It\s+was(?:n't)?\s+(?:long|until|nearly|almost|well\s+past)"
+    r"|Dawn\s+(?:broke|came|arrived)"
+    r"|(?:Morning|Night|Dusk|Twilight)\s+(?:came|fell|arrived|found)"
+    r")",
+    re.IGNORECASE,
+)
+
+# Location change phrases (at start of paragraph)
+_LOCATION_CHANGE_RE = re.compile(
+    r"(?:^|\n)\s*(?:"
+    r"Back\s+(?:at|in|inside|outside)\s+(?:the|his|her|their)"
+    r"|(?:In|Inside|Outside|Beneath|Above|Beyond|Across|Within)\s+the\s+"
+    r"|(?:They|He|She|I|We)\s+(?:entered|stepped\s+into|arrived\s+at|reached|approached)"
+    r"|The\s+(?:room|hall|cave|dungeon|forest|city|camp|tent|tower|castle|village)"
+    r"\s+(?:was|looked|felt|smelled)"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def detect_scene_boundaries(text: str) -> list[int]:
+    """Detect likely scene boundaries in narrative text.
+
+    Returns character offsets where scene breaks are detected.
+    Uses heuristic/regex patterns -- no LLM calls.
+
+    Detection covers:
+    1. Explicit scene dividers (``***``, ``---``, ``* * *``, etc.)
+    2. Time jump phrases ("The next morning", "Three days later")
+    3. Location change phrases ("Back at the camp", "In the dungeon")
+
+    Args:
+        text: Full chapter text.
+
+    Returns:
+        Sorted list of unique character offsets marking scene boundaries.
+    """
+    boundaries: set[int] = set()
+
+    # 1. Explicit scene dividers -- the boundary is where the next
+    #    non-whitespace content starts after the divider
+    for m in _SCENE_DIVIDER_RE.finditer(text):
+        after = text[m.end():]
+        stripped = after.lstrip("\n\r \t")
+        if stripped:
+            offset = m.end() + (len(after) - len(stripped))
+            boundaries.add(offset)
+        else:
+            boundaries.add(m.start())
+
+    # 2. Time jumps -- boundary is the start of the paragraph
+    for m in _TIME_JUMP_RE.finditer(text):
+        para_start = _content_start_from_match(text, m)
+        boundaries.add(para_start)
+
+    # 3. Location changes -- boundary is the start of the paragraph
+    for m in _LOCATION_CHANGE_RE.finditer(text):
+        para_start = _content_start_from_match(text, m)
+        boundaries.add(para_start)
+
+    # Remove offset 0 -- the very start of the chapter is not a "break"
+    boundaries.discard(0)
+
+    return sorted(boundaries)
+
+
+def _content_start_from_match(text: str, m: re.Match[str]) -> int:
+    """Find the paragraph start offset for a regex match.
+
+    The regex anchor ``(?:^|\\n)`` may consume a leading newline, so we
+    skip any leading whitespace in the match to find the actual content,
+    then walk back to the paragraph boundary.
+    """
+    content_offset = m.start()
+    while content_offset < m.end() and text[content_offset] in "\n\r \t":
+        content_offset += 1
+    return _find_paragraph_start(text, content_offset)
+
+
+def _find_paragraph_start(text: str, pos: int) -> int:
+    """Find the start of the paragraph containing ``pos``.
+
+    Walks backwards from ``pos`` to find the nearest double-newline
+    boundary and returns the offset of the first non-whitespace character
+    after it.
+    """
+    search_region = text[:pos]
+    last_break = search_region.rfind("\n\n")
+    if last_break == -1:
+        stripped = text.lstrip("\n\r \t")
+        return len(text) - len(stripped) if stripped else 0
+
+    after = text[last_break + 2:]
+    stripped = after.lstrip("\n\r \t")
+    if stripped:
+        return last_break + 2 + (len(after) - len(stripped))
+    return last_break + 2
+
+
+def _build_scene_boundary_set(
+    paragraphs: list[tuple[str, int, int]],
+    scene_offsets: list[int],
+) -> set[int]:
+    """Map scene boundary offsets to paragraph indices.
+
+    Returns a set of paragraph indices (0-based) where a scene boundary
+    falls at or just before the paragraph's start offset.
+    """
+    if not scene_offsets:
+        return set()
+
+    boundary_indices: set[int] = set()
+    offset_idx = 0
+
+    for para_idx, (_text, para_start, _para_end) in enumerate(paragraphs):
+        while offset_idx < len(scene_offsets) and scene_offsets[offset_idx] <= para_start:
+            boundary_indices.add(para_idx)
+            offset_idx += 1
+
+    return boundary_indices
+
 
 def chunk_chapter(
     chapter: ChapterData,
@@ -31,10 +179,12 @@ def chunk_chapter(
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     overlap: int = DEFAULT_OVERLAP,
 ) -> list[ChunkData]:
-    """Split a chapter into overlapping chunks.
+    """Split a chapter into overlapping, narrative-aware chunks.
 
-    Respects paragraph boundaries: never splits mid-paragraph.
-    Each chunk includes character offsets for source grounding.
+    Respects paragraph boundaries and prefers splitting at scene breaks
+    (explicit dividers, time jumps, location changes). Never splits
+    mid-paragraph. Each chunk includes character offsets for source grounding
+    and a ``scene_break`` flag indicating if it starts at a detected boundary.
 
     Args:
         chapter: Chapter data with full text.
@@ -43,7 +193,7 @@ def chunk_chapter(
         overlap: Overlap tokens between consecutive chunks.
 
     Returns:
-        List of ChunkData with text, position, and offset information.
+        List of ChunkData with text, position, offset, and scene_break info.
     """
     text = chapter.text
     if not text.strip():
@@ -54,7 +204,7 @@ def chunk_chapter(
         paragraphs = [
             (p.text, p.char_start, p.char_end)
             for p in chapter.paragraphs
-            if p.text.strip()  # skip empty/scene-break paragraphs
+            if p.text.strip()
         ]
     else:
         paragraphs = _split_paragraphs(text)
@@ -62,30 +212,67 @@ def chunk_chapter(
     if not paragraphs:
         return []
 
-    chunks: list[ChunkData] = []
-    current_paragraphs: list[tuple[str, int, int]] = []  # (text, start_offset, end_offset)
-    current_tokens = 0
+    # Detect scene boundaries and map them to paragraph indices
+    scene_offsets = detect_scene_boundaries(text)
+    scene_para_indices = _build_scene_boundary_set(paragraphs, scene_offsets)
 
-    for para_text, para_start, para_end in paragraphs:
+    chunks: list[ChunkData] = []
+    # Each entry: (para_text, para_start, para_end, para_idx_in_chapter)
+    current_paragraphs: list[tuple[str, int, int, int]] = []
+    current_tokens = 0
+    # How many paragraphs at the front of current_paragraphs are overlap
+    overlap_count = 0
+
+    for para_idx, (para_text, para_start, para_end) in enumerate(paragraphs):
         para_tokens = count_tokens(para_text)
 
         # If single paragraph exceeds chunk size, split it by sentences
         if para_tokens > chunk_size and not current_paragraphs:
+            is_scene = bool(chunks) and para_idx in scene_para_indices
             sentence_chunks = _split_long_paragraph(
                 para_text, para_start, chapter.number, book_id, chunk_size, len(chunks)
             )
+            if sentence_chunks and is_scene:
+                sentence_chunks[0] = ChunkData(
+                    **{**sentence_chunks[0].model_dump(), "scene_break": True}
+                )
             chunks.extend(sentence_chunks)
             continue
 
-        # If adding this paragraph exceeds limit, finalize current chunk
+        # Decide whether to split before adding this paragraph
+        should_split = False
+
         if current_tokens + para_tokens > chunk_size and current_paragraphs:
+            # Over budget -- must split
+            should_split = True
+        elif (
+            current_paragraphs
+            and para_idx in scene_para_indices
+            and len(current_paragraphs) > overlap_count  # have at least 1 non-overlap para
+            and current_tokens >= MIN_CHUNK_SIZE // 2
+        ):
+            # Proactive split at scene boundary: accept smaller chunks (half
+            # MIN_CHUNK_SIZE) to honor narrative structure
+            should_split = True
+
+        if should_split:
+            # Determine scene_break for the chunk we're about to emit
+            is_scene = _chunk_has_scene_start(
+                current_paragraphs, overlap_count, scene_para_indices, bool(chunks)
+            )
+            plain_paras = [(t, s, e) for t, s, e, _ in current_paragraphs]
             chunk = _create_chunk(
-                current_paragraphs, chapter.number, book_id, len(chunks), current_tokens
+                plain_paras,
+                chapter.number,
+                book_id,
+                len(chunks),
+                current_tokens,
+                scene_break=is_scene,
             )
             chunks.append(chunk)
 
             # Keep last paragraph(s) as overlap for next chunk
-            overlap_paras: list[tuple[str, int, int]] = []
+            overlap_paras: list[tuple[str, int, int, int]] = []
             overlap_tokens = 0
             for p in reversed(current_paragraphs):
                 p_tokens = count_tokens(p[0])
@@ -96,14 +283,24 @@ def chunk_chapter(
 
             current_paragraphs = overlap_paras
             current_tokens = overlap_tokens
+            overlap_count = len(overlap_paras)
 
-        current_paragraphs.append((para_text, para_start, para_end))
+        current_paragraphs.append((para_text, para_start, para_end, para_idx))
         current_tokens += para_tokens
 
     # Don't forget the last chunk
     if current_paragraphs and current_tokens >= MIN_CHUNK_SIZE:
+        is_scene = _chunk_has_scene_start(
+            current_paragraphs, overlap_count, scene_para_indices, bool(chunks)
+        )
+        plain_paras = [(t, s, e) for t, s, e, _ in current_paragraphs]
         chunk = _create_chunk(
-            current_paragraphs, chapter.number, book_id, len(chunks), current_tokens
+            plain_paras,
+            chapter.number,
+            book_id,
+            len(chunks),
+            current_tokens,
+            scene_break=is_scene,
         )
         chunks.append(chunk)
     elif current_paragraphs and chunks:
@@ -119,16 +316,49 @@ def chunk_chapter(
             token_count=count_tokens(merged_text),
             char_offset_start=last.char_offset_start,
             char_offset_end=current_paragraphs[-1][2],
+            scene_break=last.scene_break,
         )
 
+    scene_count = sum(1 for c in chunks if c.scene_break)
     logger.info(
         "chapter_chunked",
         chapter=chapter.number,
         book_id=book_id,
         chunks=len(chunks),
+        scene_boundaries=len(scene_offsets),
+        scene_break_chunks=scene_count,
         avg_tokens=sum(c.token_count for c in chunks) // max(len(chunks), 1),
     )
     return chunks
+
+
+def _chunk_has_scene_start(
+    paras: list[tuple[str, int, int, int]],
+    overlap_count: int,
+    scene_para_indices: set[int],
+    has_prior_chunks: bool,
+) -> bool:
+    """Check if a chunk starts at a scene boundary.
+
+    Looks at the first non-overlap paragraph in the chunk. The very first
+    chunk of the chapter is never marked as a scene break (no prior context
+    to break from).
+
+    Args:
+        paras: Paragraphs in the chunk, each with (text, start, end, global_idx).
+        overlap_count: Number of leading paragraphs carried over as overlap.
+        scene_para_indices: Set of paragraph indices that are scene boundaries.
+        has_prior_chunks: Whether any chunks have been emitted before this one.
+
+    Returns:
+        True if the chunk starts at a scene boundary.
+    """
+    if not has_prior_chunks:
+        return False
+    # The first "new" paragraph is the one after overlap
+    first_new_idx = min(overlap_count, len(paras) - 1)
+    _text, _start, _end, global_idx = paras[first_new_idx]
+    return global_idx in scene_para_indices
 
 
 def _split_paragraphs(text: str) -> list[tuple[str, int, int]]:
@@ -159,6 +389,8 @@ def _create_chunk(
     book_id: str,
     position: int,
     token_count: int,
+    *,
+    scene_break: bool = False,
 ) -> ChunkData:
     """Create a ChunkData from accumulated paragraphs."""
     text = "\n\n".join(p[0] for p in paragraphs)
@@ -170,6 +402,7 @@ def _create_chunk(
         token_count=token_count,
         char_offset_start=paragraphs[0][1],
         char_offset_end=paragraphs[-1][2],
+        scene_break=scene_break,
     )
 
 

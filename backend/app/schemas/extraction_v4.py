@@ -399,6 +399,9 @@ class ExtractionStateV4(TypedDict, total=False):
     # Reducer fields (accumulated across parallel nodes / map-reduce)
     grounded_entities: Annotated[list[dict], operator.add]
 
+    # Chunk-level narrative metadata (set by verify node)
+    chunk_metadata: dict[str, Any]
+
     # Post-processing
     alias_map: dict[str, str]
 

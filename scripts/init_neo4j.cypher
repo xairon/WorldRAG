@@ -283,6 +283,22 @@ OPTIONS {
   }
 };
 
+// === RELATIONSHIP VECTOR INDEX ===
+// For semantic search on RELATES_TO embeddings (LightRAG technique)
+// Enables queries like "find all betrayals" or "find all level-ups"
+
+CREATE VECTOR INDEX rel_relates_to_embedding IF NOT EXISTS
+FOR ()-[r:RELATES_TO]-() ON (r.embedding)
+OPTIONS {
+  indexConfig: {
+    `vector.dimensions`: 1024,
+    `vector.similarity_function`: 'cosine',
+    `vector.hnsw.m`: 16,
+    `vector.hnsw.ef_construction`: 150,
+    `vector.quantization.enabled`: false
+  }
+};
+
 // === RELATIONSHIP INDEXES ===
 // For temporal queries on relationships
 

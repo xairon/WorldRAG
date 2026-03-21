@@ -1556,20 +1556,28 @@ async def reconcile_and_persist_v4_node(state: dict[str, Any]) -> dict[str, Any]
 
 
 def build_extraction_graph_v4() -> CompiledStateGraph:
-    """Build the v4 extraction LangGraph (4 linear nodes)."""
+    """Build the v4 extraction LangGraph (5 linear nodes).
+
+    Pipeline:
+        extract_entities → extract_relations → verify_extractions
+        → mention_detect → reconcile_persist
+    """
     from app.schemas.extraction_v4 import ExtractionStateV4
     from app.services.extraction.entities import extract_entities_node
     from app.services.extraction.relations import extract_relations_node
+    from app.services.extraction.verify import verify_extractions_node
 
     graph = StateGraph(ExtractionStateV4)
     graph.add_node("extract_entities", extract_entities_node)
     graph.add_node("extract_relations", extract_relations_node)
+    graph.add_node("verify_extractions", verify_extractions_node)
     graph.add_node("mention_detect", mention_detect_v4_node)
     graph.add_node("reconcile_persist", reconcile_and_persist_v4_node)
 
     graph.add_edge(START, "extract_entities")
     graph.add_edge("extract_entities", "extract_relations")
-    graph.add_edge("extract_relations", "mention_detect")
+    graph.add_edge("extract_relations", "verify_extractions")
+    graph.add_edge("verify_extractions", "mention_detect")
     graph.add_edge("mention_detect", "reconcile_persist")
     graph.add_edge("reconcile_persist", END)
 

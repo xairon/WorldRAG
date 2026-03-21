@@ -201,6 +201,10 @@ class TestProcessBookEmbeddings:
             cost_usd=0.000006,
         )
 
+        from app.services.embedding_pipeline import RelationshipEmbeddingResult
+
+        fake_rel_result = RelationshipEmbeddingResult(book_id="b1", total_rels=0, embedded=0, failed=0)
+
         with (
             patch("app.workers.tasks.BookRepository") as mock_repo_cls,
             patch(
@@ -208,6 +212,11 @@ class TestProcessBookEmbeddings:
                 new_callable=AsyncMock,
                 return_value=fake_emb_result,
             ) as mock_embed,
+            patch(
+                "app.services.embedding_pipeline.embed_book_relationships",
+                new_callable=AsyncMock,
+                return_value=fake_rel_result,
+            ),
         ):
             instance = mock_repo_cls.return_value
             instance.get_chunks_for_embedding = AsyncMock(return_value=chunks)

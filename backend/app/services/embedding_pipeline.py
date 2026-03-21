@@ -118,6 +118,143 @@ async def embed_book_chunks(
     return result
 
 
+@dataclass
+class RelationshipEmbeddingResult:
+    """Result of a relationship embedding pipeline run."""
+
+    book_id: str
+    total_rels: int
+    embedded: int
+    failed: int
+    total_tokens: int = 0
+
+
+async def embed_book_relationships(
+    driver: AsyncDriver,
+    book_id: str,
+    cost_tracker: CostTracker | None = None,
+) -> RelationshipEmbeddingResult:
+    """Embed all RELATES_TO relationships for a book and write embeddings to Neo4j.
+
+    Queries for relationships without embeddings, builds text representations
+    from source/target names + type + context, embeds them locally, and writes
+    the vectors back to the relationship properties.
+
+    Args:
+        driver: Neo4j async driver.
+        book_id: Book identifier.
+        cost_tracker: Optional CostTracker for cost recording.
+
+    Returns:
+        RelationshipEmbeddingResult with stats.
+    """
+    # Fetch relationships without embeddings
+    async with driver.session() as session:
+        query_result = await session.run(
+            """
+            MATCH (a)-[r:RELATES_TO {book_id: $book_id}]->(b)
+            WHERE r.embedding IS NULL
+            RETURN id(r) AS rel_id, a.canonical_name AS source, b.canonical_name AS target,
+                   r.type AS rel_type, r.context AS context, r.subtype AS subtype
+            """,
+            {"book_id": book_id},
+        )
+        rels = [dict(record) for record in await query_result.data()]
+
+    result = RelationshipEmbeddingResult(
+        book_id=book_id,
+        total_rels=len(rels),
+        embedded=0,
+        failed=0,
+    )
+
+    if not rels:
+        return result
+
+    # Build text representations
+    for rel in rels:
+        source = rel.get("source") or "Unknown"
+        target = rel.get("target") or "Unknown"
+        rel_type = rel.get("rel_type") or "RELATES_TO"
+        context = rel.get("context") or ""
+        text = f"{source} {rel_type} {target}"
+        if context:
+            text += f": {context}"
+        rel["text"] = text
+
+    embedder = LocalEmbedder()
+    batch_size = settings.embedding_batch_size
+
+    for i in range(0, len(rels), batch_size):
+        batch = rels[i : i + batch_size]
+        texts = [r["text"] for r in batch]
+
+        try:
+            embeddings = await embedder.embed_texts(texts, input_type="document")
+        except Exception:
+            logger.exception(
+                "relationship_embedding_batch_failed",
+                book_id=book_id,
+                batch_start=i,
+                batch_size=len(batch),
+            )
+            result.failed += len(batch)
+            continue
+
+        batch_tokens = sum(count_tokens(t) for t in texts)
+        result.total_tokens += batch_tokens
+
+        # Write embeddings back to relationships
+        await _write_relationship_embeddings(driver, batch, embeddings)
+        result.embedded += len(batch)
+
+        if cost_tracker:
+            await cost_tracker.record(
+                model=settings.embedding_model,
+                provider="local",
+                input_tokens=batch_tokens,
+                output_tokens=0,
+                operation="relationship_embedding",
+                book_id=book_id,
+            )
+
+    logger.info(
+        "relationship_embedding_completed",
+        book_id=book_id,
+        total=result.total_rels,
+        embedded=result.embedded,
+        failed=result.failed,
+        total_tokens=result.total_tokens,
+    )
+
+    return result
+
+
+async def _write_relationship_embeddings(
+    driver: AsyncDriver,
+    batch: list[dict[str, Any]],
+    embeddings: list[list[float]],
+) -> None:
+    """Write a batch of embeddings to RELATES_TO relationships via UNWIND."""
+    payload = [
+        {
+            "rel_id": batch[j]["rel_id"],
+            "embedding": embeddings[j],
+        }
+        for j in range(len(batch))
+    ]
+
+    async with driver.session() as session:
+        await session.run(
+            """
+            UNWIND $items AS item
+            MATCH ()-[r:RELATES_TO]->() WHERE id(r) = item.rel_id
+            SET r.embedding = item.embedding
+            """,
+            {"items": payload},
+        )
+
+
 async def _write_embeddings(
     driver: AsyncDriver,
     batch: list[dict[str, Any]],

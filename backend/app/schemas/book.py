@@ -99,6 +99,7 @@ class ChunkData(BaseModel):
     token_count: int = 0
     char_offset_start: int = 0  # offset within chapter text
     char_offset_end: int = 0
+    scene_break: bool = False  # True if this chunk starts at a scene boundary
 
 
 class RegexMatch(BaseModel):
