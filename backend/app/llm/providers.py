@@ -154,11 +154,18 @@ def get_instructor_for_extraction(
         )
         return client, model
 
-    # Gemini (default) — provider is "gemini" or bare model name
-    client = instructor.from_genai(
-        get_gemini_client(),
-        mode=instructor.Mode.GENAI_TOOLS,
-        use_async=True,
+    # Gemini (default) — via OpenAI-compatible API for JSON mode support
+    if not settings.gemini_api_key:
+        raise ValueError("GEMINI_API_KEY required for gemini provider")
+    import httpx
+
+    client = instructor.from_openai(
+        AsyncOpenAI(
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+            api_key=settings.gemini_api_key,
+            timeout=httpx.Timeout(600.0, connect=30.0),
+        ),
+        mode=instructor.Mode.JSON,
     )
     return client, model
 

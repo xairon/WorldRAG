@@ -117,7 +117,7 @@ class TestInstructorForExtraction:
         assert client is not None
 
     def test_default_gemini_fallback(self):
-        """langextract_model without provider prefix falls back to Gemini."""
+        """langextract_model without provider prefix falls back to Gemini via OpenAI compat."""
         mock_instructor_client = MagicMock()
         mock_s = _make_mock_settings(
             langextract_model="gemini-2.5-flash",
@@ -125,12 +125,11 @@ class TestInstructorForExtraction:
         )
         with (
             patch("app.llm.providers.settings", mock_s),
-            patch("app.llm.providers.get_gemini_client") as mock_gemini,
             patch("app.llm.providers.instructor") as mock_instr,
+            patch("app.llm.providers.AsyncOpenAI"),
         ):
-            mock_gemini.return_value = MagicMock()
-            mock_instr.from_genai.return_value = mock_instructor_client
-            mock_instr.Mode.GENAI_TOOLS = "genai_tools"
+            mock_instr.from_openai.return_value = mock_instructor_client
+            mock_instr.Mode.JSON = "json"
             from app.llm.providers import get_instructor_for_extraction
 
             client, model_name = get_instructor_for_extraction()

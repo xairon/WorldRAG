@@ -42,15 +42,15 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
 
     # --- Extraction (V4 Instructor pipeline) ---
-    langextract_model: str = "openrouter:anthropic/claude-haiku-4.5"
+    langextract_model: str = "gemini:gemini-2.5-flash"
     langextract_passes: int = 2  # V3 legacy only
     langextract_max_workers: int = 20  # V3 legacy only
     langextract_batch_chapters: int = 10
     langextract_max_char_buffer: int = 2000
 
     # --- Instructor (reconciliation, classification) ---
-    llm_reconciliation: str = "openrouter:deepseek/deepseek-v3.2"
-    llm_classification: str = "openrouter:deepseek/deepseek-v3.2"
+    llm_reconciliation: str = "gemini:gemini-2.5-flash"
+    llm_classification: str = "gemini:gemini-2.5-flash"
     llm_dedup: str = "openrouter:deepseek/deepseek-v3.2"
     llm_cypher: str = "openrouter:deepseek/deepseek-v3.2"
     use_batch_api: bool = True
