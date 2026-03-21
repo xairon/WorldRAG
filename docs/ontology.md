@@ -108,7 +108,7 @@ Each layer uses `extends:` in its YAML definition, forming a clean inheritance c
 
 ```
 ontology/
-├── core.yaml           # Layer 1 — Universal narrative (13 node types, 18 relationship types)
+├── core.yaml           # Layer 1 — Universal narrative (13 node types, 20 relationship types)
 ├── litrpg.yaml         # Layer 2 — LitRPG genre (7 node types, 9 relationship types, 7 regex)
 └── primal_hunter.yaml  # Layer 3 — Series-specific (5 node types, 5 relationship types, 5 regex)
 ```
@@ -160,7 +160,7 @@ The `event_type` enum maps to DOLCE's upper ontology:
 | `critical` | Arc-defining moment | 1-3 per book |
 | `arc_defining` | Changes the entire story direction | 0-1 per book |
 
-### Relationship Types (18)
+### Relationship Types (20)
 
 Grouped by function:
 
@@ -170,7 +170,7 @@ Grouped by function:
 
 **Events**: `PARTICIPATES_IN` (with role: agent/patient/beneficiary/witness/cause), `OCCURS_AT`, `CAUSES`, `ENABLES`, `OCCURS_BEFORE`, `PART_OF`
 
-**Grounding**: `GROUNDED_IN` (char offsets), `MENTIONED_IN`
+**Grounding**: `MENTIONED_IN`
 
 **Narrative**: `STRUCTURED_BY`, `FULFILLS`
 

@@ -41,8 +41,6 @@ interface ExtractionDashboardProps {
   bookId: string
   book: BookInfo
   chapters: ChapterInfo[]
-  hasProfile: boolean
-  isFirstBook: boolean
 }
 
 export function ExtractionDashboard({
@@ -50,8 +48,6 @@ export function ExtractionDashboard({
   bookId,
   book,
   chapters,
-  hasProfile,
-  isFirstBook,
 }: ExtractionDashboardProps) {
   const router = useRouter()
   const [starting, setStarting] = useState(false)
@@ -177,8 +173,6 @@ export function ExtractionDashboard({
         {isExtracting && (
           <ExtractionAction
             bookStatus={effectiveStatus}
-            hasProfile={hasProfile}
-            isFirstBook={isFirstBook}
             onStart={() => handleStart()}
             onCancel={handleCancel}
             disabled={starting}

@@ -48,9 +48,6 @@ graph TB
     end
 
     subgraph Grounding["🔗 Grounding Layer"]
-        Character -.-> |GROUNDED_IN| Chunk
-        Skill -.-> |GROUNDED_IN| Chunk
-        Event -.-> |GROUNDED_IN| Chunk
         Character -.-> |MENTIONED_IN| Chapter
         Event -.-> |FIRST_MENTIONED_IN| Chapter
     end
@@ -149,27 +146,6 @@ graph TB
 | Type | From → To | Properties |
 |------|-----------|-----------|
 | `LOCATION_PART_OF` | Location → Location | — (parent hierarchy) |
-
-### Grounding
-
-| Type | From → To | Properties |
-|------|-----------|-----------|
-| `GROUNDED_IN` | Any Entity → Chunk | `char_offset_start`, `char_offset_end`, `batch_id` |
-
-**Implementation**: `GROUNDED_IN` relationships are created via a label-aware UNWIND strategy in `entity_repo.store_grounding()`. Each of the 10 entity types is handled separately because Neo4j doesn't support variable labels in `MERGE`. The `_GROUNDING_LABEL_MAP` maps extraction class → (Neo4j Label, match property):
-
-| Entity Type | Neo4j Label | Match Property |
-|-------------|-------------|----------------|
-| character | Character | `canonical_name` |
-| skill | Skill | `name` |
-| class | Class | `name` |
-| title | Title | `name` |
-| event | Event | `name` |
-| location | Location | `name` |
-| item | Item | `name` |
-| creature | Creature | `name` |
-| faction | Faction | `name` |
-| concept | Concept | `name` |
 
 ---
 
@@ -334,7 +310,7 @@ Temporal indexes on relationship properties for efficient chapter-scoped queries
 ```
 rel_has_class_temporal, rel_has_skill_temporal, rel_at_level_temporal,
 rel_located_at_temporal, rel_possesses_temporal, rel_relates_to_temporal,
-rel_member_of_temporal, rel_grounded_in
+rel_member_of_temporal
 ```
 
 ---
@@ -394,7 +370,6 @@ ON MATCH SET
 Phase 1 (sequential):   Characters → Relationships  (rels reference chars)
 Phase 2 (parallel):     Skills, Classes, Titles, LevelChanges, StatChanges,
                          Events, Locations, Items, Creatures, Factions, Concepts
-Phase 3 (sequential):   Grounding (requires entities to exist)
 ```
 
 ---

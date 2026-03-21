@@ -6,8 +6,6 @@ import { mapBackendStatus } from "@/lib/constants"
 
 interface ExtractionActionProps {
   bookStatus: string
-  hasProfile: boolean
-  isFirstBook: boolean
   onStart: () => void
   onCancel: () => void
   disabled?: boolean

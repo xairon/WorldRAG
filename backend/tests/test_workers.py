@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.workers.settings import _parse_redis_settings
-from app.workers.tasks import ARQ_QUEUE, process_book_embeddings, process_book_extraction
+from app.workers.tasks import process_book_embeddings, process_book_extraction
 
 # ── Fixtures ──────────────────────────────────────────────────────────────
 

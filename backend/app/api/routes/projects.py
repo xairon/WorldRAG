@@ -1,12 +1,12 @@
 """Project management API routes.
 
 Handles project lifecycle: create, list, get, update, delete, stats,
-book upload, and Graphiti extraction trigger.
+book upload, and KG extraction trigger.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, Form, Request, UploadFile
@@ -16,15 +16,9 @@ from app.api.auth import require_auth
 from app.core.logging import get_logger
 from app.schemas.project import (
     ProjectCreate,
-    ProjectListResponse,
-    ProjectResponse,
-    ProjectStatsResponse,
     ProjectUpdate,
 )
 from app.services.project_service import ProjectService
-
-if TYPE_CHECKING:
-    pass
 
 logger = get_logger(__name__)
 
@@ -443,13 +437,9 @@ async def get_cover(slug: str, filename: str, request: Request) -> Response:
 
 @router.post("/{slug}/extract", dependencies=[Depends(require_auth)], status_code=202)
 async def extract_project(slug: str, request: Request) -> JSONResponse:
-    """Enqueue Graphiti KG extraction for the project.
+    """Enqueue V4 KG extraction for the project.
 
-    Checks Redis for an existing saga profile:
-    - If found → guided mode (profile JSON passed to worker)
-    - If not found → discovery mode (worker induces profile from scratch)
-
-    Returns 202 immediately with {job_id, mode, slug}.
+    Returns 202 immediately with {job_id, slug}.
     """
     svc = _get_service(request)
 
@@ -461,10 +451,6 @@ async def extract_project(slug: str, request: Request) -> JSONResponse:
     if arq_pool is None:
         return JSONResponse(status_code=503, content={"detail": "Job queue unavailable"})
 
-    redis = request.app.state.redis
-    existing_profile = await redis.get(f"saga_profile:{slug}")
-    mode = "guided" if existing_profile else "discovery"
-
     # Resolve actual book_id(s) from project_files
     books = await svc.list_project_books(slug)
     book_ids = [b["book_id"] for b in books if b.get("book_id")]
@@ -474,21 +460,17 @@ async def extract_project(slug: str, request: Request) -> JSONResponse:
     # Use first book's Neo4j ID for extraction
     book_id = book_ids[0]
     job = await arq_pool.enqueue_job(
-        "process_book_graphiti",
+        "process_book_extraction",
         book_id,
-        slug,  # saga_id = slug
-        existing.get("name", slug),  # saga_name
-        1,  # book_num
-        existing_profile,
         _queue_name="worldrag:arq",
-        _job_id=f"graphiti-project:{slug}",
+        _job_id=f"extract-project:{slug}",
     )
 
-    job_id = job.job_id if job else f"graphiti-project:{slug}"
-    logger.info("project_extract_enqueued", slug=slug, mode=mode, job_id=job_id)
+    job_id = job.job_id if job else f"extract-project:{slug}"
+    logger.info("project_extract_enqueued", slug=slug, job_id=job_id)
     return JSONResponse(
         status_code=202,
-        content={"job_id": job_id, "mode": mode, "slug": slug},
+        content={"job_id": job_id, "slug": slug},
     )
 
 

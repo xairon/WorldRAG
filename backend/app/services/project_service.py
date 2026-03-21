@@ -1,13 +1,12 @@
 """Business logic for Project lifecycle management.
 
-Coordinates PostgreSQL (metadata), Redis (saga profiles), Neo4j (KG entities),
+Coordinates PostgreSQL (metadata), Neo4j (KG entities),
 and the local filesystem (uploaded book files).
 """
 
 from __future__ import annotations
 
 import asyncio
-import json
 import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -100,14 +99,9 @@ class ProjectService:
         for row in rows:
             slug = row["slug"]
             books_count = await self._repo.count_books(slug)
-            profile_raw = await self._redis.get(f"saga_profile:{slug}")
-            has_profile = profile_raw is not None
-            # H11: entity_count defaults to 0 in list view to avoid N+1 Neo4j queries.
-            # TODO: Add a batch query or materialized count for entity_count in list_projects.
             enriched.append({
                 **row,
                 "books_count": books_count,
-                "has_profile": has_profile,
                 "entity_count": 0,
             })
         return enriched
@@ -133,9 +127,8 @@ class ProjectService:
 
         Order of operations:
         1. Delete PostgreSQL row (CASCADE deletes project_files).
-        2. Delete Redis saga_profile:{slug}.
-        3. Delete Neo4j entities with group_id == slug + Community nodes.
-        4. Delete filesystem directory.
+        2. Delete Neo4j entities with group_id == slug + Community nodes.
+        3. Delete filesystem directory.
 
         Args:
             slug: The project slug to delete.
@@ -143,10 +136,7 @@ class ProjectService:
         # 1. PostgreSQL (CASCADE handles project_files)
         await self._repo.delete(slug)
 
-        # 2. Redis saga profile
-        await self._redis.delete(f"saga_profile:{slug}")
-
-        # 3. Neo4j: entities and communities belonging to this project
+        # 2. Neo4j: entities and communities belonging to this project
         # C7: Scope deletes by label to avoid unbounded property scan
         async with self._neo4j.session() as session:
             await session.run(
@@ -204,26 +194,13 @@ class ProjectService:
             if community_records:
                 community_count = community_records[0].get("count", 0)
 
-        # Redis: profile
-        profile_raw = await self._redis.get(f"saga_profile:{slug}")
-        has_profile = profile_raw is not None
-        profile_types_count = 0
-        if has_profile and profile_raw:
-            try:
-                profile_data = json.loads(profile_raw)
-                profile_types_count = len(profile_data.get("entity_types", []))
-            except (json.JSONDecodeError, TypeError):
-                pass
-
         return {
             "slug": slug,
             "books_count": books_count,
-            "chapters_total": 0,  # reserved for future chapter-level query
+            "chapters_total": 0,
             "entity_count": entity_count,
             "entities_total": entity_count,
             "community_count": community_count,
-            "has_profile": has_profile,
-            "profile_types_count": profile_types_count,
         }
 
     # --- File storage ---

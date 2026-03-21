@@ -124,7 +124,6 @@ sequenceDiagram
         LG-->>W: ChapterExtractionResult + alias_map
         W->>W: apply alias_map normalization
         W->>ER: upsert_extraction_result (13 methods)
-        W->>ER: store_grounding (GROUNDED_IN rels)
     end
 
     rect rgb(230, 255, 230)
@@ -188,7 +187,6 @@ All Neo4j access goes through typed repository classes. Services never execute C
 **`EntityRepository`** (13 upsert + 1 orchestrator): Handles all Knowledge Graph entities. The `upsert_extraction_result()` orchestrator executes in three phases:
 1. **Sequential**: Characters, then Relationships (relationships reference characters)
 2. **Parallel** (`asyncio.gather`): Skills, Classes, Titles, LevelChanges, StatChanges, Events, Locations, Items, Creatures, Factions, Concepts
-3. **Sequential**: Grounding data
 
 Every write carries a `batch_id` UUID for rollback capability.
 

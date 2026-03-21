@@ -17,7 +17,6 @@ from sse_starlette.sse import EventSourceResponse
 
 from app.api.auth import require_auth
 from app.api.dependencies import get_neo4j, get_postgres
-from app.config import settings
 from app.core.logging import get_logger
 from app.schemas.chat import ChatRequest, ChatResponse, FeedbackRequest, FeedbackResponse
 
@@ -25,26 +24,8 @@ if TYPE_CHECKING:
     import asyncpg
     from neo4j import AsyncDriver
 
-    from app.services.chat_service_v2 import ChatServiceV2
-
 logger = get_logger(__name__)
 router = APIRouter(prefix="/chat", tags=["chat"])
-
-
-def _get_chat_service_v2(
-    request: Request, driver: AsyncDriver, checkpointer: object | None
-) -> ChatServiceV2:
-    """Return a cached ChatServiceV2 from app.state, creating it on first call."""
-    from app.services.chat_service_v2 import ChatServiceV2
-
-    existing = getattr(request.app.state, "chat_service_v2", None)
-    if existing is not None:
-        return existing
-
-    graphiti = getattr(request.app.state, "graphiti", None)
-    service = ChatServiceV2(graphiti, driver, checkpointer=checkpointer)
-    request.app.state.chat_service_v2 = service
-    return service
 
 
 @router.post("/query", dependencies=[Depends(require_auth)], response_model=ChatResponse)
@@ -62,18 +43,9 @@ async def chat_query(
     pipeline will load prior messages from the checkpoint store and use
     them as context for follow-up questions.
     """
-    checkpointer = getattr(http_request.app.state, "checkpointer", None)
-    if settings.graphiti_enabled:
-        service_v2 = _get_chat_service_v2(http_request, driver, checkpointer)
-        return await service_v2.query(
-            query=request.query,
-            book_id=request.book_id,
-            saga_id=request.book_id,  # default: saga_id = book_id
-            max_chapter=request.max_chapter,
-            thread_id=request.thread_id,
-        )
     from app.services.chat_service import ChatService
 
+    checkpointer = getattr(http_request.app.state, "checkpointer", None)
     service = ChatService(driver, checkpointer=checkpointer)
     return await service.query(
         query=request.query,
@@ -119,24 +91,9 @@ async def chat_stream(
       - `done`: generation complete
       - `error`: something went wrong
     """
-    checkpointer = getattr(request.app.state, "checkpointer", None)
-    if settings.graphiti_enabled:
-        service_v2 = _get_chat_service_v2(request, driver, checkpointer)
-
-        async def event_generator_v2():
-            async for event in service_v2.query_stream(
-                query=q,
-                book_id=book_id,
-                saga_id=book_id,  # default: saga_id = book_id
-                max_chapter=max_chapter,
-                thread_id=thread_id,
-            ):
-                yield event
-
-        return EventSourceResponse(event_generator_v2())
-
     from app.services.chat_service import ChatService
 
+    checkpointer = getattr(request.app.state, "checkpointer", None)
     service = ChatService(driver, checkpointer=checkpointer)
 
     async def event_generator():

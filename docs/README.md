@@ -89,7 +89,6 @@ See [Deployment Guide](./deployment.md) for detailed instructions and production
 - Full reconciler (all entity types, integrated as LangGraph node)
 - 3-tier deduplication (exact, fuzzy, LLM-as-Judge)
 - Alias map normalization (stat_changes, skill/class/title names, all lore entities)
-- GROUNDED_IN relationships (label-aware UNWIND per entity type, source chunk offsets)
 - Multi-provider support: Gemini, OpenRouter (DeepSeek V3.2 etc.), Ollama (local)
 - Instructor structured output with provider routing (`provider:model` spec)
 - Cost ceiling enforcement (per-chapter and per-book limits with CostTracker)

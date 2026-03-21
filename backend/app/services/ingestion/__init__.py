@@ -1,7 +1,7 @@
-"""Ingestion services — Discovery and Guided modes via Graphiti.
+"""Ingestion services — file parsing and chapter extraction.
 
-Also re-exports legacy file-parsing utilities for backwards compatibility
-with existing routes that import from app.services.ingestion.
+Re-exports file-parsing utilities for routes that import from
+app.services.ingestion.
 """
 
 from app.services.ingestion.file_parser import (  # noqa: F401 — re-export for backward compat

@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 
 from app.services.project_service import ProjectService
 
@@ -128,28 +126,6 @@ class TestListProjects:
         result = await svc.list_projects()
         assert result[0]["books_count"] == 3
 
-    async def test_enriches_with_has_profile_true(self):
-        profile_json = json.dumps({"saga_id": PROJECT_SLUG})
-        svc, _, _ = make_service(
-            repo_list=[_BASE_PROJECT_ROW],
-            redis_get=profile_json.encode(),
-        )
-        result = await svc.list_projects()
-        assert result[0]["has_profile"] is True
-
-    async def test_enriches_with_has_profile_false_when_redis_empty(self):
-        svc, _, _ = make_service(repo_list=[_BASE_PROJECT_ROW], redis_get=None)
-        result = await svc.list_projects()
-        assert result[0]["has_profile"] is False
-
-    async def test_checks_redis_key_per_project(self):
-        svc, redis, _ = make_service(repo_list=[_BASE_PROJECT_ROW])
-        await svc.list_projects()
-        redis.get.assert_awaited_once()
-        call_key = redis.get.call_args[0][0]
-        assert PROJECT_SLUG in call_key
-
-
 class TestUpdateProject:
     async def test_returns_updated_row(self):
         updated = {**_BASE_PROJECT_ROW, "name": "New Name"}
@@ -164,17 +140,6 @@ class TestUpdateProject:
 
 
 class TestDeleteProject:
-    async def test_deletes_redis_saga_profile(self):
-        svc, redis, _ = make_service(repo_delete=PROJECT_SLUG)
-        with patch("app.services.project_service.shutil") as mock_shutil:
-            mock_shutil.rmtree = MagicMock()
-            with patch("app.services.project_service.Path") as mock_path:
-                mock_path.return_value.__truediv__ = MagicMock(return_value=MagicMock(exists=MagicMock(return_value=False)))
-                await svc.delete_project(PROJECT_SLUG)
-        redis.delete.assert_awaited_once()
-        key = redis.delete.call_args[0][0]
-        assert PROJECT_SLUG in key
-
     async def test_deletes_neo4j_entities(self):
         svc, _, neo4j_session = make_service(repo_delete=PROJECT_SLUG)
         with patch("app.services.project_service.shutil"):
@@ -227,29 +192,6 @@ class TestGetStats:
         )
         result = await svc.get_stats(PROJECT_SLUG)
         assert result["entity_count"] == 250
-
-    async def test_returns_has_profile_true_when_redis_has_key(self):
-        profile_data = json.dumps({"saga_id": PROJECT_SLUG, "entity_types": []}).encode()
-        svc, redis, _ = make_service(repo_get=_BASE_PROJECT_ROW, redis_get=profile_data)
-        result = await svc.get_stats(PROJECT_SLUG)
-        assert result["has_profile"] is True
-
-    async def test_returns_has_profile_false_when_no_redis(self):
-        svc, _, _ = make_service(repo_get=_BASE_PROJECT_ROW, redis_get=None)
-        result = await svc.get_stats(PROJECT_SLUG)
-        assert result["has_profile"] is False
-
-    async def test_returns_profile_types_count(self):
-        profile = {
-            "saga_id": PROJECT_SLUG,
-            "entity_types": [{"type_name": "Spell"}, {"type_name": "House"}],
-        }
-        svc, redis, _ = make_service(
-            repo_get=_BASE_PROJECT_ROW,
-            redis_get=json.dumps(profile).encode(),
-        )
-        result = await svc.get_stats(PROJECT_SLUG)
-        assert result["profile_types_count"] == 2
 
     async def test_slug_in_stats(self):
         svc, _, _ = make_service(repo_get=_BASE_PROJECT_ROW)

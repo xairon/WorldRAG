@@ -1,7 +1,6 @@
 """Tests for grounding post-validation (TDD — written before implementation)."""
 from dataclasses import dataclass
 
-import pytest
 
 from backend.app.services.extraction.grounding import validate_and_fix_grounding
 

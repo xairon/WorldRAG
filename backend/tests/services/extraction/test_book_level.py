@@ -3,7 +3,6 @@ from unittest.mock import AsyncMock, MagicMock
 from app.services.extraction.book_level import (
     iterative_cluster,
     generate_entity_summaries,
-    community_cluster,
 )
 
 

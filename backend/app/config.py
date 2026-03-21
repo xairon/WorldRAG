@@ -100,9 +100,6 @@ class Settings(BaseSettings):
     default_genre: str = "litrpg"
     default_series: str = "primal_hunter"
 
-    # --- KG v2 (Graphiti) ---
-    graphiti_enabled: bool = False  # Toggle Graphiti pipeline
-
     # --- Projects ---
     project_data_dir: str = "/data/projects"
 

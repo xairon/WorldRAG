@@ -29,9 +29,9 @@ async function getBookDetail(bookId: string) {
 
 async function getProjectInfo(slug: string) {
   try {
-    return await apiFetch<{ has_profile: boolean; books_count: number }>(`/projects/${slug}/stats`)
+    return await apiFetch<{ books_count: number }>(`/projects/${slug}/stats`)
   } catch {
-    return { has_profile: false, books_count: 1 }
+    return { books_count: 1 }
   }
 }
 
@@ -49,7 +49,6 @@ export default async function ExtractionPage({
       bookId={bookId}
       book={detail.book}
       chapters={detail.chapters}
-      hasProfile={stats.has_profile ?? false}
       isFirstBook={(stats.books_count ?? 1) <= 1}
     />
   )

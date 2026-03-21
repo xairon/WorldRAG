@@ -30,7 +30,6 @@ from app.api.routes import (
     health,
     projects,
     reader,
-    saga_profiles,
     stream,
 )
 from app.config import settings
@@ -235,22 +234,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     )
     app.state.ontology = ontology
 
-    # --- Graphiti (KG v2) ---
-    graphiti = None
-    if settings.graphiti_enabled:
-        from app.core.graphiti_client import GraphitiClient
-
-        try:
-            graphiti = GraphitiClient(
-                neo4j_uri=settings.neo4j_uri,
-                neo4j_auth=(settings.neo4j_user, settings.neo4j_password),
-            )
-            await graphiti.init_schema()
-            logger.info("graphiti_connected")
-        except Exception as e:
-            logger.warning("graphiti_init_failed", error=type(e).__name__)
-    app.state.graphiti = graphiti
-
     # --- Auth mode ---
     auth_mode = "api_key" if settings.api_key else "dev (no auth)"
     logger.info("worldrag_started", auth_mode=auth_mode)
@@ -267,8 +250,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         await pg_pool.close()
     if psycopg_pool is not None:
         await psycopg_pool.close()
-    if graphiti is not None:
-        await graphiti.close()
     if langfuse is not None:
         langfuse.flush()
     logger.info("worldrag_stopped")
@@ -312,7 +293,6 @@ def create_app() -> FastAPI:
     app.include_router(graph.router, prefix="/api")
     app.include_router(chat.router, prefix="/api")
     app.include_router(stream.router, prefix="/api")
-    app.include_router(saga_profiles.router, prefix="/api")
     app.include_router(projects.router, prefix="/api")
     app.include_router(reader.router, prefix="/api")
     app.include_router(characters.router, prefix="/api")

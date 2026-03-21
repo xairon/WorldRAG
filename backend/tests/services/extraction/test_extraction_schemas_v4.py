@@ -5,7 +5,6 @@ from pydantic import ValidationError
 
 from app.schemas.extraction_v4 import (
     EntityExtractionResult,
-    EntityUnion,
     ExtractedArc,
     ExtractedCharacter,
     ExtractedConcept,

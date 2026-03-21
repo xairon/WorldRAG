@@ -89,8 +89,7 @@ flowchart TB
     subgraph PostProcess["3. Book-Level Post-Processing"]
         Cluster["Iterative Clustering<br/>(embedding similarity + LLM-as-Judge)"]
         Summaries["Entity Summaries<br/>(LLM-generated per entity)"]
-        Communities["Community Clustering<br/>(Leiden + LLM summaries)"]
-        Cluster --> Summaries --> Communities
+        Cluster --> Summaries
     end
 
     subgraph Embedding["4. Embedding (arq worker — async)"]
@@ -132,7 +131,7 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-    Core["Layer 1: Core<br/>(core.yaml)<br/>13 node types, 21 relation types<br/>Universal narrative entities"]
+    Core["Layer 1: Core<br/>(core.yaml)<br/>13 node types, 20 relation types<br/>Universal narrative entities"]
     Genre["Layer 2: Genre<br/>(litrpg.yaml)<br/>11 node types, 9 relation types<br/>20 regex patterns<br/>Progression mechanics"]
     Series["Layer 3: Series<br/>(primal_hunter.yaml)<br/>5 node types, 5 relation types<br/>5 regex patterns<br/>Series-specific concepts"]
 
@@ -164,7 +163,7 @@ Universal narrative entities present in all fiction:
 | Concept | name, domain | - |
 | Prophecy | name, status | - |
 
-### Layer 1: Core (21 relation types)
+### Layer 1: Core (20 relation types)
 
 | Relation | From | To | Key Properties |
 |---|---|---|---|
@@ -179,7 +178,6 @@ Universal narrative entities present in all fiction:
 | ENABLES | Event | Event | - |
 | OCCURS_BEFORE | Event | Event | - |
 | PART_OF | Event | Arc | - |
-| GROUNDED_IN | * | Chunk | char_offset_start/end |
 | MENTIONED_IN | * | Chunk | char_offset_start/end |
 | STRUCTURED_BY | Arc | NarrativeFunction | order |
 | FULFILLS | Event | NarrativeFunction | - |
@@ -704,7 +702,7 @@ flowchart TB
     UpdateRegistry["Update EntityRegistry"]
     SaveRegistry["Save registry to Neo4j"]
     Progress["Publish progress via Redis pub/sub"]
-    PostProcess["Book-level post-processing<br/>(cluster + summaries + communities)"]
+    PostProcess["Book-level post-processing<br/>(cluster + summaries)"]
     Embed["Enqueue embedding job"]
     Done["Done — status: extracted"]
 

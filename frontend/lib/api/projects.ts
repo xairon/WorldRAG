@@ -9,7 +9,6 @@ export interface Project {
   created_at: string
   updated_at: string
   books_count: number
-  has_profile: boolean
   entity_count: number
 }
 

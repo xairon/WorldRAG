@@ -72,18 +72,6 @@ async def startup(ctx: dict[str, Any]) -> None:
     # --- DeadLetterQueue ---
     ctx["dlq"] = DeadLetterQueue(dlq_redis)
 
-    # --- Graphiti (KG v2) ---
-    if settings.graphiti_enabled:
-        from app.core.graphiti_client import GraphitiClient
-
-        graphiti = GraphitiClient(
-            neo4j_uri=settings.neo4j_uri,
-            neo4j_auth=(settings.neo4j_user, settings.neo4j_password),
-        )
-        await graphiti.init_schema()
-        ctx["graphiti"] = graphiti
-        logger.info("arq_worker_graphiti_connected")
-
     logger.info("arq_worker_started")
 
 
@@ -94,8 +82,6 @@ async def shutdown(ctx: dict[str, Any]) -> None:
         await driver.close()
     if dlq_redis := ctx.get("dlq_redis"):
         await dlq_redis.close()
-    if graphiti := ctx.get("graphiti"):
-        await graphiti.close()
     logger.info("arq_worker_stopped")
 
 
@@ -111,7 +97,6 @@ class WorkerSettings:
         process_book_extraction,
         process_book_extraction_v3,
         process_book_extraction_v4,
-        process_book_graphiti,
         process_book_reprocessing,
     )
 
@@ -121,7 +106,6 @@ class WorkerSettings:
         process_book_extraction_v3,
         process_book_extraction_v4,
         process_book_reprocessing,
-        process_book_graphiti,
     ]
     on_startup = startup
     on_shutdown = shutdown
