@@ -422,6 +422,32 @@ async def process_book_extraction_v4(
         relationship_types=len(ontology.relationship_types),
     )
 
+    # ── Ontology induction: auto-discover types from first chapters ────
+    try:
+        from app.services.extraction.ontology_inducer import induce_ontology
+
+        # Get first 3 chapters' text for induction
+        induction_chapters = await book_repo.get_chapters_for_extraction(
+            book_id, chapters=None,
+        )
+        sample_texts = [ch.text for ch in induction_chapters[:3] if ch.text]
+        if sample_texts:
+            induced = await induce_ontology(
+                chapters_text=sample_texts,
+                existing_ontology=ontology,
+                model_override=provider,
+            )
+            if induced.get("node_types") or induced.get("relationship_types"):
+                ontology.extend_with_induced(induced)
+                logger.info(
+                    "v4_ontology_induction_applied",
+                    book_id=book_id,
+                    induced_entity_types=[nt["name"] for nt in induced.get("node_types", [])],
+                    induced_relation_types=[rt["name"] for rt in induced.get("relationship_types", [])],
+                )
+    except Exception:
+        logger.warning("v4_ontology_induction_failed", book_id=book_id, exc_info=True)
+
     # Load entity registries from other books in same series
     if series_name:
         try:
@@ -478,10 +504,11 @@ async def process_book_extraction_v4(
                 ),
             )
 
-    # Reset previous extraction data before starting fresh
-    deleted = await book_repo.reset_extraction(book_id)
-    if deleted:
-        logger.info("v4_previous_extraction_cleared", book_id=book_id, entities_deleted=deleted)
+    # Only reset when extracting ALL chapters (not a partial re-run)
+    if not chapters:
+        deleted = await book_repo.reset_extraction(book_id)
+        if deleted:
+            logger.info("v4_previous_extraction_cleared", book_id=book_id, entities_deleted=deleted)
 
     await book_repo.update_book_status(book_id, "extracting")
 

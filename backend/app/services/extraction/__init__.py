@@ -1465,6 +1465,7 @@ async def reconcile_and_persist_v4_node(state: dict[str, Any]) -> dict[str, Any]
     from app.llm.providers import get_instructor_for_task
 
     chapter_number = state.get("chapter_number", 0)
+    ended_relations = state.get("ended_relations", [])
 
     # 1. Reconcile (3-tier dedup)
     try:
@@ -1474,17 +1475,57 @@ async def reconcile_and_persist_v4_node(state: dict[str, Any]) -> dict[str, Any]
         logger.warning("v4_reconciliation_failed", chapter=chapter_number, exc_info=True)
         alias_map = {}
 
-    # 2. Normalize names
+    # 2. Normalize names via intra-chapter dedup
     entities = state.get("entities", [])
     relations = state.get("relations", [])
     apply_alias_map_v4(entities, relations, alias_map)
+    apply_alias_map_v4([], ended_relations, alias_map)
 
-    # 3. Persist to Neo4j
+    # 3. Cross-chapter registry resolution
+    # Look up each extracted entity against the accumulated registry.
+    # If a registry entry exists (by name or alias), canonicalize to the registry name.
+    registry = EntityRegistry.from_dict(state.get("entity_registry", {}))
+    registry_alias_map: dict[str, str] = {}
+    for entity_dict in entities:
+        name = (entity_dict.get("canonical_name") or entity_dict.get("name", "")).lower().strip()
+        if not name:
+            continue
+        entry = registry.lookup(name)
+        if entry and entry.canonical_name != name:
+            registry_alias_map[name] = entry.canonical_name
+
+    if registry_alias_map:
+        apply_alias_map_v4(entities, relations, registry_alias_map)
+        apply_alias_map_v4([], ended_relations, registry_alias_map)
+        alias_map.update(registry_alias_map)
+        logger.info(
+            "v4_registry_resolution",
+            chapter=chapter_number,
+            resolved=len(registry_alias_map),
+        )
+
+    # 4. Ontology validation — strip invalid enum fields
+    ontology = state.get("ontology")
+    if ontology is not None:
+        for entity_dict in entities:
+            entity_type = entity_dict.get("entity_type", "")
+            errors = ontology.validate_entity(entity_type, entity_dict)
+            if errors:
+                logger.warning(
+                    "v4_entity_ontology_invalid",
+                    chapter=chapter_number,
+                    entity_type=entity_type,
+                    name=entity_dict.get("canonical_name") or entity_dict.get("name", ""),
+                    errors=errors,
+                )
+                for err in errors:
+                    if "." in err and "=" in err:
+                        field_name = err.split(".")[1].split("=")[0]
+                        entity_dict.pop(field_name, None)
+
+    # 5. Persist to Neo4j
     # Note: actual persistence happens in the worker (tasks.py), not in the graph node.
     # The graph node prepares the data; the worker calls entity_repo.upsert_v4_entities().
-
-    # 4. Update EntityRegistry
-    registry = EntityRegistry.from_dict(state.get("entity_registry", {}))
     for entity_dict in entities:
         entity_type = entity_dict.get("entity_type", "")
         name = entity_dict.get("canonical_name") or entity_dict.get("name", "")
@@ -1510,6 +1551,7 @@ async def reconcile_and_persist_v4_node(state: dict[str, Any]) -> dict[str, Any]
         "entity_registry": registry.to_dict(),
         "entities": entities,  # normalized
         "relations": relations,  # normalized
+        "ended_relations": ended_relations,  # normalized
     }
 
 

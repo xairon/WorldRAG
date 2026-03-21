@@ -120,6 +120,16 @@ CREATE CONSTRAINT quest_book_unique IF NOT EXISTS
 CREATE CONSTRAINT achievement_book_unique IF NOT EXISTS
   FOR (a:Achievement) REQUIRE (a.name, a.book_id) IS UNIQUE;
 
+// G5: Community hierarchy — uniqueness on community ID
+CREATE CONSTRAINT community_unique IF NOT EXISTS
+  FOR (c:Community) REQUIRE c.id IS UNIQUE;
+
+CREATE INDEX community_book IF NOT EXISTS
+  FOR (c:Community) ON (c.book_id);
+
+CREATE INDEX community_level IF NOT EXISTS
+  FOR (c:Community) ON (c.level);
+
 // Batch ID indexes for new types
 CREATE INDEX state_change_batch IF NOT EXISTS
   FOR (sc:StateChange) ON (sc.batch_id);
@@ -297,6 +307,19 @@ FOR ()-[r:RELATES_TO]-() ON (r.valid_from_chapter);
 
 CREATE INDEX rel_member_of_temporal IF NOT EXISTS
 FOR ()-[r:MEMBER_OF]-() ON (r.valid_from_chapter);
+
+// G4: valid_to_chapter indexes for temporal closing queries
+CREATE INDEX rel_has_class_valid_to IF NOT EXISTS
+FOR ()-[r:HAS_CLASS]-() ON (r.valid_to_chapter);
+
+CREATE INDEX rel_has_skill_valid_to IF NOT EXISTS
+FOR ()-[r:HAS_SKILL]-() ON (r.valid_to_chapter);
+
+CREATE INDEX rel_at_level_valid_to IF NOT EXISTS
+FOR ()-[r:AT_LEVEL]-() ON (r.valid_to_chapter);
+
+CREATE INDEX rel_relates_to_valid_to IF NOT EXISTS
+FOR ()-[r:RELATES_TO]-() ON (r.valid_to_chapter);
 
 CREATE INDEX rel_mentioned_in IF NOT EXISTS
 FOR ()-[r:MENTIONED_IN]-() ON (r.char_start);

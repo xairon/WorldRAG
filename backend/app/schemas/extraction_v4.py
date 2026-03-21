@@ -113,6 +113,8 @@ class ExtractedEvent(BaseModel):
 class ExtractedLocation(BaseModel):
     entity_type: Literal["location"] = "location"
     name: str = Field(..., description="Location name")
+    canonical_name: str = ""
+    aliases: list[str] = Field(default_factory=list)
     location_type: str = ""
     parent_location: str = ""
     description: str = ""
@@ -127,6 +129,8 @@ class ExtractedLocation(BaseModel):
 class ExtractedItem(BaseModel):
     entity_type: Literal["item"] = "item"
     name: str = Field(..., description="Item name")
+    canonical_name: str = ""
+    aliases: list[str] = Field(default_factory=list)
     item_type: str = ""
     rarity: str = ""
     effects: list[str] = Field(default_factory=list)
@@ -142,6 +146,8 @@ class ExtractedItem(BaseModel):
 class ExtractedCreature(BaseModel):
     entity_type: Literal["creature"] = "creature"
     name: str = Field(..., description="Creature name or species")
+    canonical_name: str = ""
+    aliases: list[str] = Field(default_factory=list)
     species: str = ""
     threat_level: str = ""
     habitat: str = ""
@@ -157,6 +163,8 @@ class ExtractedCreature(BaseModel):
 class ExtractedFaction(BaseModel):
     entity_type: Literal["faction"] = "faction"
     name: str = Field(..., description="Faction name")
+    canonical_name: str = ""
+    aliases: list[str] = Field(default_factory=list)
     faction_type: str = ""
     alignment: str = ""
     description: str = ""
@@ -171,6 +179,8 @@ class ExtractedFaction(BaseModel):
 class ExtractedConcept(BaseModel):
     entity_type: Literal["concept"] = "concept"
     name: str = Field(..., description="Concept name")
+    canonical_name: str = ""
+    aliases: list[str] = Field(default_factory=list)
     domain: str = ""
     description: str = ""
     extraction_text: str = ""
@@ -342,6 +352,15 @@ class EntitySummary(BaseModel):
     first_chapter: int | None = None
     last_chapter: int | None = None
     mention_count: int = 0
+
+
+class CommunitySummary(BaseModel):
+    """LLM-generated summary for a community of entities."""
+
+    summary: str = Field(..., description="1-3 sentence summary of the community")
+    key_themes: list[str] = Field(
+        default_factory=list, description="Key themes or roles of this community"
+    )
 
 
 # ── LangGraph State ───────────────────────────────────────────────────────

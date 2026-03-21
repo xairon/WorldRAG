@@ -522,10 +522,18 @@ def apply_alias_map_v4(
         return alias_map.get(name.lower(), name)
 
     for entity in entities:
+        old_name = entity.get("name", "")
         if "name" in entity:
             entity["name"] = _resolve(entity["name"])
         if "canonical_name" in entity:
             entity["canonical_name"] = _resolve(entity["canonical_name"])
+        # Preserve old name as alias when renamed
+        new_name = entity.get("canonical_name") or entity.get("name", "")
+        if old_name and new_name and old_name.lower() != new_name.lower():
+            aliases = entity.get("aliases", [])
+            if old_name not in aliases:
+                aliases.append(old_name)
+                entity["aliases"] = aliases
         # owner field (skills, classes, titles, items, bloodlines, professions)
         if "owner" in entity:
             entity["owner"] = _resolve(entity["owner"])

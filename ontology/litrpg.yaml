@@ -163,9 +163,9 @@ relationship_types:
 # Used by Passe 0 (regex pre-extraction, $0 cost)
 regex_patterns:
   skill_acquired:
-    pattern: '\[(?:Skill|Ability)\s+(?:Acquired|Learned|Gained):\s*(.+?)(?:\s*-\s*(.+?))?\]'
+    pattern: '\[(?:Skill|Ability)\s+(?:Acquired|Learned|Gained):\s*(.+?)(?:\s*-\s*(.+?)|\s+\(([^)]+)\))?\]'
     entity_type: Skill
-    captures: { name: 1, rank: 2 }
+    captures: { name: 1, rank: 2, rank_paren: 3 }
 
   level_up:
     pattern: 'Level:\s*(\d+)\s*(?:→|->|=>)\s*(\d+)'
@@ -178,9 +178,9 @@ regex_patterns:
     captures: { name: 1, tier_info: 2 }
 
   title_earned:
-    pattern: 'Title\s+(?:earned|obtained|acquired):\s*(.+?)(?:\n|$)'
+    pattern: '(?:\[)?Title\s+(?:earned|obtained|acquired):\s*(.+?)(?:\s+\(([^)]+)\))?(?:\]|\n|$)'
     entity_type: Title
-    captures: { name: 1 }
+    captures: { name: 1, rank: 2 }
 
   stat_increase:
     pattern: '\+(\d+)\s+(Strength|Agility|Endurance|Vitality|Toughness|Wisdom|Intelligence|Perception|Willpower|Charisma)'
@@ -193,9 +193,9 @@ regex_patterns:
     captures: { target: 1 }
 
   skill_evolved:
-    pattern: '\[(?:Skill|Ability)\s+(?:Evolved|Upgraded|Enhanced):\s*(.+?)\s*(?:→|->|=>)\s*(.+?)(?:\s*-\s*(.+?))?\]'
+    pattern: '\[(?:Skill|Ability)\s+(?:Evolved|Upgraded|Enhanced):\s*(.+?)\s*(?:→|->|=>)\s*(.+?)(?:\s*-\s*(.+?)|\s+\(([^)]+)\))?\]'
     entity_type: SkillEvolution
-    captures: { old_name: 1, new_name: 2, rank: 3 }
+    captures: { old_name: 1, new_name: 2, rank: 3, rank_paren: 4 }
 
   skill_rank_up:
     pattern: '\[(.+?)\s+(?:has\s+)?reached\s+(?:rank|level)\s+(.+?)\]'
@@ -238,9 +238,9 @@ regex_patterns:
     captures: { new_grade: 1 }
 
   item_acquired:
-    pattern: '\[(?:Item\s+)?(?:Acquired|Looted|Received|Found):\s*(.+?)(?:\s*-\s*(.+?))?\]'
+    pattern: '\[(?:Item\s+)?(?:Acquired|Looted|Received|Found):\s*(.+?)(?:\s*-\s*(.+?)|\s+\(([^)]+)\))?\]'
     entity_type: ItemAcquired
-    captures: { name: 1, rarity: 2 }
+    captures: { name: 1, rarity: 2, rarity_paren: 3 }
 
   death_event:
     pattern: '\[(.+?)\s+(?:has\s+)?(?:been\s+)?(?:slain|killed|defeated|fell)\]'
@@ -258,6 +258,6 @@ regex_patterns:
     captures: { amount: 1 }
 
   blue_box_generic:
-    pattern: '\[([^\[\]]{5,200})\]'
+    pattern: '\[((?:[^\[\]]|\[[^\[\]]*\]){5,200})\]'
     entity_type: SystemNotification
     captures: { content: 1 }

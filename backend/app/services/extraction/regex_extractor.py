@@ -132,11 +132,11 @@ class RegexExtractor:
             RegexPattern(
                 name="skill_acquired",
                 pattern=re.compile(
-                    r"\[(?:Skill|Ability)\s+(?:Acquired|Learned|Gained):\s*(.+?)(?:\s*-\s*(.+?))?\]",
+                    r"\[(?:Skill|Ability)\s+(?:Acquired|Learned|Gained):\s*(.+?)(?:\s*-\s*(.+?)|\s+\(([^)]+)\))?\]",
                     re.IGNORECASE,
                 ),
                 entity_type="Skill",
-                captures={"name": 1, "rank": 2},
+                captures={"name": 1, "rank": 2, "rank_paren": 3},
             ),
             RegexPattern(
                 name="level_up",
@@ -159,11 +159,11 @@ class RegexExtractor:
             RegexPattern(
                 name="title_earned",
                 pattern=re.compile(
-                    r"Title\s+(?:earned|obtained|acquired):\s*(.+?)(?:\n|$)",
+                    r"(?:\[)?Title\s+(?:earned|obtained|acquired):\s*(.+?)(?:\s+\(([^)]+)\))?(?:\]|\n|$)",
                     re.IGNORECASE,
                 ),
                 entity_type="Title",
-                captures={"name": 1},
+                captures={"name": 1, "rank": 2},
             ),
             RegexPattern(
                 name="stat_increase",
@@ -214,7 +214,7 @@ class RegexExtractor:
             RegexPattern(
                 name="blue_box_generic",
                 pattern=re.compile(
-                    r"\[([^\[\]]{5,200})\]",
+                    r"\[((?:[^\[\]]|\[[^\[\]]*\]){5,200})\]",
                 ),
                 entity_type="SystemNotification",
                 captures={"content": 1},
@@ -261,6 +261,14 @@ class RegexExtractor:
                             captures[capture_name] = value.strip()
                     except IndexError:
                         pass
+
+                # Normalize alternate capture groups: merge *_paren into base key
+                # e.g. rank_paren → rank, rarity_paren → rarity
+                for alt_key in [k for k in captures if k.endswith("_paren")]:
+                    base_key = alt_key.removesuffix("_paren")
+                    if base_key not in captures:
+                        captures[base_key] = captures[alt_key]
+                    del captures[alt_key]
 
                 matches.append(
                     RegexMatch(

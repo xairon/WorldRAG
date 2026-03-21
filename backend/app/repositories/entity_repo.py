@@ -34,6 +34,46 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+# ── Genre sub_type → Neo4j label mapping ────────────────────────────────
+# V4 GenreEntity entities arrive with sub_type (e.g. "bloodline", "floor").
+# Core genre types (skill, class, title, system, race) and layer-3 types
+# (bloodline, profession, church) have dedicated upsert methods.
+# This mapping covers ALL sub_types for the fallback generic upsert.
+_GENRE_SUBTYPE_LABEL_MAP: dict[str, str] = {
+    "skill": "Skill",
+    "class": "Class",
+    "title": "Title",
+    "system": "System",
+    "race": "Race",
+    "bloodline": "Bloodline",
+    "profession": "Profession",
+    "church": "PrimordialChurch",
+    "alchemy_recipe": "AlchemyRecipe",
+    "floor": "Floor",
+    "quest": "QuestObjective",
+    "achievement": "Achievement",
+    "realm": "Realm",
+}
+
+# Types that already have dedicated upsert methods in Phase 2
+_HANDLED_ENTITY_TYPES: set[str] = {
+    "character",
+    "skill",
+    "class",
+    "title",
+    "event",
+    "location",
+    "item",
+    "creature",
+    "faction",
+    "concept",
+    "level_change",
+    "stat_change",
+    "bloodline",
+    "profession",
+    "church",
+}
+
 
 class EntityRepository(Neo4jRepository):
     """Repository for KG entity CRUD operations."""
@@ -143,8 +183,13 @@ class EntityRepository(Neo4jRepository):
         _, summary = await self.execute_write_with_summary(
             """
             UNWIND $rels AS r
-            MATCH (a:Character {canonical_name: r.source, book_id: $book_id})
-            MATCH (b:Character {canonical_name: r.target, book_id: $book_id})
+            MATCH (a {book_id: $book_id})
+            WHERE (a.canonical_name = r.source OR a.name = r.source)
+              AND NOT a:Book AND NOT a:Chapter AND NOT a:Chunk AND NOT a:Paragraph
+            MATCH (b {book_id: $book_id})
+            WHERE (b.canonical_name = r.target OR b.name = r.target)
+              AND NOT b:Book AND NOT b:Chapter AND NOT b:Chunk AND NOT b:Paragraph
+            WITH a, b, r LIMIT 1
             MERGE (a)-[rel:RELATES_TO {
                 type: r.rel_type,
                 valid_from_chapter: r.since_chapter
@@ -240,6 +285,33 @@ class EntityRepository(Neo4jRepository):
             },
         )
 
+        # G4: Close open HAS_SKILL when a skill evolves (rank changes)
+        # If the same owner gains the same skill again with a new rank,
+        # the MERGE above updates the Skill node's rank. We close any
+        # open HAS_SKILL edges where the stored rank differs from the new rank,
+        # then a fresh edge is created by re-running MERGE on next encounter.
+        skills_with_rank = [s for s in data if s["owner"] and s["rank"]]
+        if skills_with_rank:
+            await self.execute_write(
+                """
+                UNWIND $skills AS s
+                MATCH (ch:Character {canonical_name: s.owner, book_id: $book_id})
+                      -[r:HAS_SKILL]->(sk:Skill {name: s.name, book_id: $book_id})
+                WHERE r.valid_to_chapter IS NULL
+                  AND r.valid_from_chapter < s.chapter
+                SET r.valid_to_chapter = s.chapter - 1
+                WITH ch, s
+                MATCH (sk:Skill {name: s.name, book_id: $book_id})
+                MERGE (ch)-[r2:HAS_SKILL {valid_from_chapter: s.chapter}]->(sk)
+                ON CREATE SET r2.rank = s.rank, r2.batch_id = $batch_id
+                """,
+                {
+                    "skills": skills_with_rank,
+                    "book_id": book_id,
+                    "batch_id": batch_id,
+                },
+            )
+
         # V3: Create immutable StateChange ledger nodes
         state_change_data = [
             {
@@ -303,6 +375,27 @@ class EntityRepository(Neo4jRepository):
             """,
             {"classes": data, "book_id": book_id, "batch_id": batch_id},
         )
+
+        # G4: Close open HAS_CLASS when a character gets a new/evolved class
+        # When a new class is acquired in a chapter, close any previous open
+        # HAS_CLASS edges for that character (class evolution replaces old class)
+        classes_with_owner = [c for c in data if c["owner"]]
+        if classes_with_owner:
+            await self.execute_write(
+                """
+                UNWIND $classes AS c
+                MATCH (ch:Character {canonical_name: c.owner, book_id: $book_id})
+                      -[r:HAS_CLASS]->(cls:Class {book_id: $book_id})
+                WHERE r.valid_to_chapter IS NULL
+                  AND cls.name <> c.name
+                  AND r.valid_from_chapter < c.chapter
+                SET r.valid_to_chapter = c.chapter - 1
+                """,
+                {
+                    "classes": classes_with_owner,
+                    "book_id": book_id,
+                },
+            )
 
         # V3: Create immutable StateChange ledger nodes
         state_change_data = [
@@ -505,6 +598,7 @@ class EntityRepository(Neo4jRepository):
         data = [
             {
                 "name": loc.name,
+                "canonical_name": (loc.canonical_name or loc.name).lower().strip(),
                 "description": loc.description,
                 "location_type": loc.location_type,
                 "parent": loc.parent_location,
@@ -517,11 +611,13 @@ class EntityRepository(Neo4jRepository):
             UNWIND $locs AS l
             MERGE (loc:Location {name: l.name, book_id: $book_id})
             ON CREATE SET
+                loc.canonical_name = l.canonical_name,
                 loc.description = l.description,
                 loc.location_type = l.location_type,
                 loc.batch_id = $batch_id,
                 loc.created_at = timestamp()
             ON MATCH SET
+                loc.canonical_name = l.canonical_name,
                 loc.description = CASE
                     WHEN size(l.description) > size(coalesce(loc.description, ''))
                     THEN l.description ELSE loc.description END,
@@ -566,7 +662,8 @@ class EntityRepository(Neo4jRepository):
         data = [
             {
                 "name": i.name,
-                "description": i.description,
+                "canonical_name": (getattr(i, "canonical_name", "") or i.name).lower().strip(),
+                "description": getattr(i, "description", ""),
                 "item_type": i.item_type,
                 "rarity": i.rarity,
                 "owner": i.owner,
@@ -579,6 +676,7 @@ class EntityRepository(Neo4jRepository):
             UNWIND $items AS i
             MERGE (it:Item {name: i.name, book_id: $book_id})
             ON CREATE SET
+                it.canonical_name = i.canonical_name,
                 it.description = i.description,
                 it.item_type = i.item_type,
                 it.rarity = i.rarity,
@@ -630,6 +728,7 @@ class EntityRepository(Neo4jRepository):
         data = [
             {
                 "name": c.name,
+                "canonical_name": (getattr(c, "canonical_name", "") or c.name).lower().strip(),
                 "description": c.description,
                 "species": c.species,
                 "threat_level": c.threat_level,
@@ -643,6 +742,7 @@ class EntityRepository(Neo4jRepository):
             UNWIND $creatures AS c
             MERGE (cr:Creature {name: c.name, book_id: $book_id})
             ON CREATE SET
+                cr.canonical_name = c.canonical_name,
                 cr.description = c.description,
                 cr.species = c.species,
                 cr.threat_level = c.threat_level,
@@ -671,6 +771,7 @@ class EntityRepository(Neo4jRepository):
         data = [
             {
                 "name": f.name,
+                "canonical_name": (getattr(f, "canonical_name", "") or f.name).lower().strip(),
                 "description": f.description,
                 "faction_type": f.faction_type,
                 "alignment": f.alignment,
@@ -683,6 +784,7 @@ class EntityRepository(Neo4jRepository):
             UNWIND $factions AS f
             MERGE (fa:Faction {name: f.name, book_id: $book_id})
             ON CREATE SET
+                fa.canonical_name = f.canonical_name,
                 fa.description = f.description,
                 fa.type = f.faction_type,
                 fa.alignment = f.alignment,
@@ -710,6 +812,7 @@ class EntityRepository(Neo4jRepository):
         data = [
             {
                 "name": c.name,
+                "canonical_name": (getattr(c, "canonical_name", "") or c.name).lower().strip(),
                 "description": c.description,
                 "domain": c.domain,
             }
@@ -721,6 +824,7 @@ class EntityRepository(Neo4jRepository):
             UNWIND $concepts AS c
             MERGE (co:Concept {name: c.name, book_id: $book_id})
             ON CREATE SET
+                co.canonical_name = c.canonical_name,
                 co.description = c.description,
                 co.domain = c.domain,
                 co.batch_id = $batch_id,
@@ -789,6 +893,28 @@ class EntityRepository(Neo4jRepository):
             SET ch.level = CASE
                 WHEN lc.new_level IS NOT NULL AND (ch.level IS NULL OR lc.new_level > ch.level)
                 THEN lc.new_level ELSE ch.level END
+            """,
+            {"changes": data, "book_id": book_id, "batch_id": batch_id},
+        )
+
+        # G4: Create temporal AT_LEVEL edges — close previous open level, then create new
+        await self.execute_write(
+            """
+            UNWIND $changes AS lc
+            MATCH (ch:Character {canonical_name: lc.character, book_id: $book_id})
+            MATCH (b:Book {id: $book_id})
+            WHERE lc.new_level IS NOT NULL
+            // Close any open AT_LEVEL relationships with a lower level
+            OPTIONAL MATCH (ch)-[old:AT_LEVEL]->(b)
+            WHERE old.valid_to_chapter IS NULL AND old.level < lc.new_level
+            SET old.valid_to_chapter = lc.chapter - 1
+            WITH ch, lc, b
+            WHERE lc.new_level IS NOT NULL
+            MERGE (ch)-[r:AT_LEVEL {level: lc.new_level}]->(b)
+            ON CREATE SET
+                r.valid_from_chapter = lc.chapter,
+                r.realm = lc.realm,
+                r.batch_id = $batch_id
             """,
             {"changes": data, "book_id": book_id, "batch_id": batch_id},
         )
@@ -1374,6 +1500,7 @@ class EntityRepository(Neo4jRepository):
         data = [
             {
                 "name": b.name,
+                "canonical_name": b.name.lower().strip(),
                 "description": b.description,
                 "effects": b.effects,
                 "origin": b.origin,
@@ -1386,8 +1513,9 @@ class EntityRepository(Neo4jRepository):
         await self.execute_write(
             """
             UNWIND $bloodlines AS b
-            MERGE (bl:Bloodline {name: b.name, book_id: $book_id})
+            MERGE (bl:Bloodline {canonical_name: b.canonical_name, book_id: $book_id})
             ON CREATE SET
+                bl.name = b.name,
                 bl.description = b.description,
                 bl.effects = b.effects,
                 bl.origin = b.origin,
@@ -1442,6 +1570,7 @@ class EntityRepository(Neo4jRepository):
         data = [
             {
                 "name": p.name,
+                "canonical_name": p.name.lower().strip(),
                 "tier": p.tier,
                 "profession_type": p.profession_type,
                 "owner": p.owner,
@@ -1453,8 +1582,9 @@ class EntityRepository(Neo4jRepository):
         await self.execute_write(
             """
             UNWIND $professions AS p
-            MERGE (pr:Profession {name: p.name, book_id: $book_id})
+            MERGE (pr:Profession {canonical_name: p.canonical_name, book_id: $book_id})
             ON CREATE SET
+                pr.name = p.name,
                 pr.tier = p.tier,
                 pr.profession_type = p.profession_type,
                 pr.batch_id = $batch_id,
@@ -1502,6 +1632,7 @@ class EntityRepository(Neo4jRepository):
         data = [
             {
                 "deity_name": c.deity_name,
+                "canonical_name": c.deity_name.lower().strip(),
                 "domain": c.domain,
                 "blessing": c.blessing,
                 "worshipper": c.worshipper,
@@ -1513,8 +1644,10 @@ class EntityRepository(Neo4jRepository):
         await self.execute_write(
             """
             UNWIND $churches AS c
-            MERGE (pc:PrimordialChurch {deity_name: c.deity_name, book_id: $book_id})
+            MERGE (pc:PrimordialChurch {canonical_name: c.canonical_name, book_id: $book_id})
             ON CREATE SET
+                pc.deity_name = c.deity_name,
+                pc.name = c.deity_name,
                 pc.domain = c.domain,
                 pc.batch_id = $batch_id,
                 pc.created_at = timestamp()
@@ -1546,6 +1679,79 @@ class EntityRepository(Neo4jRepository):
             "churches_upserted", book_id=book_id, chapter=chapter_number, count=len(churches)
         )
         return len(churches)
+
+    # ── Generic genre entity upsert (fallback for unmapped sub_types) ───
+
+    async def upsert_genre_entities(
+        self,
+        book_id: str,
+        chapter_number: int,
+        entity_type: str,
+        entities: list,
+        batch_id: str = "",
+    ) -> int:
+        """Upsert genre entities with proper Neo4j labels based on sub_type.
+
+        Uses _GENRE_SUBTYPE_LABEL_MAP to resolve the Neo4j label.
+        Falls back to 'GenreEntity' if the sub_type is unknown.
+        Since labels come from a controlled mapping (not user input),
+        f-string interpolation is safe — same pattern as apply_relation_end.
+        """
+        if not entities:
+            return 0
+
+        label = _GENRE_SUBTYPE_LABEL_MAP.get(entity_type, "GenreEntity")
+
+        data = [
+            {
+                "name": getattr(e, "name", e.get("name", "")) if isinstance(e, dict) else e.name,
+                "canonical_name": (
+                    getattr(e, "name", e.get("name", "")) if isinstance(e, dict) else e.name
+                ).lower().strip(),
+                "description": (
+                    getattr(e, "description", e.get("description", ""))
+                    if isinstance(e, dict)
+                    else getattr(e, "description", "")
+                ),
+                "sub_type": entity_type,
+            }
+            for e in entities
+        ]
+
+        await self.execute_write(
+            f"""
+            UNWIND $entities AS e
+            MERGE (n:{label} {{canonical_name: e.canonical_name, book_id: $book_id}})
+            ON CREATE SET
+                n.name = e.name,
+                n.description = e.description,
+                n.sub_type = e.sub_type,
+                n.batch_id = $batch_id,
+                n.valid_from_chapter = $chapter,
+                n.created_at = timestamp()
+            ON MATCH SET
+                n.description = CASE
+                    WHEN size(e.description) > size(coalesce(n.description, ''))
+                    THEN e.description ELSE n.description END,
+                n.batch_id = $batch_id
+            """,
+            {
+                "entities": data,
+                "book_id": book_id,
+                "batch_id": batch_id,
+                "chapter": chapter_number,
+            },
+        )
+
+        logger.info(
+            "genre_entities_upserted",
+            book_id=book_id,
+            chapter=chapter_number,
+            entity_type=entity_type,
+            label=label,
+            count=len(entities),
+        )
+        return len(entities)
 
     # ── StateChange ledger (V3 dual-write) ──────────────────────────────
 
@@ -1628,11 +1834,18 @@ class EntityRepository(Neo4jRepository):
         Since relation_type comes from a controlled Literal enum (16 values),
         the f-string interpolation is safe — not user input.
         """
-        node_book_filter = ", book_id: $book_id" if book_id else ""
+        book_filter_a = "AND a.book_id = $book_id" if book_id else ""
+        book_filter_b = "AND b.book_id = $book_id" if book_id else ""
         rel_book_filter = "AND r.book_id = $book_id" if book_id else ""
         query = f"""
-            MATCH (a {{canonical_name: $source{node_book_filter}}})-[r:{relation_type}]->(b {{name: $target{node_book_filter}}})
-            WHERE r.valid_to_chapter IS NULL
+            MATCH (a)-[r:{relation_type}]->(b)
+            WHERE (a.canonical_name = $source OR a.name = $source)
+            AND NOT a:Book AND NOT a:Chapter
+            {book_filter_a}
+            AND (b.canonical_name = $target OR b.name = $target)
+            AND NOT b:Book AND NOT b:Chapter
+            {book_filter_b}
+            AND r.valid_to_chapter IS NULL
             {rel_book_filter}
             SET r.valid_to_chapter = $ended_at_chapter,
                 r.end_reason = $reason
@@ -1915,6 +2128,9 @@ class EntityRepository(Neo4jRepository):
         if "church" in by_type:
             churches = [_ns(e) for e in by_type["church"]]
             for ch in churches:
+                # V4 GenreEntity uses "name"; upsert_churches expects "deity_name"
+                if not hasattr(ch, "deity_name"):
+                    ch.deity_name = getattr(ch, "name", "")
                 if not hasattr(ch, "domain"):
                     ch.domain = ""
                 if not hasattr(ch, "blessing"):
@@ -1942,56 +2158,94 @@ class EntityRepository(Neo4jRepository):
         # All entity types are independent — safe to run concurrently.
         entity_coros: list[tuple[str, Any]] = []
         if chars:
-            entity_coros.append(("characters", self.upsert_characters(
-                book_id, chapter_number, chars, batch_id)))
+            entity_coros.append(
+                ("characters", self.upsert_characters(book_id, chapter_number, chars, batch_id))
+            )
         if skills:
-            entity_coros.append(("skills", self.upsert_skills(
-                book_id, chapter_number, skills, batch_id)))
+            entity_coros.append(
+                ("skills", self.upsert_skills(book_id, chapter_number, skills, batch_id))
+            )
         if classes:
-            entity_coros.append(("classes", self.upsert_classes(
-                book_id, chapter_number, classes, batch_id)))
+            entity_coros.append(
+                ("classes", self.upsert_classes(book_id, chapter_number, classes, batch_id))
+            )
         if titles:
-            entity_coros.append(("titles", self.upsert_titles(
-                book_id, chapter_number, titles, batch_id)))
+            entity_coros.append(
+                ("titles", self.upsert_titles(book_id, chapter_number, titles, batch_id))
+            )
         if events:
-            entity_coros.append(("events", self.upsert_events(
-                book_id, chapter_number, events, batch_id)))
+            entity_coros.append(
+                ("events", self.upsert_events(book_id, chapter_number, events, batch_id))
+            )
         if locations:
-            entity_coros.append(("locations", self.upsert_locations(
-                book_id, chapter_number, locations, batch_id)))
+            entity_coros.append(
+                ("locations", self.upsert_locations(book_id, chapter_number, locations, batch_id))
+            )
         if items:
-            entity_coros.append(("items", self.upsert_items(
-                book_id, chapter_number, items, batch_id)))
+            entity_coros.append(
+                ("items", self.upsert_items(book_id, chapter_number, items, batch_id))
+            )
         if creatures:
-            entity_coros.append(("creatures", self.upsert_creatures(
-                book_id, chapter_number, creatures, batch_id)))
+            entity_coros.append(
+                ("creatures", self.upsert_creatures(book_id, chapter_number, creatures, batch_id))
+            )
         if factions:
-            entity_coros.append(("factions", self.upsert_factions(
-                book_id, chapter_number, factions, batch_id)))
+            entity_coros.append(
+                ("factions", self.upsert_factions(book_id, chapter_number, factions, batch_id))
+            )
         if concepts:
-            entity_coros.append(("concepts", self.upsert_concepts(
-                book_id, chapter_number, concepts, batch_id)))
+            entity_coros.append(
+                ("concepts", self.upsert_concepts(book_id, chapter_number, concepts, batch_id))
+            )
         if level_changes:
-            entity_coros.append(("level_changes", self.upsert_level_changes(
-                book_id, chapter_number, level_changes, batch_id)))
+            entity_coros.append(
+                (
+                    "level_changes",
+                    self.upsert_level_changes(book_id, chapter_number, level_changes, batch_id),
+                )
+            )
         if stat_changes:
-            entity_coros.append(("stat_changes", self.upsert_stat_changes(
-                book_id, chapter_number, stat_changes, batch_id)))
+            entity_coros.append(
+                (
+                    "stat_changes",
+                    self.upsert_stat_changes(book_id, chapter_number, stat_changes, batch_id),
+                )
+            )
         if bloodlines:
-            entity_coros.append(("bloodlines", self.upsert_bloodlines(
-                book_id, chapter_number, bloodlines, batch_id)))
+            entity_coros.append(
+                (
+                    "bloodlines",
+                    self.upsert_bloodlines(book_id, chapter_number, bloodlines, batch_id),
+                )
+            )
         if professions:
-            entity_coros.append(("professions", self.upsert_professions(
-                book_id, chapter_number, professions, batch_id)))
+            entity_coros.append(
+                (
+                    "professions",
+                    self.upsert_professions(book_id, chapter_number, professions, batch_id),
+                )
+            )
         if churches:
-            entity_coros.append(("churches", self.upsert_churches(
-                book_id, chapter_number, churches, batch_id)))
+            entity_coros.append(
+                ("churches", self.upsert_churches(book_id, chapter_number, churches, batch_id))
+            )
+
+        # ── Fallback: unmapped genre sub_types (floor, alchemy_recipe, etc.)
+        for etype, etype_entities in by_type.items():
+            if etype not in _HANDLED_ENTITY_TYPES:
+                ns_list = [_ns(e) for e in etype_entities]
+                entity_coros.append(
+                    (
+                        etype,
+                        self.upsert_genre_entities(
+                            book_id, chapter_number, etype, ns_list, batch_id
+                        ),
+                    )
+                )
 
         if entity_coros:
             entity_keys = [key for key, _ in entity_coros]
-            entity_results = await asyncio.gather(
-                *(coro for _, coro in entity_coros)
-            )
+            entity_results = await asyncio.gather(*(coro for _, coro in entity_coros))
             for key, result_count in zip(entity_keys, entity_results):
                 counts[key] = result_count
 
@@ -2073,6 +2327,9 @@ class EntityRepository(Neo4jRepository):
         summary: str,
         member_names: list[str],
         batch_id: str,
+        level: int = 0,
+        resolution: float = 1.0,
+        key_themes: list[str] | None = None,
     ) -> None:
         """Create/update community node + member edges. Uses MERGE."""
         await self.execute_write(
@@ -2083,11 +2340,17 @@ class EntityRepository(Neo4jRepository):
                 comm.summary = $summary,
                 comm.member_count = size($member_names),
                 comm.batch_id = $batch_id,
+                comm.level = $level,
+                comm.resolution = $resolution,
+                comm.key_themes = $key_themes,
                 comm.created_at = datetime()
             ON MATCH SET
                 comm.summary = $summary,
                 comm.member_count = size($member_names),
-                comm.batch_id = $batch_id
+                comm.batch_id = $batch_id,
+                comm.level = $level,
+                comm.resolution = $resolution,
+                comm.key_themes = $key_themes
             WITH comm
             UNWIND $member_names AS member_name
             MATCH (e {canonical_name: member_name, book_id: $book_id})
@@ -2099,13 +2362,47 @@ class EntityRepository(Neo4jRepository):
                 "summary": summary,
                 "member_names": member_names,
                 "batch_id": batch_id,
+                "level": level,
+                "resolution": resolution,
+                "key_themes": key_themes or [],
             },
         )
         logger.info(
             "community_upserted",
             community_id=community_id,
             book_id=book_id,
+            level=level,
             member_count=len(member_names),
+        )
+
+    async def link_parent_community(
+        self,
+        child_id: str,
+        parent_id: str,
+        book_id: str,
+    ) -> None:
+        """Create PARENT_COMMUNITY edge between child and parent community."""
+        await self.execute_write(
+            """
+            MATCH (child:Community {id: $child_id, book_id: $book_id})
+            MATCH (parent:Community {id: $parent_id, book_id: $book_id})
+            MERGE (child)-[:PARENT_COMMUNITY]->(parent)
+            """,
+            {
+                "child_id": child_id,
+                "parent_id": parent_id,
+                "book_id": book_id,
+            },
+        )
+
+    async def delete_communities_for_book(self, book_id: str) -> None:
+        """Remove all existing communities for a book before re-clustering."""
+        await self.execute_write(
+            """
+            MATCH (comm:Community {book_id: $book_id})
+            DETACH DELETE comm
+            """,
+            {"book_id": book_id},
         )
 
     # ── Bulk upsert from extraction result ─────────────────────────────

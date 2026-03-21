@@ -41,8 +41,8 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     gemini_api_key: str = ""
 
-    # --- Extraction (V4 Instructor pipeline — default: DeepSeek V3 via OpenRouter) ---
-    langextract_model: str = "openrouter:deepseek/deepseek-v3.2"
+    # --- Extraction (V4 Instructor pipeline) ---
+    langextract_model: str = "openrouter:anthropic/claude-haiku-4.5"
     langextract_passes: int = 2  # V3 legacy only
     langextract_max_workers: int = 20  # V3 legacy only
     langextract_batch_chapters: int = 10
@@ -90,7 +90,7 @@ class Settings(BaseSettings):
 
     # --- Task Queue (arq) ---
     arq_max_jobs: int = 5
-    arq_job_timeout: int = 3600  # 1 hour per job (full book extraction)
+    arq_job_timeout: int = 86400  # 24h — effectively no timeout for any book
     arq_keep_result: int = 86400  # keep job results for 24h
 
     # --- V3 Extraction Pipeline ---

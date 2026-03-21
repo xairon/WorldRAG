@@ -122,13 +122,33 @@ def build_extraction_prompt(
             "- NE PAS traduire les noms propres, les conserver tels quels dans le texte source"
         )
         sections.append("- Utiliser le canonical_name en minuscules, sans articles (le/la/les/the)")
+        sections.append(
+            "- Les entités CHARACTER doivent avoir un nom propre — NE PAS extraire les "
+            "descriptions de rôle génériques ('le guerrier', 'le mage', 'vieil homme') "
+            "comme personnages. Seuls les individus nommés sont acceptés."
+        )
+        sections.append(
+            "- Si une entité du Registre d'entités connues correspond au personnage "
+            "décrit, utiliser le MÊME canonical_name du registre et lister les nouvelles "
+            "variantes de nom dans aliases. NE PAS créer de doublons."
+        )
     else:
         sections.append("- Extract ONLY entity types listed in the target ontology")
         sections.append("- Each entity MUST have extraction_text matching the source text EXACTLY")
         sections.append("- Assign a confidence score (0.0 to 1.0) for each extracted entity")
         sections.append("- Do NOT invent information absent from the text")
-        sections.append("- Do NOT translate proper nouns \u2014 keep them as-is from source text")
+        sections.append("- Do NOT translate proper nouns — keep them as-is from source text")
         sections.append("- Use canonical_name in lowercase, without articles (the/a/an)")
+        sections.append(
+            "- CHARACTER entities MUST have a proper name — do NOT extract generic role "
+            "descriptions ('the warrior', 'the caster', 'old man', 'heavy warrior', 'a scout') "
+            "as characters. Only named individuals qualify."
+        )
+        sections.append(
+            "- If an entity from the Known entity registry already matches the character "
+            "being described, use the SAME canonical_name from the registry and list any "
+            "new name variants in aliases. Do NOT create duplicate entities."
+        )
 
     # [FOCUS] — optional router hints
     if router_hints:

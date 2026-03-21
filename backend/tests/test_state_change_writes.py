@@ -106,7 +106,8 @@ class TestUpsertLevelChangesCreatesStateChange:
             ),
         ]
         await repo.upsert_level_changes(BOOK_ID, CHAPTER, levels, BATCH_ID)
-        state_call = mock_neo4j_session.run.call_args_list[1]
+        # G4 added a temporal AT_LEVEL write at index [1], so StateChange is now at [2]
+        state_call = mock_neo4j_session.run.call_args_list[2]
         params = state_call[0][1]
         changes = params["changes"]
         assert len(changes) == 1
@@ -122,7 +123,8 @@ class TestUpsertLevelChangesCreatesStateChange:
             ExtractedLevelChange(character="Jake Thayne", old_level=None, new_level=88),
         ]
         await repo.upsert_level_changes(BOOK_ID, CHAPTER, levels, BATCH_ID)
-        state_call = mock_neo4j_session.run.call_args_list[1]
+        # G4 added a temporal AT_LEVEL write at index [1], so StateChange is now at [2]
+        state_call = mock_neo4j_session.run.call_args_list[2]
         params = state_call[0][1]
         changes = params["changes"]
         assert changes[0]["value_delta"] is None
@@ -213,7 +215,8 @@ class TestUpsertClassesCreatesStateChange:
             ExtractedClass(name="Arcane Hunter", owner="Jake Thayne"),
         ]
         await repo.upsert_classes(BOOK_ID, CHAPTER, classes, BATCH_ID)
-        state_call = mock_neo4j_session.run.call_args_list[1]
+        # G4 added a temporal HAS_CLASS close write at index [1], so StateChange is now at [2]
+        state_call = mock_neo4j_session.run.call_args_list[2]
         params = state_call[0][1]
         changes = params["changes"]
         assert len(changes) == 1

@@ -357,6 +357,63 @@ class OntologyLoader:
                 schema[name]["constraints"] = node_type.constraints
         return schema
 
+    def extend_with_induced(self, induced: dict[str, Any]) -> None:
+        """Merge auto-induced types into the loaded ontology at runtime.
+
+        Adds entity types and relationship types discovered by the ontology
+        inducer.  These are NOT persisted to YAML — they exist only for the
+        duration of this extraction run.
+
+        Args:
+            induced: Dict with "node_types" and "relationship_types" lists,
+                     as returned by ``induce_ontology()``.
+        """
+        added_nodes = 0
+        for nt in induced.get("node_types") or []:
+            name = nt["name"]
+            if name in self.node_types:
+                continue  # Don't overwrite existing types
+
+            # Build properties from the suggested property names
+            props: dict[str, OntologyProperty] = {
+                "name": OntologyProperty(name="name", type="string", required=True, unique=True),
+                "description": OntologyProperty(name="description", type="string"),
+            }
+            for prop_name in nt.get("properties") or []:
+                if prop_name not in props:
+                    props[prop_name] = OntologyProperty(name=prop_name, type="string")
+
+            self.node_types[name] = OntologyNodeType(name=name, properties=props)
+            self._node_type_origin[name] = "induced"
+            added_nodes += 1
+
+        added_rels = 0
+        for rt in induced.get("relationship_types") or []:
+            name = rt["name"]
+            if name in self.relationship_types:
+                continue
+
+            self.relationship_types[name] = OntologyRelationType(
+                name=name,
+                from_type=rt.get("source_type", ""),
+                to_type=rt.get("target_type", ""),
+            )
+            added_rels += 1
+
+        # Rebuild enum index with any new types
+        self._build_enum_index()
+
+        if added_nodes or added_rels:
+            self.layers_loaded.append("induced")
+
+        logger.info(
+            "ontology_extended_with_induced",
+            added_node_types=added_nodes,
+            added_relationship_types=added_rels,
+            total_node_types=len(self.node_types),
+            total_relationship_types=len(self.relationship_types),
+        )
+
     def get_regex_patterns_list(self) -> list[dict[str, Any]]:
         """Return regex patterns as a list of dicts with name and layer info.
 
