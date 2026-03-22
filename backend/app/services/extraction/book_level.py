@@ -7,6 +7,7 @@ Runs after all chapters are extracted. Three operations:
 """
 
 import asyncio
+import json
 import time
 from typing import Any
 
@@ -175,46 +176,48 @@ async def iterative_cluster(
                 alias_ids = [r["nid"] for r in node_records[1:]]
 
                 for alias_id in alias_ids:
-                    # Transfer all outgoing relationships from alias to canonical
-                    # Uses apoc.merge.relationship for dynamic typed edges
-                    await session.run(
+                    # Collect outgoing rels from alias, recreate on canonical, delete alias
+                    # No APOC — read rel types, then use f-string Cypher per type
+                    out_rels = await session.run(
                         """
                         MATCH (alias)-[r]->(target)
                         WHERE id(alias) = $alias_id AND id(target) <> $canonical_id
-                        WITH alias, r, target, type(r) AS rel_type, properties(r) AS props
-                        MATCH (canonical) WHERE id(canonical) = $canonical_id
-                        WITH alias, r, target, canonical, rel_type, props
-                        WHERE NOT EXISTS {
-                            MATCH (canonical)-[existing]->(target)
-                            WHERE type(existing) = type(r)
-                        }
-                        CALL apoc.merge.relationship(canonical, rel_type, {}, props, target, {})
-                        YIELD rel AS nr
-                        RETURN nr
+                        RETURN type(r) AS rel_type, properties(r) AS props, id(target) AS tid
                         """,
-                        alias_id=alias_id,
-                        canonical_id=canonical_id,
+                        alias_id=alias_id, canonical_id=canonical_id,
                     )
+                    for rec in await out_rels.data():
+                        rt = "".join(c for c in rec["rel_type"] if c.isalnum() or c == "_") or "RELATES_TO"
+                        await session.run(
+                            f"""
+                            MATCH (canon) WHERE id(canon) = $cid
+                            MATCH (target) WHERE id(target) = $tid
+                            MERGE (canon)-[nr:{rt}]->(target)
+                            SET nr += $props
+                            """,
+                            cid=canonical_id, tid=rec["tid"], props=rec["props"],
+                        )
 
-                    # Transfer all incoming relationships from alias to canonical
-                    await session.run(
+                    # Transfer incoming rels
+                    in_rels = await session.run(
                         """
                         MATCH (source)-[r]->(alias)
                         WHERE id(alias) = $alias_id AND id(source) <> $canonical_id
-                        WITH alias, r, source, type(r) AS rel_type, properties(r) AS props
-                        MATCH (canonical) WHERE id(canonical) = $canonical_id
-                        WITH alias, r, source, canonical, rel_type, props
-                        WHERE NOT EXISTS {
-                            MATCH (source)-[existing]->(canonical)
-                            WHERE type(existing) = type(r)
-                        }
-                        CALL apoc.merge.relationship(source, rel_type, {}, props, canonical, {})
-                        YIELD rel AS nr
-                        RETURN nr
+                        RETURN type(r) AS rel_type, properties(r) AS props, id(source) AS sid
                         """,
-                        alias_id=alias_id,
-                        canonical_id=canonical_id,
+                        alias_id=alias_id, canonical_id=canonical_id,
                     )
+                    for rec in await in_rels.data():
+                        rt = "".join(c for c in rec["rel_type"] if c.isalnum() or c == "_") or "RELATES_TO"
+                        await session.run(
+                            f"""
+                            MATCH (source) WHERE id(source) = $sid
+                            MATCH (canon) WHERE id(canon) = $cid
+                            MERGE (source)-[nr:{rt}]->(canon)
+                            SET nr += $props
+                            """,
+                            sid=rec["sid"], cid=canonical_id, props=rec["props"],
+                        )
 
                     # Delete the alias node and all its remaining relationships
                     await session.run(
@@ -828,7 +831,7 @@ async def generate_state_snapshots(
                         "name": char_name,
                         "book_id": book_id,
                         "chapter": chapter_num,
-                        "levels": str(snap.get("levels", [])),
+                        "levels": json.dumps(snap.get("levels", [])),
                         "skills": snap.get("skills", []),
                         "classes": snap.get("classes", []),
                         "titles": snap.get("titles", []),

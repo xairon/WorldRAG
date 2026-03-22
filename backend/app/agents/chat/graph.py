@@ -143,9 +143,9 @@ def build_chat_graph(
         route = state.get("route", "")
         multi_hop_results: list[dict[str, Any]] = []
         if route in ("relationship_qa", "analytical"):
-            # Extract entity names from transformed queries for multi-hop
+            # Use entity names from KG query results for multi-hop traversal
             entity_candidates = [
-                q for q in queries
+                e["name"] for e in state.get("kg_entities", []) if e.get("name")
             ]
             multi_hop_task = _multi_hop_graph_search(
                 repo,

@@ -685,17 +685,17 @@ async def streaming_chapter_dedup(
                 canonical = ex["name"]  # keep the original (existing) name
                 merge_map[name] = canonical
 
-                # Transfer relationships from duplicate to canonical, then delete
+                # Merge duplicate into canonical: copy aliases, then delete duplicate
+                # Relations are not transferred here (no dynamic rel types in pure Cypher)
+                # — the book-level iterative_cluster handles full merge with rel transfer
                 await entity_repo.execute_write(
                     """
                     MATCH (dup {canonical_name: $old_name, book_id: $book_id})
                     MATCH (canon {canonical_name: $new_name, book_id: $book_id})
                     WHERE dup <> canon
-                    OPTIONAL MATCH (dup)-[r]->()
-                    WITH dup, canon, collect(r) AS rels
-                    FOREACH (r IN rels |
-                        DELETE r
-                    )
+                    // Copy aliases from duplicate to canonical
+                    SET canon.aliases = coalesce(canon.aliases, []) + coalesce(dup.aliases, []) + [$old_name]
+                    WITH dup
                     DETACH DELETE dup
                     """,
                     {"old_name": entity.get("canonical_name") or entity.get("name", ""),
