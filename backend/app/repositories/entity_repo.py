@@ -1001,8 +1001,10 @@ class EntityRepository(Neo4jRepository):
             """
             UNWIND $changes AS sc
             MATCH (ch:Character {canonical_name: sc.character, book_id: $book_id})
-            MERGE (stat:Concept {name: sc.stat_name, domain: 'stat', book_id: $book_id})
+            MERGE (stat:Concept {name: sc.stat_name, book_id: $book_id})
             ON CREATE SET
+                stat.canonical_name = toLower(sc.stat_name),
+                stat.domain = 'stat',
                 stat.description = sc.stat_name + ' stat',
                 stat.batch_id = $batch_id,
                 stat.created_at = timestamp()
