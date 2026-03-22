@@ -100,7 +100,7 @@ class ExtractedEvent(BaseModel):
     event_type: CoercedEventType = "action"
     significance: CoercedSignificance = "moderate"
     participants: list[str] = Field(default_factory=list)
-    location: str = ""
+    location: str | None = ""
     is_flashback: bool = False
     extraction_text: str = ""
     char_offset_start: int = -1
