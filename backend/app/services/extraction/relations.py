@@ -21,16 +21,30 @@ async def _call_instructor_relations(
     prompt: str,
     chapter_text: str,
     model_override: str | None,
+    dynamic_context: str = "",
 ) -> RelationExtractionResult:
-    """Call Instructor for relation extraction. Separated for testability."""
+    """Call Instructor for relation extraction. Separated for testability.
+
+    When dynamic_context is provided (split prompt mode for Gemini caching),
+    the static system prompt stays identical across chapters (cacheable),
+    and the dynamic context + chapter text go in the user message.
+    """
     client, model = get_instructor_for_extraction(model_override)
+    if dynamic_context:
+        user_content = f"{dynamic_context}\n\n[TEXT]\n{chapter_text}"
+        messages = [
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": user_content},
+        ]
+    else:
+        messages = [
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": chapter_text},
+        ]
     return await client.chat.completions.create(
         model=model,
         response_model=RelationExtractionResult,
-        messages=[
-            {"role": "system", "content": prompt},
-            {"role": "user", "content": chapter_text},
-        ],
+        messages=messages,
         max_retries=2,
     )
 
@@ -49,15 +63,19 @@ async def extract_relations_node(state: dict[str, Any]) -> dict[str, Any]:
     # Serialize entities for prompt injection
     entities_json = json.dumps(entities, ensure_ascii=False, indent=2)
 
-    # Build prompt
-    prompt = build_relation_prompt(
+    # Build prompt — split mode for Gemini prefix caching
+    prompt_result = build_relation_prompt(
         ontology=ontology,
         entities_json=entities_json,
         language=state.get("source_language", "en"),
+        split_for_caching=True,
     )
+    static_prompt, dynamic_context = prompt_result  # type: ignore[misc]
 
-    # Call LLM
-    result = await _call_instructor_relations(prompt, chapter_text, state.get("model_override"))
+    # Call LLM — static system prompt is cacheable across chapters
+    result = await _call_instructor_relations(
+        static_prompt, chapter_text, state.get("model_override"), dynamic_context
+    )
 
     # Post-coerce relation types from ontology
     allowed = set(ontology.get_relationship_type_names())

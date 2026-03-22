@@ -27,6 +27,7 @@ VALID_ROUTES = {
     "relationship_qa",
     "timeline_qa",
     "analytical",
+    "global_summary",
     "conversational",
 }
 

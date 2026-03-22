@@ -18,7 +18,12 @@ from .nodes.kg_query import kg_search
 from .nodes.memory import load_memory, summarize_memory
 from .nodes.query_transform import transform_query
 from .nodes.rerank import rerank_results
-from .nodes.retrieve import _relationship_embedding_search, hybrid_retrieve
+from .nodes.retrieve import (
+    _community_summary_search,
+    _multi_hop_graph_search,
+    _relationship_embedding_search,
+    hybrid_retrieve,
+)
 from .nodes.rewrite import rewrite_query
 from .nodes.router import classify_intent
 from .nodes.temporal_sort import temporal_sort
@@ -46,6 +51,8 @@ def _route_after_router(state: dict[str, Any]) -> str:
         return "kg_query"
     if route == "conversational":
         return "generate"
+    if route == "global_summary":
+        return "community_retrieve"
     # entity_qa, relationship_qa, timeline_qa, analytical → hybrid RAG path
     return "query_transform"
 
@@ -130,7 +137,46 @@ def build_chat_graph(
             max_chapter=state.get("max_chapter"),
         )
 
-        fused_results, rel_results = await asyncio.gather(fused_task, rel_task)
+        tasks: list = [fused_task, rel_task]
+
+        # Multi-hop graph traversal for relationship/analytical queries
+        route = state.get("route", "")
+        multi_hop_results: list[dict[str, Any]] = []
+        if route in ("relationship_qa", "analytical"):
+            # Extract entity names from transformed queries for multi-hop
+            entity_candidates = [
+                q for q in queries
+            ]
+            multi_hop_task = _multi_hop_graph_search(
+                repo,
+                query_entities=entity_candidates,
+                book_id=state["book_id"],
+                top_k=15,
+                max_chapter=state.get("max_chapter"),
+            )
+            tasks.append(multi_hop_task)
+
+        results = await asyncio.gather(*tasks)
+        fused_results = results[0]
+        rel_results = results[1]
+
+        if len(results) > 2:
+            multi_hop_results = results[2]
+
+        # If multi-hop returned chunks, synthesize node_ids and merge into fused via RRF
+        if multi_hop_results:
+            from app.agents.chat.nodes.retrieve import rrf_fuse
+
+            # Assign synthetic node_ids to multi-hop results for RRF compatibility
+            for i, r in enumerate(multi_hop_results):
+                if "node_id" not in r:
+                    r["node_id"] = f"multihop_{i}_{r.get('via_entity', '')}"
+
+            fused_results = rrf_fuse(
+                [fused_results, multi_hop_results],
+                weights=[1.0, 0.4],
+                top_k=15,
+            )
 
         return {
             "fused_results": fused_results,
@@ -143,6 +189,37 @@ def build_chat_graph(
             return {}
         deduped = await deduplicate_chunks(chunks, embedder)
         return {"deduplicated_chunks": deduped, "reranked_chunks": deduped}
+
+    async def _community_retrieve_node(state: dict[str, Any]) -> dict[str, Any]:
+        """Retrieve community summaries for global/thematic queries."""
+        summaries = await _community_summary_search(
+            repo,
+            book_id=state["book_id"],
+            query=state["query"],
+            top_k=8,
+        )
+        # Convert community summaries into reranked_chunks format for context assembly
+        chunks = []
+        for i, s in enumerate(summaries):
+            chunks.append({
+                "node_id": f"community_{s.get('community_id', i)}",
+                "text": s.get("text", ""),
+                "chapter_number": 0,
+                "chapter_title": f"Community (level {s.get('level', '?')}, {s.get('member_count', 0)} members)",
+                "relevance_score": 1.0 - i * 0.05,
+            })
+        community_ctx = [
+            {
+                "community_summary": s.get("text", ""),
+                "key_themes": s.get("themes") or [],
+                "entity_name": f"Community L{s.get('level', '?')}",
+            }
+            for s in summaries
+        ]
+        return {
+            "reranked_chunks": chunks,
+            "community_context": community_ctx,
+        }
 
     async def _kg_query_node(state: dict[str, Any]) -> dict[str, Any]:
         return await kg_search(state, repo=repo)
@@ -168,6 +245,7 @@ def build_chat_graph(
     builder.add_node("faithfulness_check", check_faithfulness)
     builder.add_node("rewrite_query", rewrite_query)
     builder.add_node("kg_query", _kg_query_node)
+    builder.add_node("community_retrieve", _community_retrieve_node)
 
     # Edges: START → load_memory → router
     builder.add_edge(START, "load_memory")
@@ -181,8 +259,12 @@ def build_chat_graph(
             "kg_query": "kg_query",
             "query_transform": "query_transform",
             "generate": "generate",
+            "community_retrieve": "community_retrieve",
         },
     )
+
+    # Community retrieve path: community_retrieve → context_assembly
+    builder.add_edge("community_retrieve", "context_assembly")
 
     # KG query path: may fallback to hybrid
     builder.add_conditional_edges(

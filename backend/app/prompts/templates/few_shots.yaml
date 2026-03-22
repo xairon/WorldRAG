@@ -156,6 +156,48 @@ litrpg:
       }
       ```
 
+  negative_examples:
+    en: |
+      The following are INCORRECT extractions. Do NOT make these mistakes:
+
+      1. Text: "The warrior swung his blade at the approaching creature."
+         WRONG: {"entity_type": "character", "name": "The warrior"}
+         WHY: Generic role description, not a named character. Only extract named individuals.
+
+      2. Text: "An old man watched from the shadows as the ritual began."
+         WRONG: {"entity_type": "character", "name": "Old man"}
+         WHY: Generic description, not a proper name. Do not extract unnamed individuals.
+
+      3. Text: "Jake activated his new skill, feeling power surge through him."
+         WRONG: {"entity_type": "event", "name": "Jake activated his new skill"}
+         WHY: This is a skill usage, not a narrative event. Extract as a mention of an existing skill, not as a new event.
+
+      4. Text: "The heavy warrior blocked the attack with his shield."
+         WRONG: {"entity_type": "character", "name": "heavy warrior"}
+         WHY: "Heavy warrior" is a role descriptor. Only extract if the text reveals the character's actual name.
+
+      5. Text: "A scout reported back to the camp."
+         WRONG: {"entity_type": "character", "name": "a scout"}
+         WHY: Indefinite article + generic role. Not a named entity.
+    fr: |
+      Les extractions suivantes sont INCORRECTES. NE PAS faire ces erreurs :
+
+      1. Texte : "Le guerrier brandit son epee vers la creature."
+         FAUX : {"entity_type": "character", "name": "Le guerrier"}
+         POURQUOI : Description de role generique, pas un personnage nomme.
+
+      2. Texte : "Un vieil homme observait depuis les ombres."
+         FAUX : {"entity_type": "character", "name": "Vieil homme"}
+         POURQUOI : Description generique, pas un nom propre.
+
+      3. Texte : "Jake activa sa nouvelle competence, sentant le pouvoir affluer."
+         FAUX : {"entity_type": "event", "name": "Jake activa sa nouvelle competence"}
+         POURQUOI : C'est une utilisation de competence, pas un evenement narratif.
+
+      4. Texte : "Un eclaireur fit son rapport au camp."
+         FAUX : {"entity_type": "character", "name": "un eclaireur"}
+         POURQUOI : Article indefini + role generique. Pas une entite nommee.
+
 core:
   entities:
     en: |
@@ -192,6 +234,31 @@ core:
         {"entity_type": "location", "name": "numero quatre Privet Drive", "canonical_name": "privet drive", "location_type": "building"}
       ]
       ```
+  negative_examples:
+    en: |
+      The following are INCORRECT extractions. Do NOT make these mistakes:
+
+      1. Text: "The tall stranger entered the room quietly."
+         WRONG: {"entity_type": "character", "name": "The tall stranger"}
+         WHY: Generic description, not a named character.
+
+      2. Text: "A woman screamed from the upper floor."
+         WRONG: {"entity_type": "character", "name": "A woman"}
+         WHY: Indefinite unnamed person. Only extract named individuals.
+
+      3. Text: "He opened the door and stepped outside."
+         WRONG: {"entity_type": "event", "name": "He opened the door"}
+         WHY: Mundane action, not a narrative event worth tracking.
+    fr: |
+      Les extractions suivantes sont INCORRECTES :
+
+      1. Texte : "Le grand inconnu entra dans la piece."
+         FAUX : {"entity_type": "character", "name": "Le grand inconnu"}
+         POURQUOI : Description generique, pas un personnage nomme.
+
+      2. Texte : "Une femme cria depuis l'etage."
+         FAUX : {"entity_type": "character", "name": "Une femme"}
+         POURQUOI : Personne indefinie non nommee.
   relations:
     en: ""
     fr: ""

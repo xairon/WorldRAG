@@ -788,6 +788,8 @@ class TestKGQueryDataDriven:
             side_effect=[
                 # Entity search results
                 FICTION_ENTITIES[:2],
+                # Degree centrality
+                [{"name": "jake thayne", "degree": 5}, {"name": "viper of the malefic", "degree": 3}],
                 # Relationship query results
                 FICTION_RELATIONSHIPS[:4],
                 # Grounded chunks
@@ -836,6 +838,8 @@ class TestKGQueryDataDriven:
             side_effect=[
                 # Entity search: returns Jake with Character label
                 [{"name": "Jake Thayne", "label": "Character", "description": "MC", "score": 9.0}],
+                # Degree centrality
+                [{"name": "jake thayne", "degree": 1}],
                 # Relationships
                 [],
                 # Grounded chunks
@@ -854,8 +858,8 @@ class TestKGQueryDataDriven:
                 repo=mock_repo,
             )
 
-        # Verify the relationship query (2nd call) includes paired entity/label maps (N2 fix)
-        relationship_call = mock_repo.execute_read.call_args_list[1]
+        # Verify the relationship query (3rd call, after entity search + degree centrality)
+        relationship_call = mock_repo.execute_read.call_args_list[2]
         params = relationship_call[0][1]
         assert "pairs" in params
         assert any(p["label"] == "Character" for p in params["pairs"])
@@ -911,6 +915,8 @@ class TestKGQueryDataDriven:
             side_effect=[
                 # Entity fulltext search
                 [{"name": "Jake", "label": "Character", "description": "MC", "score": 8.0}],
+                # Degree centrality
+                [{"name": "jake", "degree": 1}],
                 # Relationships
                 [],
                 # Grounded chunks
@@ -974,6 +980,8 @@ class TestKGQueryDataDriven:
         mock_repo.execute_read = AsyncMock(
             side_effect=[
                 [{"name": "Jake", "label": "Character", "description": "", "score": 5.0}],
+                # Degree centrality
+                [{"name": "jake", "degree": 1}],
                 [],
                 [{"node_id": "c1", "text": "text", "chapter_number": 1, "chapter_title": "T"}],
                 # Community context
@@ -990,10 +998,12 @@ class TestKGQueryDataDriven:
                 repo=mock_repo,
             )
 
-        # First 3 calls (entity search, relationships, chunks) should have max_chapter=25
-        for call in mock_repo.execute_read.call_args_list[:3]:
-            params = call[0][1]
-            assert params["max_chapter"] == 25
+        # Entity search (0), relationships (2), chunks (3) should have max_chapter=25
+        # Degree centrality (1) doesn't have max_chapter
+        for idx in [0, 2, 3]:
+            if idx < len(mock_repo.execute_read.call_args_list):
+                params = mock_repo.execute_read.call_args_list[idx][0][1]
+                assert params.get("max_chapter") == 25
 
 
 # ═══════════════════════════════════════════════════════════════════════

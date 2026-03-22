@@ -1443,6 +1443,83 @@ async def extract_chapter_v3(
 # ── v4 Pipeline (2-step KGGen-style) ─────────────────────────────────
 
 
+async def verify_coverage_node(state: dict[str, Any]) -> dict[str, Any]:
+    """Second pass: look for entities missed in the first extraction.
+
+    Re-reads the chapter using already-extracted entities as anchors and asks the
+    LLM to find any NAMED entities that were missed.  Controlled by the
+    ``skip_coverage_pass`` flag in state (defaults to False).
+    """
+    if state.get("skip_coverage_pass", False):
+        return {}
+
+    entities = state.get("entities", [])
+    chapter_text = state.get("chapter_text", "")
+    chapter_number = state.get("chapter_number", 0)
+
+    if len(entities) < 3:  # Skip for very sparse chapters
+        return {}
+
+    # Build anchor context from extracted entities
+    entity_names = [
+        e.get("canonical_name") or e.get("name", "")
+        for e in entities
+        if isinstance(e, dict)
+    ]
+    # Deduplicate while preserving order
+    seen: set[str] = set()
+    unique_names: list[str] = []
+    for n in entity_names:
+        if n and n.lower() not in seen:
+            seen.add(n.lower())
+            unique_names.append(n)
+    anchor_context = ", ".join(unique_names[:20])
+
+    prompt = (
+        f"Given these entities already found in the text: {anchor_context}\n\n"
+        "Re-read the text carefully. Are there any NAMED characters, locations, items, "
+        "skills, or events that interact with these entities but were NOT extracted? "
+        "Focus on:\n"
+        "- Characters mentioned by name who participate in events with the known entities\n"
+        "- Locations where known entities are present\n"
+        "- Items or skills used by known characters that weren't captured\n\n"
+        "Return ONLY the missed entities (if any). Do NOT repeat already-extracted entities."
+    )
+
+    try:
+        from app.services.extraction.entities import _call_instructor
+
+        result = await _call_instructor(prompt, chapter_text, state.get("model_override"))
+
+        # Merge new entities with existing ones (avoid duplicates by name)
+        existing_names = {
+            (e.get("canonical_name") or e.get("name", "")).lower()
+            for e in entities
+            if isinstance(e, dict)
+        }
+        new_entities = list(entities)  # shallow copy
+        added = 0
+        for entity in result.entities:
+            entity_dict = entity.model_dump()
+            name = (entity_dict.get("canonical_name") or entity_dict.get("name", "")).lower()
+            if name and name not in existing_names:
+                new_entities.append(entity_dict)
+                existing_names.add(name)
+                added += 1
+
+        logger.info(
+            "coverage_verification_done",
+            chapter=chapter_number,
+            original_count=len(entities),
+            new_found=added,
+            final_count=len(new_entities),
+        )
+        return {"entities": new_entities}
+    except Exception:
+        logger.warning("coverage_verification_failed", chapter=chapter_number, exc_info=True)
+        return {}
+
+
 async def mention_detect_v4_node(state: dict[str, Any]) -> dict[str, Any]:
     """LangGraph node: detect entity mentions programmatically (v4)."""
     from app.services.extraction.mention_detector import detect_mentions_from_flat
@@ -1566,11 +1643,15 @@ async def reconcile_and_persist_v4_node(state: dict[str, Any]) -> dict[str, Any]
 
 
 def build_extraction_graph_v4() -> CompiledStateGraph:
-    """Build the v4 extraction LangGraph (5 linear nodes).
+    """Build the v4 extraction LangGraph (6 linear nodes).
 
     Pipeline:
-        extract_entities → extract_relations → verify_extractions
-        → mention_detect → reconcile_persist
+        extract_entities → verify_coverage → extract_relations
+        → verify_extractions → mention_detect → reconcile_persist
+
+    The verify_coverage node runs a lightweight second LLM pass to detect
+    entities missed in the first extraction. It can be skipped by setting
+    ``skip_coverage_pass=True`` in the initial state.
     """
     from app.schemas.extraction_v4 import ExtractionStateV4
     from app.services.extraction.entities import extract_entities_node
@@ -1579,13 +1660,15 @@ def build_extraction_graph_v4() -> CompiledStateGraph:
 
     graph = StateGraph(ExtractionStateV4)
     graph.add_node("extract_entities", extract_entities_node)
+    graph.add_node("verify_coverage", verify_coverage_node)
     graph.add_node("extract_relations", extract_relations_node)
     graph.add_node("verify_extractions", verify_extractions_node)
     graph.add_node("mention_detect", mention_detect_v4_node)
     graph.add_node("reconcile_persist", reconcile_and_persist_v4_node)
 
     graph.add_edge(START, "extract_entities")
-    graph.add_edge("extract_entities", "extract_relations")
+    graph.add_edge("extract_entities", "verify_coverage")
+    graph.add_edge("verify_coverage", "extract_relations")
     graph.add_edge("extract_relations", "verify_extractions")
     graph.add_edge("verify_extractions", "mention_detect")
     graph.add_edge("mention_detect", "reconcile_persist")

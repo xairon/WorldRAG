@@ -90,9 +90,23 @@ async def kg_search(
         logger.info("kg_query_no_entities_found", query=query)
         return {"route": "entity_qa", "kg_cypher_result": [], "kg_entities": []}
 
+    # Step 2b: Compute degree centrality for entity importance weighting
+    entity_names_found = [e["name"] for e in entities]
+    entity_degrees = await repo.execute_read(
+        """
+        MATCH (e {book_id: $book_id})-[r]-(neighbor)
+        WHERE e.canonical_name IN $entity_names
+          AND NOT type(r) IN ['MENTIONED_IN', 'FIRST_MENTIONED_IN', 'HAS_CHAPTER', 'HAS_CHUNK']
+        WITH e, count(DISTINCT neighbor) AS degree
+        RETURN e.canonical_name AS name, degree
+        ORDER BY degree DESC
+        """,
+        {"entity_names": [n.lower() for n in entity_names_found], "book_id": book_id},
+    )
+    degree_map: dict[str, int] = {d["name"]: d["degree"] for d in entity_degrees}
+
     # Step 3: Expand relationships for found entities
     # Pair each entity name with its own label to avoid UNWIND cross-product (N2 fix)
-    entity_names_found = [e["name"] for e in entities]
     entity_pairs = [{"name": e["name"], "label": e["label"]} for e in entities if e.get("label")]
     relationships = await repo.execute_read(
         """
@@ -153,6 +167,18 @@ async def kg_search(
             {"names": entity_names_found, "book_id": book_id},
         )
 
+    # Apply degree centrality weighting: higher-degree entities get more context space
+    # Normalize degrees to a 0-1 range and use as importance weight
+    max_degree = max(degree_map.values()) if degree_map else 1
+    for entity in entities:
+        canonical = entity.get("name", "").lower()
+        degree = degree_map.get(canonical, 0)
+        entity["degree"] = degree
+        entity["importance"] = degree / max_degree if max_degree > 0 else 0.0
+
+    # Sort entities by importance (degree centrality) descending
+    entities_sorted = sorted(entities, key=lambda e: e.get("importance", 0.0), reverse=True)
+
     logger.info(
         "kg_query_completed",
         entities_found=len(entities),
@@ -160,13 +186,14 @@ async def kg_search(
         chunks_found=len(chunks),
         communities_found=len(community_context),
         query_type=query_type,
+        top_entity_degree=max_degree,
     )
 
     return {
         "kg_cypher_result": chunks,
         "kg_entities": [
             {**e, "relationships": [r for r in relationships if r["source"] == e["name"]]}
-            for e in entities
+            for e in entities_sorted
         ],
         "reranked_chunks": chunks,
         "community_context": community_context,

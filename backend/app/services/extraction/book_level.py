@@ -748,3 +748,98 @@ def _collect_child_summaries(
                     break
 
     return "\n".join(child_summaries)
+
+
+async def generate_state_snapshots(
+    entity_repo,
+    book_id: str,
+    snapshot_interval: int = 10,
+) -> int:
+    """Generate state snapshots for main characters every N chapters.
+
+    A snapshot aggregates: current level, active skills, current class,
+    active titles, and active relationships at a specific chapter.
+    """
+    # Get total chapters
+    chapters = await entity_repo.execute_read(
+        "MATCH (c:Chapter {book_id: $book_id}) RETURN max(c.number) AS max_ch",
+        {"book_id": book_id},
+    )
+    max_chapter = chapters[0]["max_ch"] if chapters else 0
+    if not max_chapter:
+        return 0
+
+    # Get main characters (top 5 by relationship count)
+    main_chars = await entity_repo.execute_read(
+        """
+        MATCH (c:Character {book_id: $book_id})-[r]-()
+        WITH c, count(r) AS rel_count
+        ORDER BY rel_count DESC LIMIT 5
+        RETURN c.canonical_name AS name
+        """,
+        {"book_id": book_id},
+    )
+
+    if not main_chars:
+        return 0
+
+    snapshot_count = 0
+    for chapter_num in range(snapshot_interval, max_chapter + 1, snapshot_interval):
+        for char in main_chars:
+            char_name = char["name"]
+            # Build snapshot at this chapter
+            snapshot = await entity_repo.execute_read(
+                """
+                MATCH (c:Character {canonical_name: $name, book_id: $book_id})
+                OPTIONAL MATCH (c)-[lvl:AT_LEVEL]->(b)
+                WHERE lvl.valid_from_chapter <= $chapter
+                  AND (lvl.valid_to_chapter IS NULL OR lvl.valid_to_chapter >= $chapter)
+                OPTIONAL MATCH (c)-[sk:HAS_SKILL]->(skill:Skill)
+                WHERE sk.valid_from_chapter <= $chapter
+                  AND (sk.valid_to_chapter IS NULL OR sk.valid_to_chapter >= $chapter)
+                OPTIONAL MATCH (c)-[cl:HAS_CLASS]->(cls:Class)
+                WHERE cl.valid_from_chapter <= $chapter
+                  AND (cl.valid_to_chapter IS NULL OR cl.valid_to_chapter >= $chapter)
+                OPTIONAL MATCH (c)-[tl:HAS_TITLE]->(title:Title)
+                RETURN c.canonical_name AS name,
+                       collect(DISTINCT {level: lvl.level, realm: lvl.realm}) AS levels,
+                       collect(DISTINCT skill.name) AS skills,
+                       collect(DISTINCT cls.name) AS classes,
+                       collect(DISTINCT title.name) AS titles
+                """,
+                {"name": char_name, "book_id": book_id, "chapter": chapter_num},
+            )
+
+            if snapshot:
+                snap = snapshot[0]
+                await entity_repo.execute_write(
+                    """
+                    MATCH (c:Character {canonical_name: $name, book_id: $book_id})
+                    MERGE (s:StateSnapshot {character: $name, chapter: $chapter, book_id: $book_id})
+                    ON CREATE SET
+                        s.levels = $levels,
+                        s.skills = $skills,
+                        s.classes = $classes,
+                        s.titles = $titles,
+                        s.created_at = timestamp()
+                    MERGE (c)-[:HAS_SNAPSHOT]->(s)
+                    """,
+                    {
+                        "name": char_name,
+                        "book_id": book_id,
+                        "chapter": chapter_num,
+                        "levels": str(snap.get("levels", [])),
+                        "skills": snap.get("skills", []),
+                        "classes": snap.get("classes", []),
+                        "titles": snap.get("titles", []),
+                    },
+                )
+                snapshot_count += 1
+
+    logger.info(
+        "state_snapshots_done",
+        book_id=book_id,
+        snapshot_count=snapshot_count,
+        interval=snapshot_interval,
+    )
+    return snapshot_count

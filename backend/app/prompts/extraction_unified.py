@@ -175,6 +175,34 @@ def _build_relation_descriptions(
             line += f" — properties: {props}"
         lines.append(line)
 
+    # Add event ordering relation types
+    if language == "en":
+        lines.extend(
+            [
+                "",
+                "=== EVENT ORDERING ===",
+                "",
+                "When both source and target are Events, also set temporal_order:",
+                "- PRECEDES (Event -> Event): Event A happens before Event B in narrative time",
+                "- CAUSES (Event -> Event): Event A directly causes Event B",
+                "- DURING (Event -> Event): Event A occurs while Event B is ongoing",
+                "- SIMULTANEOUS (Event -> Event): Events A and B happen at the same time",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                "",
+                "=== ORDONNANCEMENT DES EVENEMENTS ===",
+                "",
+                "Quand source et target sont des Events, definir aussi temporal_order :",
+                "- PRECEDES (Event -> Event): L'evenement A se produit avant B dans le recit",
+                "- CAUSES (Event -> Event): L'evenement A cause directement B",
+                "- DURING (Event -> Event): L'evenement A se produit pendant que B est en cours",
+                "- SIMULTANEOUS (Event -> Event): Les evenements A et B se produisent en meme temps",
+            ]
+        )
+
     # Add temporal invalidation note
     if language == "en":
         lines.extend(
@@ -212,14 +240,31 @@ def _get_few_shots(genre: str, phase: str, language: str) -> str:
     return phase_shots.get(language, phase_shots.get("en", ""))
 
 
+def _get_negative_examples(genre: str, language: str) -> str:
+    """Load negative examples (what NOT to extract) for genre + language."""
+    shots = _load_few_shots()
+    genre_shots = shots.get(genre, shots.get("core", {}))
+    neg_examples = genre_shots.get("negative_examples", {})
+    return neg_examples.get(language, neg_examples.get("en", ""))
+
+
 def build_entity_prompt(
     ontology: OntologyLoader,
     language: str = "en",
     registry_context: str = "",
     phase0_hints: list[dict[str, Any]] | None = None,
     router_hints: list[str] | None = None,
-) -> str:
-    """Build Step 1 entity extraction prompt from ontology."""
+    split_for_caching: bool = False,
+) -> str | tuple[str, str]:
+    """Build Step 1 entity extraction prompt from ontology.
+
+    Args:
+        split_for_caching: If True, return (static_system, dynamic_context) tuple
+            for Gemini prefix caching. Static system prompt is identical across chapters.
+
+    Returns:
+        Prompt string, or (static_system, dynamic_context) tuple if split_for_caching.
+    """
     active_genre = (
         ontology.layers_loaded[1]
         if len(ontology.layers_loaded) > 1 and ontology.layers_loaded[1] != "core"
@@ -234,6 +279,7 @@ def build_entity_prompt(
 
     type_descriptions = _build_type_descriptions(ontology, language)
     few_shots = _get_few_shots(active_genre, "entities", language)
+    neg_examples = _get_negative_examples(active_genre, language)
 
     # Filter ontology schema to extractable types (exclude bibliographic)
     extractable = {
@@ -258,7 +304,9 @@ def build_entity_prompt(
         phase0_hints=phase0_hints,
         router_hints=router_hints,
         few_shot_examples=few_shots,
+        negative_examples=neg_examples,
         language=language,
+        split_for_caching=split_for_caching,
     )
 
 
@@ -266,8 +314,17 @@ def build_relation_prompt(
     ontology: OntologyLoader,
     entities_json: str = "",
     language: str = "en",
-) -> str:
-    """Build Step 2 relation extraction prompt from ontology."""
+    split_for_caching: bool = False,
+) -> str | tuple[str, str]:
+    """Build Step 2 relation extraction prompt from ontology.
+
+    Args:
+        split_for_caching: If True, return (static_system, dynamic_context) tuple
+            for Gemini prefix caching. Static system prompt is identical across chapters.
+
+    Returns:
+        Prompt string, or (static_system, dynamic_context) tuple if split_for_caching.
+    """
     active_genre = (
         ontology.layers_loaded[1]
         if len(ontology.layers_loaded) > 1 and ontology.layers_loaded[1] != "core"
@@ -291,4 +348,5 @@ def build_relation_prompt(
         extracted_entities_json=entities_json,
         few_shot_examples=few_shots,
         language=language,
+        split_for_caching=split_for_caching,
     )

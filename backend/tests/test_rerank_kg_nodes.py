@@ -92,6 +92,8 @@ class TestKGQueryNode:
                         "score": 5.0,
                     }
                 ],
+                # Degree centrality
+                [{"name": "randidly ghosthound", "degree": 3}],
                 [
                     {
                         "source": "Randidly Ghosthound",

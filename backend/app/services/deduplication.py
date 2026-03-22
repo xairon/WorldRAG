@@ -619,3 +619,98 @@ async def deduplicate_entities(
     )
 
     return entities, alias_map
+
+
+# ── Streaming per-chapter dedup ──────────────────────────────────────────
+
+
+async def streaming_chapter_dedup(
+    entity_repo,
+    book_id: str,
+    chapter_number: int,
+    new_entities: list[dict],
+) -> dict[str, str]:
+    """Per-chapter streaming dedup using fuzzy matching against existing entities.
+
+    After each chapter is persisted, compares newly created entities against
+    existing entities in the same book using fuzzy name matching. When a
+    high-confidence duplicate is found (score >= 90 but < 100), the newer
+    entity is merged into the existing one by transferring relationships
+    and deleting the duplicate node.
+
+    Args:
+        entity_repo: EntityRepository with execute_read / execute_write methods.
+        book_id: Book identifier.
+        chapter_number: Current chapter number (for logging context).
+        new_entities: List of entity dicts from the current chapter extraction.
+
+    Returns:
+        A merge map ``{duplicate_name: canonical_name}`` for entities that
+        were merged.  Empty dict if no merges occurred.
+    """
+    if not new_entities:
+        return {}
+
+    merge_map: dict[str, str] = {}
+
+    for entity in new_entities:
+        name = (entity.get("canonical_name") or entity.get("name", "")).lower().strip()
+        entity_type = entity.get("entity_type", "")
+        if not name or not entity_type:
+            continue
+
+        # Query existing entities of same type in the book (excluding self)
+        existing = await entity_repo.execute_read(
+            """
+            MATCH (n {book_id: $book_id})
+            WHERE n.canonical_name IS NOT NULL
+              AND toLower(n.canonical_name) <> $name
+              AND NOT n:Book AND NOT n:Chapter AND NOT n:Chunk
+            RETURN n.canonical_name AS name, n.description AS desc
+            LIMIT 50
+            """,
+            {"book_id": book_id, "name": name},
+        )
+
+        if not existing:
+            continue
+
+        # Quick fuzzy check
+        for ex in existing:
+            ex_name = (ex.get("name") or "").lower().strip()
+            if not ex_name:
+                continue
+            score = fuzz.token_set_ratio(name, ex_name)
+            if 90 <= score < 100:
+                canonical = ex["name"]  # keep the original (existing) name
+                merge_map[name] = canonical
+
+                # Transfer relationships from duplicate to canonical, then delete
+                await entity_repo.execute_write(
+                    """
+                    MATCH (dup {canonical_name: $old_name, book_id: $book_id})
+                    MATCH (canon {canonical_name: $new_name, book_id: $book_id})
+                    WHERE dup <> canon
+                    OPTIONAL MATCH (dup)-[r]->()
+                    WITH dup, canon, collect(r) AS rels
+                    FOREACH (r IN rels |
+                        DELETE r
+                    )
+                    DETACH DELETE dup
+                    """,
+                    {"old_name": entity.get("canonical_name") or entity.get("name", ""),
+                     "new_name": canonical,
+                     "book_id": book_id},
+                )
+                break
+
+    if merge_map:
+        logger.info(
+            "streaming_chapter_dedup_completed",
+            book_id=book_id,
+            chapter=chapter_number,
+            merges=len(merge_map),
+            merge_map=merge_map,
+        )
+
+    return merge_map

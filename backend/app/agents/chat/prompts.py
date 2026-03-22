@@ -17,6 +17,9 @@ or affect each other.
 progression over chapters, cause-and-effect sequences.
 - "analytical": Complex multi-part questions, thematic analysis, comparisons, \
 "why" questions requiring synthesis of multiple passages.
+- "global_summary": Questions about overall themes, factions, world-building, \
+character groups, power systems overview, or story-level summaries that span \
+many entities rather than focusing on specific ones.
 - "conversational": Greetings, meta questions ("what can you do?"), \
 out-of-scope requests, or follow-ups that need no retrieval.
 

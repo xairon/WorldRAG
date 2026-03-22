@@ -85,6 +85,7 @@ class ExtractedCharacter(BaseModel):
     species: str = ""
     description: str = ""
     status: CoercedStatus = "alive"
+    confidence: float = Field(1.0, ge=0.0, le=1.0, description="Extraction confidence score")
     extraction_text: str = ""
     char_offset_start: int = -1
     char_offset_end: int = -1
@@ -102,6 +103,7 @@ class ExtractedEvent(BaseModel):
     participants: list[str] = Field(default_factory=list)
     location: str | None = ""
     is_flashback: bool = False
+    confidence: float = Field(1.0, ge=0.0, le=1.0, description="Extraction confidence score")
     extraction_text: str = ""
     char_offset_start: int = -1
     char_offset_end: int = -1
@@ -118,6 +120,7 @@ class ExtractedLocation(BaseModel):
     location_type: str = ""
     parent_location: str = ""
     description: str = ""
+    confidence: float = Field(1.0, ge=0.0, le=1.0, description="Extraction confidence score")
     extraction_text: str = ""
     char_offset_start: int = -1
     char_offset_end: int = -1
@@ -135,6 +138,7 @@ class ExtractedItem(BaseModel):
     rarity: str = ""
     effects: list[str] = Field(default_factory=list)
     owner: str = ""
+    confidence: float = Field(1.0, ge=0.0, le=1.0, description="Extraction confidence score")
     extraction_text: str = ""
     char_offset_start: int = -1
     char_offset_end: int = -1
@@ -152,6 +156,7 @@ class ExtractedCreature(BaseModel):
     threat_level: str = ""
     habitat: str = ""
     description: str = ""
+    confidence: float = Field(1.0, ge=0.0, le=1.0, description="Extraction confidence score")
     extraction_text: str = ""
     char_offset_start: int = -1
     char_offset_end: int = -1
@@ -168,6 +173,7 @@ class ExtractedFaction(BaseModel):
     faction_type: str = ""
     alignment: str = ""
     description: str = ""
+    confidence: float = Field(1.0, ge=0.0, le=1.0, description="Extraction confidence score")
     extraction_text: str = ""
     char_offset_start: int = -1
     char_offset_end: int = -1
@@ -183,6 +189,7 @@ class ExtractedConcept(BaseModel):
     aliases: list[str] = Field(default_factory=list)
     domain: str = ""
     description: str = ""
+    confidence: float = Field(1.0, ge=0.0, le=1.0, description="Extraction confidence score")
     extraction_text: str = ""
     char_offset_start: int = -1
     char_offset_end: int = -1
@@ -198,6 +205,11 @@ class ExtractedArc(BaseModel):
     arc_type: str = ""  # main_plot, subplot, character_arc, world_arc
     status: str = ""  # active, completed, abandoned
     description: str = ""
+    related_events: list[str] = Field(
+        default_factory=list,
+        description="Names of events that belong to this arc",
+    )
+    confidence: float = Field(1.0, ge=0.0, le=1.0, description="Extraction confidence score")
     extraction_text: str = ""
     char_offset_start: int = -1
     char_offset_end: int = -1
@@ -212,6 +224,7 @@ class ExtractedProphecy(BaseModel):
     canonical_name: str = ""
     status: str = ""  # unfulfilled, fulfilled, subverted
     description: str = ""
+    confidence: float = Field(1.0, ge=0.0, le=1.0, description="Extraction confidence score")
     extraction_text: str = ""
     char_offset_start: int = -1
     char_offset_end: int = -1
@@ -226,6 +239,7 @@ class ExtractedLevelChange(BaseModel):
     old_level: int | None = None
     new_level: int | None = None
     realm: str = ""
+    confidence: float = Field(1.0, ge=0.0, le=1.0, description="Extraction confidence score")
     extraction_text: str = ""
     char_offset_start: int = -1
     char_offset_end: int = -1
@@ -239,6 +253,7 @@ class ExtractedStatChange(BaseModel):
     character: str = ""
     stat_name: str = Field(..., description="Name of the stat")
     value: int = Field(..., description="Amount of change (positive or negative)")
+    confidence: float = Field(1.0, ge=0.0, le=1.0, description="Extraction confidence score")
     extraction_text: str = ""
     char_offset_start: int = -1
     char_offset_end: int = -1
@@ -268,6 +283,7 @@ class ExtractedGenreEntity(BaseModel):
     properties: dict[str, Any] = Field(
         default_factory=dict, description="Flexible key-value for ontology-defined fields"
     )
+    confidence: float = Field(1.0, ge=0.0, le=1.0, description="Extraction confidence score")
     extraction_text: str = ""
     char_offset_start: int = -1
     char_offset_end: int = -1
@@ -304,6 +320,13 @@ _VALID_ENTITY_TYPES = {
 class EntityExtractionResult(BaseModel):
     """Step 1 output: flat list of all extracted entities for a chapter."""
 
+    reasoning: str = Field(
+        default="",
+        description=(
+            "Brief step-by-step reasoning about what key entities, events, "
+            "and relationships are present in the text before listing them"
+        ),
+    )
     entities: list[EntityUnion] = Field(default_factory=list)
     chapter_number: int = 0
 
@@ -340,6 +363,10 @@ class ExtractedRelation(BaseModel):
     )
     subtype: str = ""
     sentiment: float | None = Field(None, ge=-1.0, le=1.0)
+    temporal_order: str | None = Field(
+        default=None,
+        description="For event-event relations: 'precedes', 'causes', 'during', 'simultaneous'",
+    )
     valid_from_chapter: int | None = None
     context: str = ""
 
@@ -357,6 +384,12 @@ class RelationEnd(BaseModel):
 class RelationExtractionResult(BaseModel):
     """Step 2 output: new and ended relations for a chapter."""
 
+    reasoning: str = Field(
+        default="",
+        description=(
+            "Brief reasoning about relationships between entities before listing them"
+        ),
+    )
     relations: list[ExtractedRelation] = Field(default_factory=list)
     ended_relations: list[RelationEnd] = Field(default_factory=list)
 
@@ -420,6 +453,9 @@ class ExtractionStateV4(TypedDict, total=False):
 
     # Chunk-level narrative metadata (set by verify node)
     chunk_metadata: dict[str, Any]
+
+    # Coverage verification control
+    skip_coverage_pass: bool
 
     # Post-processing
     alias_map: dict[str, str]

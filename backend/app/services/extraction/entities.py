@@ -25,16 +25,31 @@ async def _call_instructor(
     prompt: str,
     chapter_text: str,
     model_override: str | None,
+    dynamic_context: str = "",
 ) -> EntityExtractionResult:
-    """Call Instructor to extract entities. Separated for testability."""
+    """Call Instructor to extract entities. Separated for testability.
+
+    When dynamic_context is provided (split prompt mode for Gemini caching),
+    the static system prompt stays identical across chapters (cacheable),
+    and the dynamic context + chapter text go in the user message.
+    """
     client, model = get_instructor_for_extraction(model_override)
+    if dynamic_context:
+        # Split mode: static system + dynamic user (enables Gemini prefix caching)
+        user_content = f"{dynamic_context}\n\n[TEXT]\n{chapter_text}"
+        messages = [
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": user_content},
+        ]
+    else:
+        messages = [
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": chapter_text},
+        ]
     return await client.chat.completions.create(
         model=model,
         response_model=EntityExtractionResult,
-        messages=[
-            {"role": "system", "content": prompt},
-            {"role": "user", "content": chapter_text},
-        ],
+        messages=messages,
         max_retries=2,
     )
 
@@ -77,17 +92,21 @@ async def extract_entities_node(state: dict[str, Any]) -> dict[str, Any]:
     except (ImportError, AttributeError):
         pass  # router hints are optional
 
-    # Build prompt
-    prompt = build_entity_prompt(
+    # Build prompt — split mode for Gemini prefix caching
+    prompt_result = build_entity_prompt(
         ontology=ontology,
         language=state.get("source_language", "en"),
         registry_context=registry_context,
         phase0_hints=phase0_hints,
         router_hints=router_hints,
+        split_for_caching=True,
     )
+    static_prompt, dynamic_context = prompt_result  # type: ignore[misc]
 
-    # Call LLM
-    result = await _call_instructor(prompt, chapter_text, state.get("model_override"))
+    # Call LLM — static system prompt is cacheable across chapters
+    result = await _call_instructor(
+        static_prompt, chapter_text, state.get("model_override"), dynamic_context
+    )
     result.chapter_number = chapter_number
 
     # Post-validate grounding

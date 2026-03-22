@@ -63,8 +63,10 @@ def build_extraction_prompt(
     router_hints: list[str] | None = None,
     extracted_entities_json: str | None = None,
     few_shot_examples: str = "",
+    negative_examples: str = "",
     language: str = "fr",
-) -> str:
+    split_for_caching: bool = False,
+) -> str | tuple[str, str]:
     """Build a complete extraction prompt with ontology injection.
 
     Args:
@@ -78,10 +80,14 @@ def build_extraction_prompt(
         router_hints: Optional focus hints injected as [FOCUS] section after [CONTRAINTES].
         extracted_entities_json: JSON string of already-extracted entities (for relation phase).
         few_shot_examples: Formatted few-shot examples string.
+        negative_examples: Formatted negative examples string (what NOT to extract).
         language: Prompt language code ('fr' or 'en').
+        split_for_caching: If True, return (static_system, dynamic_context) tuple
+            where static_system is identical across chapters (cacheable by Gemini)
+            and dynamic_context contains registry/hints/chapter-specific data.
 
     Returns:
-        Complete prompt string.
+        Complete prompt string, or (static_system, dynamic_context) if split_for_caching.
     """
     lang = get_language_config(language)
     schema_json = json.dumps(ontology_schema, ensure_ascii=False, indent=2)
@@ -107,6 +113,10 @@ def build_extraction_prompt(
     # [CONTRAINTES]
     sections.append(f"\n[{lang.constraint_label}]")
     if language == "fr":
+        sections.append(
+            "- Avant de lister les entités, raisonner brièvement (dans le champ 'reasoning') "
+            "sur les entités clés, événements et relations présents dans le texte"
+        )
         sections.append(
             "- Extraire UNIQUEMENT les types d'entit\u00e9s list\u00e9s dans l'ontologie cible"
         )
@@ -140,6 +150,10 @@ def build_extraction_prompt(
             "variantes de nom dans aliases. NE PAS créer de doublons."
         )
     else:
+        sections.append(
+            "- Before listing entities, briefly reason (in the 'reasoning' field) "
+            "about what key entities, events, and relationships are present in the text"
+        )
         sections.append("- Extract ONLY entity types listed in the target ontology")
         sections.append(
             "- Base entity_type values: character, event, location, item, "
@@ -164,40 +178,54 @@ def build_extraction_prompt(
             "new name variants in aliases. Do NOT create duplicate entities."
         )
 
-    # [FOCUS] — optional router hints
+    # [EXEMPLES] — static, goes before dynamic context
+    if few_shot_examples:
+        sections.append(f"\n[{lang.examples_label}]\n{few_shot_examples}")
+
+    # [NEGATIVE EXAMPLES] — static
+    if negative_examples:
+        neg_label = "CONTRE-EXEMPLES" if language == "fr" else "NEGATIVE EXAMPLES"
+        sections.append(f"\n[{neg_label}]\n{negative_examples}")
+
+    # ── Split point: everything above is static (cacheable by Gemini) ──
+    # Everything below is dynamic (changes per chapter).
+    dynamic_sections: list[str] = []
+
+    # [FOCUS] — optional router hints (dynamic per chapter)
     if router_hints:
-        label = "FOCUS" if language == "fr" else "FOCUS"
         hints_lines = "\n".join(f"- {h}" for h in router_hints)
-        sections.append(f"\n[{label}]\n{hints_lines}")
+        dynamic_sections.append(f"\n[FOCUS]\n{hints_lines}")
 
     # [ENTITÉS EXTRAITES] — optional previously extracted entities (relation phase)
     if extracted_entities_json:
         label = "ENTITÉS EXTRAITES" if language == "fr" else "EXTRACTED ENTITIES"
-        sections.append(f"\n[{label}]\n{extracted_entities_json}")
+        dynamic_sections.append(f"\n[{label}]\n{extracted_entities_json}")
 
-    # [CONTEXTE]
+    # [CONTEXTE] — dynamic (registry grows per chapter, hints differ)
     has_context = entity_registry_context or previous_summary or phase0_hints
     if has_context:
-        sections.append(f"\n[{lang.context_label}]")
+        dynamic_sections.append(f"\n[{lang.context_label}]")
         if entity_registry_context:
             label = (
                 "Registre d'entit\u00e9s connues" if language == "fr" else "Known entity registry"
             )
-            sections.append(f"{label}:\n{entity_registry_context}")
+            dynamic_sections.append(f"{label}:\n{entity_registry_context}")
         if previous_summary:
             label = (
                 "R\u00e9sum\u00e9 des chapitres pr\u00e9c\u00e9dents"
                 if language == "fr"
                 else "Previous chapters summary"
             )
-            sections.append(f"\n{label}:\n{previous_summary}")
+            dynamic_sections.append(f"\n{label}:\n{previous_summary}")
         if phase0_hints:
             label = "Indices Phase 0 (regex)" if language == "fr" else "Phase 0 hints (regex)"
             hints_json = json.dumps(phase0_hints, ensure_ascii=False)
-            sections.append(f"\n{label}:\n{hints_json}")
+            dynamic_sections.append(f"\n{label}:\n{hints_json}")
 
-    # [EXEMPLES]
-    if few_shot_examples:
-        sections.append(f"\n[{lang.examples_label}]\n{few_shot_examples}")
+    if split_for_caching:
+        static_system = "\n".join(sections)
+        dynamic_context = "\n".join(dynamic_sections)
+        return static_system, dynamic_context
 
-    return "\n".join(sections)
+    # Default: concatenate everything into a single prompt string
+    return "\n".join(sections + dynamic_sections)

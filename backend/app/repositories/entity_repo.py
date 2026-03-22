@@ -103,6 +103,7 @@ class EntityRepository(Neo4jRepository):
                 "role": c.role,
                 "species": c.species,
                 "first_chapter": c.first_appearance_chapter or chapter_number,
+                "confidence": getattr(c, "confidence", 1.0),
             }
             for c in characters
         ]
@@ -122,6 +123,7 @@ class EntityRepository(Neo4jRepository):
                 ch.role = c.role,
                 ch.species = c.species,
                 ch.first_appearance_chapter = c.first_chapter,
+                ch.confidence = c.confidence,
                 ch.batch_id = $batch_id,
                 ch.created_at = timestamp()
                 {version_clause}
@@ -130,6 +132,9 @@ class EntityRepository(Neo4jRepository):
                     WHEN size(c.description) > size(coalesce(ch.description, ''))
                     THEN c.description ELSE ch.description END,
                 ch.aliases = ch.aliases + [a IN c.aliases WHERE NOT a IN ch.aliases],
+                ch.confidence = CASE
+                    WHEN c.confidence > coalesce(ch.confidence, 0.0)
+                    THEN c.confidence ELSE ch.confidence END,
                 ch.batch_id = $batch_id
                 {version_clause}
             WITH ch, c
@@ -174,6 +179,8 @@ class EntityRepository(Neo4jRepository):
                 "subtype": r.subtype,
                 "context": r.context,
                 "since_chapter": r.since_chapter or chapter_number,
+                "temporal_order": getattr(r, "temporal_order", None),
+                "confidence": getattr(r, "confidence", 1.0),
             }
             for r in relationships
             if r.source and r.target
@@ -207,7 +214,9 @@ class EntityRepository(Neo4jRepository):
                     rel.context = r.context,
                     rel.book_id = $book_id,
                     rel.batch_id = $batch_id,
-                    rel.type = r.rel_type
+                    rel.type = r.rel_type,
+                    rel.temporal_order = r.temporal_order,
+                    rel.confidence = r.confidence
                 RETURN rel
                 """,
                 {"rel": rel, "book_id": book_id, "batch_id": batch_id},
@@ -254,6 +263,7 @@ class EntityRepository(Neo4jRepository):
                 "rank": s.rank,
                 "owner": s.owner,
                 "chapter": s.acquired_chapter or chapter_number,
+                "confidence": getattr(s, "confidence", 1.0),
             }
             for s in skills
         ]
@@ -270,6 +280,7 @@ class EntityRepository(Neo4jRepository):
                 sk.description = s.description,
                 sk.skill_type = s.skill_type,
                 sk.rank = s.rank,
+                sk.confidence = s.confidence,
                 sk.batch_id = $batch_id,
                 sk.created_at = timestamp()
                 {version_clause}
@@ -511,6 +522,7 @@ class EntityRepository(Neo4jRepository):
                 "location": e.location,
                 "chapter": e.chapter or chapter_number,
                 "is_flashback": e.is_flashback,
+                "confidence": getattr(e, "confidence", 1.0),
             }
             for e in events
         ]
@@ -529,6 +541,7 @@ class EntityRepository(Neo4jRepository):
                 ev.event_type = e.event_type,
                 ev.significance = e.significance,
                 ev.is_flashback = e.is_flashback,
+                ev.confidence = e.confidence,
                 ev.batch_id = $batch_id,
                 ev.created_at = timestamp()
                 {version_clause}
@@ -612,6 +625,7 @@ class EntityRepository(Neo4jRepository):
                 "description": loc.description,
                 "location_type": loc.location_type,
                 "parent": loc.parent_location,
+                "confidence": getattr(loc, "confidence", 1.0),
             }
             for loc in locations
         ]
@@ -624,6 +638,7 @@ class EntityRepository(Neo4jRepository):
                 loc.canonical_name = l.canonical_name,
                 loc.description = l.description,
                 loc.location_type = l.location_type,
+                loc.confidence = l.confidence,
                 loc.batch_id = $batch_id,
                 loc.created_at = timestamp()
             ON MATCH SET
@@ -631,6 +646,9 @@ class EntityRepository(Neo4jRepository):
                 loc.description = CASE
                     WHEN size(l.description) > size(coalesce(loc.description, ''))
                     THEN l.description ELSE loc.description END,
+                loc.confidence = CASE
+                    WHEN l.confidence > coalesce(loc.confidence, 0.0)
+                    THEN l.confidence ELSE loc.confidence END,
                 loc.batch_id = $batch_id
             WITH loc, l
             MATCH (chap:Chapter {book_id: $book_id, number: $chapter})
@@ -680,6 +698,7 @@ class EntityRepository(Neo4jRepository):
                 "item_type": i.item_type,
                 "rarity": i.rarity,
                 "owner": i.owner,
+                "confidence": getattr(i, "confidence", 1.0),
             }
             for i in items
         ]
@@ -693,6 +712,7 @@ class EntityRepository(Neo4jRepository):
                 it.description = i.description,
                 it.item_type = i.item_type,
                 it.rarity = i.rarity,
+                it.confidence = i.confidence,
                 it.batch_id = $batch_id,
                 it.created_at = timestamp()
             WITH it, i
@@ -749,6 +769,7 @@ class EntityRepository(Neo4jRepository):
                 "species": c.species,
                 "threat_level": c.threat_level,
                 "habitat": c.habitat,
+                "confidence": getattr(c, "confidence", 1.0),
             }
             for c in creatures
         ]
@@ -763,6 +784,7 @@ class EntityRepository(Neo4jRepository):
                 cr.species = c.species,
                 cr.threat_level = c.threat_level,
                 cr.habitat = c.habitat,
+                cr.confidence = c.confidence,
                 cr.batch_id = $batch_id,
                 cr.created_at = timestamp()
             WITH cr, c
@@ -799,6 +821,7 @@ class EntityRepository(Neo4jRepository):
                 "description": f.description,
                 "faction_type": f.faction_type,
                 "alignment": f.alignment,
+                "confidence": getattr(f, "confidence", 1.0),
             }
             for f in factions
         ]
@@ -812,6 +835,7 @@ class EntityRepository(Neo4jRepository):
                 fa.description = f.description,
                 fa.type = f.faction_type,
                 fa.alignment = f.alignment,
+                fa.confidence = f.confidence,
                 fa.batch_id = $batch_id,
                 fa.created_at = timestamp()
             WITH fa, f
@@ -842,6 +866,7 @@ class EntityRepository(Neo4jRepository):
                 "canonical_name": (getattr(c, "canonical_name", "") or c.name).lower().strip(),
                 "description": c.description,
                 "domain": c.domain,
+                "confidence": getattr(c, "confidence", 1.0),
             }
             for c in concepts
         ]
@@ -854,12 +879,16 @@ class EntityRepository(Neo4jRepository):
                 co.canonical_name = c.canonical_name,
                 co.description = c.description,
                 co.domain = c.domain,
+                co.confidence = c.confidence,
                 co.batch_id = $batch_id,
                 co.created_at = timestamp()
             ON MATCH SET
                 co.description = CASE
                     WHEN size(c.description) > size(coalesce(co.description, ''))
                     THEN c.description ELSE co.description END,
+                co.confidence = CASE
+                    WHEN c.confidence > coalesce(co.confidence, 0.0)
+                    THEN c.confidence ELSE co.confidence END,
                 co.batch_id = $batch_id
             WITH co, c
             MATCH (chap:Chapter {book_id: $book_id, number: $chapter})
@@ -1732,6 +1761,9 @@ class EntityRepository(Neo4jRepository):
                 ).lower().strip(),
                 "description": getattr(a, "description", ""),
                 "arc_type": getattr(a, "arc_type", ""),
+                "related_events": [
+                    e.lower().strip() for e in getattr(a, "related_events", []) or []
+                ],
             }
             for a in arcs
         ]
@@ -1763,6 +1795,46 @@ class EntityRepository(Neo4jRepository):
                 "chapter": chapter_number,
             },
         )
+
+        # Link arcs to their related events via PART_OF_ARC edges
+        for arc_data in data:
+            if arc_data["related_events"]:
+                await self.execute_write(
+                    """
+                    UNWIND $event_names AS event_name
+                    MATCH (e:Event {book_id: $book_id})
+                    WHERE toLower(e.name) = event_name
+                       OR e.canonical_name = event_name
+                    WITH e, event_name
+                    LIMIT 1
+                    MATCH (arc:Arc {canonical_name: $arc_name, book_id: $book_id})
+                    MERGE (e)-[:PART_OF_ARC]->(arc)
+                    """,
+                    {
+                        "event_names": arc_data["related_events"],
+                        "arc_name": arc_data["canonical_name"],
+                        "book_id": book_id,
+                    },
+                )
+
+        # Add PRECEDES edges between consecutive events within each arc (by chapter order)
+        for arc_data in data:
+            if len(arc_data["related_events"]) >= 2:
+                await self.execute_write(
+                    """
+                    MATCH (arc:Arc {canonical_name: $arc_name, book_id: $book_id})
+                    MATCH (e:Event)-[:PART_OF_ARC]->(arc)
+                    WITH e ORDER BY e.valid_from_chapter ASC, e.name ASC
+                    WITH collect(e) AS events
+                    UNWIND range(0, size(events) - 2) AS i
+                    WITH events[i] AS prev, events[i + 1] AS next
+                    MERGE (prev)-[:PRECEDES {arc_derived: true}]->(next)
+                    """,
+                    {
+                        "arc_name": arc_data["canonical_name"],
+                        "book_id": book_id,
+                    },
+                )
 
         logger.info(
             "arcs_upserted", book_id=book_id, chapter=chapter_number, count=len(arcs)
@@ -2306,6 +2378,8 @@ class EntityRepository(Neo4jRepository):
                     a.arc_type = ""
                 if not hasattr(a, "canonical_name") or not a.canonical_name:
                     a.canonical_name = a.name
+                if not hasattr(a, "related_events"):
+                    a.related_events = []
 
         # Prophecies
         prophecies = []
@@ -2332,6 +2406,8 @@ class EntityRepository(Neo4jRepository):
                     r.context = ""
                 if not hasattr(r, "since_chapter"):
                     r.since_chapter = getattr(r, "valid_from_chapter", None) or chapter_number
+                if not hasattr(r, "temporal_order"):
+                    r.temporal_order = None
 
         # ── Phase 2: Entity node upserts in parallel ─────────────────
         # All entity types are independent — safe to run concurrently.

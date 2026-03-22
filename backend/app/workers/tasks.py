@@ -555,6 +555,29 @@ async def process_book_extraction_v4(
 
             # ended_relations already processed inside upsert_v4_entities — no duplicate loop
 
+            # Streaming entity dedup — check new entities against existing ones
+            try:
+                from app.services.deduplication import streaming_chapter_dedup
+
+                merge_map = await streaming_chapter_dedup(
+                    entity_repo=entity_repo,
+                    book_id=book_id,
+                    chapter_number=chapter.number,
+                    new_entities=entities,
+                )
+                if merge_map:
+                    logger.info(
+                        "streaming_dedup_merged",
+                        chapter=chapter.number,
+                        merges=len(merge_map),
+                    )
+            except Exception:
+                logger.warning(
+                    "streaming_dedup_failed",
+                    chapter=chapter.number,
+                    exc_info=True,
+                )
+
             # Update entity_registry from result (already updated inside reconcile_persist node)
             updated_registry = result.get("entity_registry")
             if updated_registry:
@@ -683,6 +706,7 @@ async def process_book_extraction_v4(
     from app.services.extraction.book_level import (
         community_cluster,
         generate_entity_summaries,
+        generate_state_snapshots,
         iterative_cluster,
     )
 
@@ -705,7 +729,14 @@ async def process_book_extraction_v4(
     except Exception:
         logger.warning("v4_entity_summaries_failed", book_id=book_id, exc_info=True)
 
-    # Book-level 3: Community detection
+    # Book-level 3: State snapshots
+    try:
+        snapshot_count = await generate_state_snapshots(entity_repo, book_id)
+        logger.info("v4_book_snapshots_done", count=snapshot_count)
+    except Exception:
+        logger.warning("v4_state_snapshots_failed", book_id=book_id, exc_info=True)
+
+    # Book-level 4: Community detection
     try:
         communities = await community_cluster(driver, book_id, batch_id=book_batch_id)
         logger.info("v4_book_communities_done", count=len(communities))

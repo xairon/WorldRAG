@@ -157,6 +157,50 @@ async def _graph_search(
     )
 
 
+async def _multi_hop_graph_search(
+    repo,
+    query_entities: list[str],
+    book_id: str,
+    top_k: int,
+    max_chapter: int | None,
+) -> list[dict[str, Any]]:
+    """2-hop graph traversal from query entities to discover indirect context."""
+    if not query_entities:
+        return []
+    return await repo.execute_read(
+        """
+        UNWIND $entities AS entity_name
+        MATCH (e {book_id: $book_id})
+        WHERE e.canonical_name = toLower(entity_name)
+        // 1-hop: direct neighbors
+        MATCH (e)-[r1]-(neighbor)
+        WHERE NOT neighbor:Book AND NOT neighbor:Chapter AND NOT neighbor:Chunk AND NOT neighbor:Paragraph
+          AND NOT type(r1) IN ['MENTIONED_IN', 'FIRST_MENTIONED_IN', 'MEMBER_OF', 'PARENT_COMMUNITY', 'HAS_CHAPTER', 'HAS_CHUNK', 'HAS_PARAGRAPH']
+        // 2-hop: neighbors of neighbors
+        OPTIONAL MATCH (neighbor)-[r2]-(hop2)
+        WHERE NOT hop2:Book AND NOT hop2:Chapter AND NOT hop2:Chunk AND NOT hop2:Paragraph
+          AND NOT type(r2) IN ['MENTIONED_IN', 'FIRST_MENTIONED_IN', 'MEMBER_OF', 'PARENT_COMMUNITY', 'HAS_CHAPTER', 'HAS_CHUNK', 'HAS_PARAGRAPH']
+          AND hop2 <> e
+        WITH DISTINCT neighbor, hop2, r1, r2,
+             CASE WHEN hop2 IS NOT NULL THEN 0.5 ELSE 1.0 END AS relevance
+        // Get grounded chunks for discovered entities
+        OPTIONAL MATCH (neighbor)-[:GROUNDED_IN]->(ck:Chunk)
+        WHERE $max_chapter IS NULL OR ck.chapter_number <= $max_chapter
+        RETURN DISTINCT ck.text AS text, ck.chapter_number AS chapter_number,
+               ck.chapter_id AS chapter_id, relevance,
+               neighbor.canonical_name AS via_entity
+        ORDER BY relevance DESC, chapter_number
+        LIMIT $top_k
+        """,
+        {
+            "entities": query_entities,
+            "book_id": book_id,
+            "top_k": top_k,
+            "max_chapter": max_chapter,
+        },
+    )
+
+
 async def _relationship_embedding_search(
     repo,
     query_embedding: list[float],
@@ -209,6 +253,27 @@ async def _relationship_embedding_search(
             exc_info=True,
         )
         return []
+
+
+async def _community_summary_search(
+    repo,
+    book_id: str,
+    query: str,
+    top_k: int = 5,
+) -> list[dict[str, Any]]:
+    """Retrieve community summaries for global/thematic queries."""
+    return await repo.execute_read(
+        """
+        MATCH (c:Community {book_id: $book_id})
+        WHERE c.summary IS NOT NULL AND c.summary <> ''
+        RETURN c.summary AS text, c.key_themes AS themes,
+               c.level AS level, c.id AS community_id,
+               size((c)<-[:MEMBER_OF]-()) AS member_count
+        ORDER BY c.level ASC, member_count DESC
+        LIMIT $top_k
+        """,
+        {"book_id": book_id, "top_k": top_k},
+    )
 
 
 async def hybrid_retrieve(
