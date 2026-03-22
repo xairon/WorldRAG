@@ -87,16 +87,13 @@ async def summarize_memory(state: dict[str, Any]) -> dict[str, Any]:
         prompt = history_text
 
     try:
+        msgs = [SystemMessage(content=SUMMARIZE_MEMORY_SYSTEM), HumanMessage(content=prompt)]
         try:
             llm = get_langchain_llm(settings.llm_auxiliary)
+            response = await llm.ainvoke(msgs)
         except Exception:
             llm = get_langchain_llm(settings.llm_chat)
-        response = await llm.ainvoke(
-            [
-                SystemMessage(content=SUMMARIZE_MEMORY_SYSTEM),
-                HumanMessage(content=prompt),
-            ]
-        )
+            response = await llm.ainvoke(msgs)
         summary = (
             response.content.strip() if isinstance(response.content, str) else str(response.content)
         )

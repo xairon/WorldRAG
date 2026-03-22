@@ -42,16 +42,13 @@ async def hyde_expand(state: dict[str, Any]) -> dict[str, Any]:
         return {}
 
     try:
+        msgs = [SystemMessage(content=HYDE_EXPAND_SYSTEM), HumanMessage(content=query)]
         try:
             llm = get_langchain_llm(settings.llm_auxiliary)
+            response = await llm.ainvoke(msgs)
         except Exception:
             llm = get_langchain_llm(settings.llm_chat)
-        response = await llm.ainvoke(
-            [
-                SystemMessage(content=HYDE_EXPAND_SYSTEM),
-                HumanMessage(content=query),
-            ]
-        )
+            response = await llm.ainvoke(msgs)
         doc = (
             response.content.strip() if isinstance(response.content, str) else str(response.content)
         )

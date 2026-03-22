@@ -134,7 +134,7 @@ async def _graph_search(
         CALL db.index.fulltext.queryNodes('entity_fulltext', $query)
         YIELD node AS entity, score AS entity_score
         WHERE entity_score > 0.5
-        WITH entity
+        WITH entity, entity_score
         ORDER BY entity_score DESC
         LIMIT 5
         MATCH (entity)-[:GROUNDED_IN|MENTIONED_IN]->(chunk:Chunk)<-[:HAS_CHUNK]-(chap:Chapter)
@@ -223,7 +223,7 @@ async def _relationship_embedding_search(
                                   'MENTIONED_IN', 'FIRST_MENTIONED_IN',
                                   'MEMBER_OF', 'PARENT_COMMUNITY', 'LOCATION_PART_OF']
               AND ($max_chapter IS NULL
-                   OR NOT exists(r.valid_from_chapter)
+                   OR r.valid_from_chapter IS NULL
                    OR r.valid_from_chapter <= $max_chapter)
             WITH a, b, r,
                  gds.similarity.cosine(r.embedding, $embedding) AS score
