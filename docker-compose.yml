@@ -82,10 +82,12 @@ services:
       POSTGRES_URI: postgresql://${POSTGRES_USER:-worldrag}:${POSTGRES_PASSWORD:-worldrag}@postgres:5432/${POSTGRES_DB:-worldrag}
       LANGFUSE_HOST: http://langfuse:3000
       EMBEDDING_DEVICE: cpu
+      HF_HOME: /hf_cache
       CORS_ORIGINS: '["http://localhost:49516","http://localhost:3000"]'
     volumes:
       - ./backend:/app/backend
       - project_data:/data/projects
+      - hf_cache:/hf_cache
     depends_on:
       neo4j:
         condition: service_healthy
