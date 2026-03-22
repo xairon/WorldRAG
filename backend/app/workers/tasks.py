@@ -572,6 +572,23 @@ async def process_book_extraction_v4(
                 book_id, chapter.number, "extracted", chapter_entity_count
             )
 
+            # Track LLM cost (2 calls per chapter: entities + relations)
+            if cost_tracker:
+                from app.core.cost_tracker import count_tokens
+
+                input_tokens = count_tokens(chapter.text) * 2  # prompt sent twice
+                output_tokens = count_tokens(str(entities)) + count_tokens(str(relations))
+                _, model_name = settings.parse_llm_spec(provider or settings.langextract_model)
+                await cost_tracker.record(
+                    model=model_name,
+                    provider=(provider or settings.langextract_model).split(":")[0],
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    operation="extraction",
+                    book_id=book_id,
+                    chapter=chapter.number,
+                )
+
             chapter_stats.append(
                 {
                     "chapter": chapter.number,

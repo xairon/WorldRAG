@@ -182,7 +182,9 @@ class EntityRepository(Neo4jRepository):
         if not data:
             return 0
 
-        # Process relations one by one to avoid cartesian products from label-free MATCH
+        # Process relations one by one to avoid cartesian products from label-free MATCH.
+        # Uses apoc.merge.relationship to create typed edges dynamically
+        # (e.g. :ALLIES_WITH, :ENEMIES_WITH) instead of generic :RELATES_TO.
         total_created = 0
         for rel in data:
             _, summary = await self.execute_write_with_summary(
@@ -196,15 +198,14 @@ class EntityRepository(Neo4jRepository):
                 WHERE (b.canonical_name = toLower(r.target) OR toLower(b.name) = toLower(r.target))
                   AND NOT b:Book AND NOT b:Chapter AND NOT b:Chunk AND NOT b:Paragraph
                 WITH a, b, r LIMIT 1
-                MERGE (a)-[rel:RELATES_TO {
-                    type: r.rel_type,
-                    valid_from_chapter: r.since_chapter
-                }]->(b)
-                ON CREATE SET
-                    rel.subtype = r.subtype,
-                    rel.context = r.context,
-                    rel.book_id = $book_id,
-                    rel.batch_id = $batch_id
+                CALL apoc.merge.relationship(
+                    a, r.rel_type,
+                    {valid_from_chapter: r.since_chapter},
+                    {subtype: r.subtype, context: r.context,
+                     book_id: $book_id, batch_id: $batch_id},
+                    b, {}
+                ) YIELD rel
+                RETURN rel
                 """,
                 {"rel": rel, "book_id": book_id, "batch_id": batch_id},
             )

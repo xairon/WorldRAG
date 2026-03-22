@@ -134,11 +134,11 @@ async def embed_book_relationships(
     book_id: str,
     cost_tracker: CostTracker | None = None,
 ) -> RelationshipEmbeddingResult:
-    """Embed all RELATES_TO relationships for a book and write embeddings to Neo4j.
+    """Embed all typed relationships for a book and write embeddings to Neo4j.
 
-    Queries for relationships without embeddings, builds text representations
-    from source/target names + type + context, embeds them locally, and writes
-    the vectors back to the relationship properties.
+    Queries for relationships without embeddings (all types except structural),
+    builds text representations from source/target names + type + context,
+    embeds them locally, and writes the vectors back to the relationship properties.
 
     Args:
         driver: Neo4j async driver.
@@ -148,16 +148,23 @@ async def embed_book_relationships(
     Returns:
         RelationshipEmbeddingResult with stats.
     """
-    # Fetch relationships without embeddings
+    # Structural relationship types to exclude from embedding
+    _STRUCTURAL_REL_TYPES = [
+        "HAS_CHAPTER", "HAS_CHUNK", "HAS_PARAGRAPH", "MENTIONED_IN",
+        "FIRST_MENTIONED_IN", "MEMBER_OF", "PARENT_COMMUNITY", "LOCATION_PART_OF",
+    ]
+
+    # Fetch relationships without embeddings (all typed edges, not just RELATES_TO)
     async with driver.session() as session:
         query_result = await session.run(
             """
-            MATCH (a)-[r:RELATES_TO {book_id: $book_id}]->(b)
-            WHERE r.embedding IS NULL
+            MATCH (a)-[r]->(b)
+            WHERE r.book_id = $book_id AND r.embedding IS NULL
+              AND NOT type(r) IN $excluded_types
             RETURN id(r) AS rel_id, a.canonical_name AS source, b.canonical_name AS target,
-                   r.type AS rel_type, r.context AS context, r.subtype AS subtype
+                   type(r) AS rel_type, r.context AS context, r.subtype AS subtype
             """,
-            {"book_id": book_id},
+            {"book_id": book_id, "excluded_types": _STRUCTURAL_REL_TYPES},
         )
         rels = [dict(record) for record in await query_result.data()]
 
@@ -373,7 +380,7 @@ async def _write_relationship_embeddings(
     batch: list[dict[str, Any]],
     embeddings: list[list[float]],
 ) -> None:
-    """Write a batch of embeddings to RELATES_TO relationships via UNWIND."""
+    """Write a batch of embeddings to relationships (any type) via UNWIND."""
     payload = [
         {
             "rel_id": batch[j]["rel_id"],
@@ -386,7 +393,7 @@ async def _write_relationship_embeddings(
         await session.run(
             """
             UNWIND $items AS item
-            MATCH ()-[r:RELATES_TO]->() WHERE id(r) = item.rel_id
+            MATCH ()-[r]->() WHERE id(r) = item.rel_id
             SET r.embedding = item.embedding
             """,
             {"items": payload},

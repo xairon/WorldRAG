@@ -71,6 +71,105 @@ _LOCATION_CHANGE_RE = re.compile(
 )
 
 
+# --- POV / character shift detection ---
+
+# Capitalized proper names appearing as sentence subjects (word at start or after period/newline)
+_PROPER_NAME_RE = re.compile(
+    r"(?:^|(?<=\.\s)|(?<=\n))([A-Z][a-z]{2,})",
+)
+
+# Common non-name capitalized words to exclude
+_NON_NAME_WORDS = frozenset({
+    "The", "This", "That", "These", "Those", "There", "Then", "They",
+    "Their", "What", "When", "Where", "Which", "While", "Who", "Why",
+    "How", "His", "Her", "Its", "Our", "She", "But", "And", "For",
+    "Not", "With", "From", "Into", "After", "Before", "Between",
+    "Under", "Over", "Just", "Only", "Every", "Each", "Some", "Any",
+    "All", "Most", "Many", "Much", "Such", "Very", "Still", "Even",
+    "Now", "Here", "Back", "Down", "Once", "Soon", "Already",
+    "Something", "Nothing", "Everything", "Everyone", "Someone",
+    "Nobody", "Anything", "However", "Perhaps", "Maybe", "Another",
+    "Without", "Within", "Beyond", "Above", "Below", "Around",
+})
+
+
+def _extract_paragraph_names(para_text: str) -> set[str]:
+    """Extract likely character names from a paragraph.
+
+    Finds capitalized words that appear in subject position (start of
+    sentence or paragraph) and are not common English words.
+    """
+    names: set[str] = set()
+    for m in _PROPER_NAME_RE.finditer(para_text):
+        word = m.group(1)
+        if word not in _NON_NAME_WORDS:
+            names.add(word)
+    return names
+
+
+def _detect_pov_shifts(text: str) -> set[int]:
+    """Detect POV/character shifts between paragraphs.
+
+    Compares the dominant character name in each paragraph against a
+    sliding window of the previous 3 paragraphs. If a paragraph's
+    first subject name has not appeared in the recent window, it is
+    flagged as a potential scene boundary (POV shift).
+
+    This catches cases like paragraphs 1-5 mentioning "Jake" repeatedly,
+    then paragraph 6 starting with "William looked at his forge".
+
+    Returns:
+        Set of character offsets marking detected POV shift boundaries.
+    """
+    # Split into paragraphs with offsets
+    paragraphs: list[tuple[str, int]] = []
+    current_start = 0
+    for m in re.finditer(r"\n\s*\n", text):
+        para_text = text[current_start:m.start()].strip()
+        if para_text:
+            paragraphs.append((para_text, current_start))
+        current_start = m.end()
+    remaining = text[current_start:].strip()
+    if remaining:
+        paragraphs.append((remaining, current_start))
+
+    if len(paragraphs) < 4:
+        return set()
+
+    # Extract names for each paragraph
+    para_names: list[set[str]] = [_extract_paragraph_names(p) for p, _ in paragraphs]
+
+    boundaries: set[int] = set()
+    window_size = 3
+
+    for i in range(window_size, len(paragraphs)):
+        current_names = para_names[i]
+        if not current_names:
+            continue
+
+        # Build the recent window of names from previous paragraphs
+        window_names: set[str] = set()
+        for j in range(max(0, i - window_size), i):
+            window_names.update(para_names[j])
+
+        if not window_names:
+            continue
+
+        # Get the first (dominant) name in the current paragraph
+        first_match = _PROPER_NAME_RE.search(paragraphs[i][0])
+        if not first_match:
+            continue
+        dominant_name = first_match.group(1)
+        if dominant_name in _NON_NAME_WORDS:
+            continue
+
+        # If the dominant name is completely new (not in the window), flag as POV shift
+        if dominant_name not in window_names:
+            boundaries.add(paragraphs[i][1])
+
+    return boundaries
+
+
 def detect_scene_boundaries(text: str) -> list[int]:
     """Detect likely scene boundaries in narrative text.
 
@@ -81,6 +180,7 @@ def detect_scene_boundaries(text: str) -> list[int]:
     1. Explicit scene dividers (``***``, ``---``, ``* * *``, etc.)
     2. Time jump phrases ("The next morning", "Three days later")
     3. Location change phrases ("Back at the camp", "In the dungeon")
+    4. POV/character shift detection (new dominant character not in recent window)
 
     Args:
         text: Full chapter text.
@@ -110,6 +210,10 @@ def detect_scene_boundaries(text: str) -> list[int]:
     for m in _LOCATION_CHANGE_RE.finditer(text):
         para_start = _content_start_from_match(text, m)
         boundaries.add(para_start)
+
+    # 4. POV/character shift detection
+    pov_boundaries = _detect_pov_shifts(text)
+    boundaries.update(pov_boundaries)
 
     # Remove offset 0 -- the very start of the chapter is not a "break"
     boundaries.discard(0)

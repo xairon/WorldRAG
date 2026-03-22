@@ -10,7 +10,7 @@ services:
       NEO4J_PLUGINS: '["apoc", "graph-data-science"]'
       NEO4J_dbms_memory_heap_max__size: "2G"
       NEO4J_dbms_memory_pagecache_size: "1G"
-      NEO4J_dbms_security_procedures_allowlist: "apoc.path.*,apoc.cypher.*,apoc.meta.*,gds.*"
+      NEO4J_dbms_security_procedures_allowlist: "apoc.path.*,apoc.cypher.*,apoc.meta.*,apoc.merge.*,gds.*"
     volumes:
       - neo4j_data:/data
     mem_limit: 4g

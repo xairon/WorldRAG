@@ -134,13 +134,14 @@ async def iterative_cluster(
                     book_id=book_id,
                 )
 
-        # Step 2: Fix RELATES_TO edge source/target properties
+        # Step 2: Fix edge source/target properties on all typed relationships
         async with driver.session() as session:
             for old_name, new_name in alias_map.items():
                 await session.run(
                     """
-                    MATCH ()-[r:RELATES_TO {book_id: $book_id}]->()
-                    WHERE toLower(r.source) = $old OR toLower(r.target) = $old
+                    MATCH ()-[r]->()
+                    WHERE r.book_id = $book_id
+                      AND (toLower(r.source) = $old OR toLower(r.target) = $old)
                     SET r.source = CASE WHEN toLower(r.source) = $old THEN $new ELSE r.source END,
                         r.target = CASE WHEN toLower(r.target) = $old THEN $new ELSE r.target END
                     """,
@@ -175,31 +176,21 @@ async def iterative_cluster(
 
                 for alias_id in alias_ids:
                     # Transfer all outgoing relationships from alias to canonical
+                    # Uses apoc.merge.relationship for dynamic typed edges
                     await session.run(
                         """
                         MATCH (alias)-[r]->(target)
                         WHERE id(alias) = $alias_id AND id(target) <> $canonical_id
                         WITH alias, r, target, type(r) AS rel_type, properties(r) AS props
                         MATCH (canonical) WHERE id(canonical) = $canonical_id
-                        // Check if equivalent edge already exists
-                        WITH alias, r, target, canonical, props
+                        WITH alias, r, target, canonical, rel_type, props
                         WHERE NOT EXISTS {
                             MATCH (canonical)-[existing]->(target)
                             WHERE type(existing) = type(r)
                         }
-                        // Use FOREACH + MERGE for each known relationship type
-                        FOREACH (_ IN CASE WHEN type(r) = 'RELATES_TO' THEN [1] ELSE [] END |
-                            MERGE (canonical)-[nr:RELATES_TO]->(target)
-                            SET nr += props
-                        )
-                        FOREACH (_ IN CASE WHEN type(r) = 'MENTIONED_IN' THEN [1] ELSE [] END |
-                            MERGE (canonical)-[nr:MENTIONED_IN]->(target)
-                            SET nr += props
-                        )
-                        FOREACH (_ IN CASE WHEN type(r) = 'BELONGS_TO' THEN [1] ELSE [] END |
-                            MERGE (canonical)-[nr:BELONGS_TO]->(target)
-                            SET nr += props
-                        )
+                        CALL apoc.merge.relationship(canonical, rel_type, {}, props, target, {})
+                        YIELD rel AS nr
+                        RETURN nr
                         """,
                         alias_id=alias_id,
                         canonical_id=canonical_id,
@@ -212,23 +203,14 @@ async def iterative_cluster(
                         WHERE id(alias) = $alias_id AND id(source) <> $canonical_id
                         WITH alias, r, source, type(r) AS rel_type, properties(r) AS props
                         MATCH (canonical) WHERE id(canonical) = $canonical_id
-                        WITH alias, r, source, canonical, props
+                        WITH alias, r, source, canonical, rel_type, props
                         WHERE NOT EXISTS {
                             MATCH (source)-[existing]->(canonical)
                             WHERE type(existing) = type(r)
                         }
-                        FOREACH (_ IN CASE WHEN type(r) = 'RELATES_TO' THEN [1] ELSE [] END |
-                            MERGE (source)-[nr:RELATES_TO]->(canonical)
-                            SET nr += props
-                        )
-                        FOREACH (_ IN CASE WHEN type(r) = 'MENTIONED_IN' THEN [1] ELSE [] END |
-                            MERGE (source)-[nr:MENTIONED_IN]->(canonical)
-                            SET nr += props
-                        )
-                        FOREACH (_ IN CASE WHEN type(r) = 'BELONGS_TO' THEN [1] ELSE [] END |
-                            MERGE (source)-[nr:BELONGS_TO]->(canonical)
-                            SET nr += props
-                        )
+                        CALL apoc.merge.relationship(source, rel_type, {}, props, canonical, {})
+                        YIELD rel AS nr
+                        RETURN nr
                         """,
                         alias_id=alias_id,
                         canonical_id=canonical_id,

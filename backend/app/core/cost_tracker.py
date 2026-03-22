@@ -21,9 +21,14 @@ MODEL_COSTS: dict[str, tuple[float, float]] = {
     "gpt-4o-mini": (0.15, 0.60),
     "gpt-4o-2024-11-20": (2.50, 10.00),
     "gemini-2.5-flash": (0.15, 0.60),
+    "gemini-2.5-flash-lite": (0.075, 0.30),
     "gemini-2.0-flash": (0.10, 0.40),
     "claude-3-5-sonnet": (3.00, 15.00),
     "claude-3-5-haiku": (0.80, 4.00),
+    "claude-haiku-4.5": (1.00, 5.00),
+    "anthropic/claude-haiku-4.5": (1.00, 5.00),
+    "deepseek/deepseek-v3.2": (0.27, 0.38),
+    "meta-llama/llama-4-maverick": (0.15, 0.60),
     "voyage-3.5": (0.06, 0.0),  # embeddings: input only
     "BAAI/bge-m3": (0.0, 0.0),  # local embeddings: free
 }

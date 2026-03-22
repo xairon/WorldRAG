@@ -267,9 +267,8 @@ ON EACH [n.name, n.description];
 CREATE INDEX chunk_chapter_position IF NOT EXISTS
 FOR (c:Chunk) ON (c.chapter_id, c.position);
 
-// === VECTOR INDEX ===
-// For semantic search with Voyage AI embeddings (1024 dimensions)
-// Adjust dimensions if using different model variant
+// === VECTOR INDEX — Chunks ===
+// For semantic search with BGE-m3 / Voyage AI embeddings (1024 dimensions)
 
 CREATE VECTOR INDEX chunk_embedding IF NOT EXISTS
 FOR (c:Chunk) ON (c.embedding)
@@ -283,9 +282,47 @@ OPTIONS {
   }
 };
 
+// === VECTOR INDEXES — Entity Embeddings ===
+// Per-label vector indexes for entity embedding search (BGE-m3, 1024 dims).
+// Neo4j 5.x requires one vector index per label.
+
+CREATE VECTOR INDEX character_embedding IF NOT EXISTS
+FOR (n:Character) ON (n.embedding)
+OPTIONS {indexConfig: {`vector.dimensions`: 1024, `vector.similarity_function`: 'cosine'}};
+
+CREATE VECTOR INDEX skill_embedding IF NOT EXISTS
+FOR (n:Skill) ON (n.embedding)
+OPTIONS {indexConfig: {`vector.dimensions`: 1024, `vector.similarity_function`: 'cosine'}};
+
+CREATE VECTOR INDEX location_embedding IF NOT EXISTS
+FOR (n:Location) ON (n.embedding)
+OPTIONS {indexConfig: {`vector.dimensions`: 1024, `vector.similarity_function`: 'cosine'}};
+
+CREATE VECTOR INDEX event_embedding IF NOT EXISTS
+FOR (n:Event) ON (n.embedding)
+OPTIONS {indexConfig: {`vector.dimensions`: 1024, `vector.similarity_function`: 'cosine'}};
+
+CREATE VECTOR INDEX item_embedding IF NOT EXISTS
+FOR (n:Item) ON (n.embedding)
+OPTIONS {indexConfig: {`vector.dimensions`: 1024, `vector.similarity_function`: 'cosine'}};
+
+CREATE VECTOR INDEX creature_embedding IF NOT EXISTS
+FOR (n:Creature) ON (n.embedding)
+OPTIONS {indexConfig: {`vector.dimensions`: 1024, `vector.similarity_function`: 'cosine'}};
+
+CREATE VECTOR INDEX concept_embedding IF NOT EXISTS
+FOR (n:Concept) ON (n.embedding)
+OPTIONS {indexConfig: {`vector.dimensions`: 1024, `vector.similarity_function`: 'cosine'}};
+
+CREATE VECTOR INDEX faction_embedding IF NOT EXISTS
+FOR (n:Faction) ON (n.embedding)
+OPTIONS {indexConfig: {`vector.dimensions`: 1024, `vector.similarity_function`: 'cosine'}};
+
 // === RELATIONSHIP VECTOR INDEX ===
-// For semantic search on RELATES_TO embeddings (LightRAG technique)
+// For semantic search on typed relationship embeddings (LightRAG technique)
 // Enables queries like "find all betrayals" or "find all level-ups"
+// Note: Neo4j 5.18+ supports relationship vector indexes. The RELATES_TO index
+// is kept for backward compatibility; new typed edges also store embeddings.
 
 CREATE VECTOR INDEX rel_relates_to_embedding IF NOT EXISTS
 FOR ()-[r:RELATES_TO]-() ON (r.embedding)

@@ -505,9 +505,12 @@ async def get_character_profile(
         ),
         repo.execute_read(
             """
-            MATCH (ch:Character)-[r:RELATES_TO]-(other:Character)
+            MATCH (ch:Character)-[r]-(other:Character)
             WHERE elementId(ch) = $id
-            RETURN other.name AS name, r.type AS rel_type,
+              AND NOT type(r) IN ['HAS_CHAPTER', 'HAS_CHUNK', 'HAS_PARAGRAPH',
+                                  'MENTIONED_IN', 'FIRST_MENTIONED_IN', 'MEMBER_OF',
+                                  'PARENT_COMMUNITY', 'LOCATION_PART_OF']
+            RETURN other.name AS name, type(r) AS rel_type,
                    r.subtype AS subtype, r.context AS context,
                    r.valid_from_chapter AS since_chapter
             ORDER BY r.valid_from_chapter

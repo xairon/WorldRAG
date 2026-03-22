@@ -164,10 +164,11 @@ async def _relationship_embedding_search(
     top_k: int,
     max_chapter: int | None,
 ) -> list[dict[str, Any]]:
-    """Semantic search on RELATES_TO relationship embeddings.
+    """Semantic search on relationship embeddings (all typed edges).
 
     Uses the rel_relates_to_embedding vector index to find relationships
     whose embedded context is semantically similar to the query.
+    Falls back gracefully if the index doesn't exist.
     """
     try:
         return await repo.execute_read(
@@ -182,7 +183,7 @@ async def _relationship_embedding_search(
                    OR r.valid_from_chapter <= $max_chapter)
             RETURN startNode(r).canonical_name AS source,
                    endNode(r).canonical_name AS target,
-                   r.type AS rel_type,
+                   type(r) AS rel_type,
                    r.context AS context,
                    r.subtype AS subtype,
                    score
