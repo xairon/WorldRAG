@@ -166,28 +166,32 @@ async def _relationship_embedding_search(
 ) -> list[dict[str, Any]]:
     """Semantic search on relationship embeddings (all typed edges).
 
-    Uses the rel_relates_to_embedding vector index to find relationships
-    whose embedded context is semantically similar to the query.
-    Falls back gracefully if the index doesn't exist.
+    Scans all edges with embeddings and computes cosine similarity.
+    Falls back gracefully if no embedded relationships exist.
     """
     try:
         return await repo.execute_read(
             """
-            CALL db.index.vector.queryRelationships(
-                'rel_relates_to_embedding', $top_k, $embedding
-            )
-            YIELD relationship AS r, score
+            MATCH (a)-[r]->(b)
             WHERE r.book_id = $book_id
+              AND r.embedding IS NOT NULL
+              AND NOT type(r) IN ['HAS_CHAPTER', 'HAS_CHUNK', 'HAS_PARAGRAPH',
+                                  'MENTIONED_IN', 'FIRST_MENTIONED_IN',
+                                  'MEMBER_OF', 'PARENT_COMMUNITY', 'LOCATION_PART_OF']
               AND ($max_chapter IS NULL
                    OR NOT exists(r.valid_from_chapter)
                    OR r.valid_from_chapter <= $max_chapter)
-            RETURN startNode(r).canonical_name AS source,
-                   endNode(r).canonical_name AS target,
+            WITH a, b, r,
+                 gds.similarity.cosine(r.embedding, $embedding) AS score
+            WHERE score > 0.5
+            RETURN a.canonical_name AS source,
+                   b.canonical_name AS target,
                    type(r) AS rel_type,
                    r.context AS context,
                    r.subtype AS subtype,
                    score
             ORDER BY score DESC
+            LIMIT $top_k
             """,
             {
                 "embedding": query_embedding,
