@@ -183,28 +183,31 @@ class EntityRepository(Neo4jRepository):
             return 0
 
         # Process relations one by one to avoid cartesian products from label-free MATCH.
-        # Uses apoc.merge.relationship to create typed edges dynamically
-        # (e.g. :ALLIES_WITH, :ENEMIES_WITH) instead of generic :RELATES_TO.
+        # Uses f-string for dynamic relationship type (safe: sanitized from controlled LLM output).
         total_created = 0
         for rel in data:
+            rel_type = rel["rel_type"].upper().replace(" ", "_").replace("-", "_")
+            rel_type = "".join(c for c in rel_type if c.isalnum() or c == "_")
+            if not rel_type:
+                rel_type = "RELATES_TO"
             _, summary = await self.execute_write_with_summary(
-                """
+                f"""
                 WITH $rel AS r
-                MATCH (a {book_id: $book_id})
+                MATCH (a {{book_id: $book_id}})
                 WHERE (a.canonical_name = toLower(r.source) OR toLower(a.name) = toLower(r.source))
                   AND NOT a:Book AND NOT a:Chapter AND NOT a:Chunk AND NOT a:Paragraph
                 WITH a, r LIMIT 1
-                MATCH (b {book_id: $book_id})
+                MATCH (b {{book_id: $book_id}})
                 WHERE (b.canonical_name = toLower(r.target) OR toLower(b.name) = toLower(r.target))
                   AND NOT b:Book AND NOT b:Chapter AND NOT b:Chunk AND NOT b:Paragraph
                 WITH a, b, r LIMIT 1
-                CALL apoc.merge.relationship(
-                    a, r.rel_type,
-                    {valid_from_chapter: r.since_chapter},
-                    {subtype: r.subtype, context: r.context,
-                     book_id: $book_id, batch_id: $batch_id},
-                    b, {}
-                ) YIELD rel
+                MERGE (a)-[rel:{rel_type} {{valid_from_chapter: r.since_chapter}}]->(b)
+                ON CREATE SET
+                    rel.subtype = r.subtype,
+                    rel.context = r.context,
+                    rel.book_id = $book_id,
+                    rel.batch_id = $batch_id,
+                    rel.type = r.rel_type
                 RETURN rel
                 """,
                 {"rel": rel, "book_id": book_id, "batch_id": batch_id},
