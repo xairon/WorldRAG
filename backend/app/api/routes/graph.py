@@ -309,7 +309,7 @@ async def get_book_subgraph(
     book_id: str,
     label: str | None = Query(None, description="Filter by node label"),
     chapter: int | None = Query(None, description="Filter by chapter"),
-    limit: int = Query(100, ge=1, le=500),
+    limit: int = Query(1000, ge=1, le=5000),
     driver: AsyncDriver = Depends(get_neo4j),
 ) -> dict:
     """Get the full entity subgraph for a book.
@@ -324,8 +324,10 @@ async def get_book_subgraph(
         """
         MATCH (n)-[r]-(m)
         WHERE (n.book_id = $book_id OR m.book_id = $book_id)
-          AND NOT n:Chunk AND NOT n:Book AND NOT n:Chapter
-          AND NOT m:Chunk AND NOT m:Book AND NOT m:Chapter
+          AND NOT n:Chunk AND NOT n:Book AND NOT n:Chapter AND NOT n:Paragraph
+              AND NOT n:Community AND NOT n:StateSnapshot AND NOT n:StateChange
+          AND NOT m:Chunk AND NOT m:Book AND NOT m:Chapter AND NOT m:Paragraph
+              AND NOT m:Community AND NOT m:StateSnapshot AND NOT m:StateChange
           AND (CASE WHEN $has_label THEN ($label IN labels(n) OR $label IN labels(m)) ELSE true END)
           AND (CASE WHEN $has_chapter
                THEN (r.valid_from_chapter IS NULL OR r.valid_from_chapter <= $chapter)
@@ -336,13 +338,15 @@ async def get_book_subgraph(
         RETURN collect(DISTINCT {
             id: elementId(n),
             labels: labels(n),
-            name: n.name,
-            description: n.description
+            name: coalesce(n.canonical_name, n.name),
+            description: n.description,
+            confidence: n.confidence
         }) + collect(DISTINCT {
             id: elementId(m),
             labels: labels(m),
-            name: m.name,
-            description: m.description
+            name: coalesce(m.canonical_name, m.name),
+            description: m.description,
+            confidence: m.confidence
         }) AS nodes,
         collect(DISTINCT {
             id: elementId(r),

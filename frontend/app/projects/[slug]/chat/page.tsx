@@ -27,11 +27,23 @@ export default function ChatPage() {
   const { messages, isStreaming, send, stop, clearMessages } = useChatStream()
 
   // Fetch books for this project on mount
+  const setSelectedBookId = useChatStore((s) => s.setSelectedBookId)
+
   useEffect(() => {
     let cancelled = false
     apiFetch<BookInfo[]>(`/projects/${slug}/books`)
       .then((data) => {
-        if (!cancelled) setBooks(data)
+        if (cancelled) return
+        setBooks(data)
+        // Auto-select first extracted book if none selected
+        if (!selectedBookId) {
+          const extracted = data.filter(
+            (b) => b.status === "extracted" || b.status === "embedded",
+          )
+          if (extracted.length > 0) {
+            setSelectedBookId(extracted[0].book_id ?? extracted[0].id)
+          }
+        }
       })
       .catch(() => {
         // ignore — books will remain empty
@@ -66,9 +78,9 @@ export default function ChatPage() {
 
   // Map books for ChatHeader format
   const headerBooks = extractedBooks.map((b) => ({
-    id: b.id,
-    title: b.title,
-    totalChapters: b.total_chapters,
+    id: b.book_id ?? b.id,
+    title: b.title ?? b.filename ?? "Untitled",
+    totalChapters: b.total_chapters ?? b.chapters_count ?? 0,
   }))
 
   // Filter out system welcome message for display — show empty state instead
