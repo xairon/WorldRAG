@@ -180,30 +180,34 @@ class EntityRepository(Neo4jRepository):
         if not data:
             return 0
 
-        _, summary = await self.execute_write_with_summary(
-            """
-            UNWIND $rels AS r
-            MATCH (a {book_id: $book_id})
-            WHERE (a.canonical_name = r.source OR a.name = r.source)
-              AND NOT a:Book AND NOT a:Chapter AND NOT a:Chunk AND NOT a:Paragraph
-            MATCH (b {book_id: $book_id})
-            WHERE (b.canonical_name = r.target OR b.name = r.target)
-              AND NOT b:Book AND NOT b:Chapter AND NOT b:Chunk AND NOT b:Paragraph
-            WITH a, b, r LIMIT 1
-            MERGE (a)-[rel:RELATES_TO {
-                type: r.rel_type,
-                valid_from_chapter: r.since_chapter
-            }]->(b)
-            ON CREATE SET
-                rel.subtype = r.subtype,
-                rel.context = r.context,
-                rel.book_id = $book_id,
-                rel.batch_id = $batch_id
-            """,
-            {"rels": data, "book_id": book_id, "batch_id": batch_id},
-        )
-
-        created = summary.counters.relationships_created
+        # Process relations one by one to avoid cartesian products from label-free MATCH
+        total_created = 0
+        for rel in data:
+            _, summary = await self.execute_write_with_summary(
+                """
+                WITH $rel AS r
+                MATCH (a {book_id: $book_id})
+                WHERE (a.canonical_name = toLower(r.source) OR toLower(a.name) = toLower(r.source))
+                  AND NOT a:Book AND NOT a:Chapter AND NOT a:Chunk AND NOT a:Paragraph
+                WITH a, r LIMIT 1
+                MATCH (b {book_id: $book_id})
+                WHERE (b.canonical_name = toLower(r.target) OR toLower(b.name) = toLower(r.target))
+                  AND NOT b:Book AND NOT b:Chapter AND NOT b:Chunk AND NOT b:Paragraph
+                WITH a, b, r LIMIT 1
+                MERGE (a)-[rel:RELATES_TO {
+                    type: r.rel_type,
+                    valid_from_chapter: r.since_chapter
+                }]->(b)
+                ON CREATE SET
+                    rel.subtype = r.subtype,
+                    rel.context = r.context,
+                    rel.book_id = $book_id,
+                    rel.batch_id = $batch_id
+                """,
+                {"rel": rel, "book_id": book_id, "batch_id": batch_id},
+            )
+            total_created += summary.counters.relationships_created
+        created = total_created
         if created == 0 and len(data) > 0:
             logger.warning(
                 "v4_relations_zero_created",

@@ -111,6 +111,13 @@ def build_extraction_prompt(
             "- Extraire UNIQUEMENT les types d'entit\u00e9s list\u00e9s dans l'ontologie cible"
         )
         sections.append(
+            "- Les types entity_type de base sont : character, event, location, item, "
+            "creature, faction, concept, arc, prophecy, level_change, stat_change. "
+            "Pour tout type spécialisé (skill, class, title, system, bloodline, profession, "
+            "achievement, race, quest, ou tout type découvert par l'ontologie), "
+            "utiliser entity_type='genre_entity' avec le type spécifique dans sub_type."
+        )
+        sections.append(
             "- Chaque entit\u00e9 DOIT avoir un ancrage textuel (extraction_text) "
             "correspondant EXACTEMENT au texte source"
         )
@@ -134,6 +141,13 @@ def build_extraction_prompt(
         )
     else:
         sections.append("- Extract ONLY entity types listed in the target ontology")
+        sections.append(
+            "- Base entity_type values: character, event, location, item, "
+            "creature, faction, concept, arc, prophecy, level_change, stat_change. "
+            "For any specialized type (skill, class, title, system, bloodline, profession, "
+            "achievement, race, quest, or any ontology-discovered type), "
+            "use entity_type='genre_entity' with the specific type in sub_type."
+        )
         sections.append("- Each entity MUST have extraction_text matching the source text EXACTLY")
         sections.append("- Assign a confidence score (0.0 to 1.0) for each extracted entity")
         sections.append("- Do NOT invent information absent from the text")

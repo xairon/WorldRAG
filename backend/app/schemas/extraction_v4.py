@@ -15,7 +15,7 @@ Design choices:
 import operator
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, BeforeValidator, Field
+from pydantic import BaseModel, BeforeValidator, Field, model_validator
 from typing_extensions import TypedDict
 
 # ── Coercion helpers ─────────────────────────────────────────────────────
@@ -295,11 +295,30 @@ EntityUnion = Annotated[
 # ── Result types ─────────────────────────────────────────────────────────
 
 
+_VALID_ENTITY_TYPES = {
+    "character", "event", "location", "item", "creature", "faction",
+    "concept", "arc", "prophecy", "level_change", "stat_change", "genre_entity",
+}
+
+
 class EntityExtractionResult(BaseModel):
     """Step 1 output: flat list of all extracted entities for a chapter."""
 
     entities: list[EntityUnion] = Field(default_factory=list)
     chapter_number: int = 0
+
+    @model_validator(mode="before")
+    @classmethod
+    def coerce_unknown_entity_types(cls, data: Any) -> Any:
+        """Coerce unknown entity_type values to genre_entity with sub_type."""
+        if isinstance(data, dict) and "entities" in data:
+            for entity in data["entities"]:
+                if isinstance(entity, dict):
+                    et = entity.get("entity_type", "")
+                    if et and et not in _VALID_ENTITY_TYPES:
+                        entity["sub_type"] = entity.get("sub_type") or et
+                        entity["entity_type"] = "genre_entity"
+        return data
 
 
 def _coerce_to_str(v: object) -> str:
