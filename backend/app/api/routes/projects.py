@@ -170,13 +170,31 @@ async def get_project_stats(slug: str, request: Request) -> JSONResponse:
 
 @router.get("/{slug}/books", dependencies=[Depends(require_auth)])
 async def list_books(slug: str, request: Request) -> JSONResponse:
-    """List all books (files) in a project."""
+    """List all books (files) in a project, enriched with Neo4j status."""
     svc = _get_service(request)
     existing = await svc.get_project(slug)
     if existing is None:
         return JSONResponse(status_code=404, content={"detail": f"Project '{slug}' not found"})
     files = await svc.repo.list_files(str(existing["id"]))
     serialized = [_serialize_project(f) for f in files]
+
+    # Enrich with Neo4j book status and title
+    driver = request.app.state.neo4j_driver
+    from app.repositories.book_repo import BookRepository
+
+    book_repo = BookRepository(driver)
+    for entry in serialized:
+        neo4j_id = entry.get("book_id")
+        if neo4j_id:
+            try:
+                book = await book_repo.get_book(neo4j_id)
+                if book:
+                    entry["status"] = book.get("status", "unknown")
+                    entry["title"] = book.get("title", entry.get("filename", ""))
+                    entry["chapters_count"] = book.get("chapters_count", 0)
+            except Exception:
+                entry["status"] = "unknown"
+
     return JSONResponse(status_code=200, content=serialized)
 
 
