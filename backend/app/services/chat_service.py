@@ -157,8 +157,10 @@ class ChatService:
         """Build LangGraph invoke/stream config with optional Langfuse + thread_id."""
         config: dict[str, Any] = {}
 
-        if thread_id:
-            config["configurable"] = {"thread_id": thread_id}
+        import uuid
+
+        effective_thread_id = thread_id or str(uuid.uuid4())
+        config["configurable"] = {"thread_id": effective_thread_id}
 
         callbacks = _build_langfuse_callbacks(session_id=thread_id, book_id=book_id)
         if callbacks:

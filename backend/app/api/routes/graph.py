@@ -319,52 +319,61 @@ async def get_book_subgraph(
     """
     repo = Neo4jRepository(driver)
 
-    # Fully parameterized — no f-string interpolation of labels
-    results = await repo.execute_read(
+    # Two separate queries: nodes first, then edges — avoids LIMIT on triplets
+    node_results = await repo.execute_read(
         """
-        MATCH (n)-[r]-(m)
-        WHERE (n.book_id = $book_id OR m.book_id = $book_id)
-          AND NOT n:Chunk AND NOT n:Book AND NOT n:Chapter AND NOT n:Paragraph
+        MATCH (n {book_id: $book_id})
+        WHERE NOT n:Chunk AND NOT n:Book AND NOT n:Chapter AND NOT n:Paragraph
               AND NOT n:Community AND NOT n:StateSnapshot AND NOT n:StateChange
-          AND NOT m:Chunk AND NOT m:Book AND NOT m:Chapter AND NOT m:Paragraph
-              AND NOT m:Community AND NOT m:StateSnapshot AND NOT m:StateChange
-          AND (CASE WHEN $has_label THEN ($label IN labels(n) OR $label IN labels(m)) ELSE true END)
+          AND (CASE WHEN $has_label THEN $label IN labels(n) ELSE true END)
+        RETURN elementId(n) AS id, labels(n) AS labels,
+               coalesce(n.canonical_name, n.name) AS name,
+               n.description AS description, n.confidence AS confidence
+        LIMIT $limit
+        """,
+        {
+            "book_id": book_id,
+            "limit": limit,
+            "label": label if label and label in ALLOWED_LABELS else "",
+            "has_label": label is not None and label in ALLOWED_LABELS,
+        },
+    )
+
+    # Collect node IDs for edge filtering
+    node_ids = {n["id"] for n in node_results}
+
+    edge_results = await repo.execute_read(
+        """
+        MATCH (a)-[r]->(b)
+        WHERE r.book_id = $book_id
+          AND NOT type(r) IN ['HAS_CHAPTER', 'HAS_CHUNK', 'HAS_PARAGRAPH',
+                              'MENTIONED_IN', 'FIRST_MENTIONED_IN', 'GROUNDED_IN',
+                              'MEMBER_OF', 'PARENT_COMMUNITY', 'HAS_SNAPSHOT',
+                              'LOCATION_PART_OF']
           AND (CASE WHEN $has_chapter
                THEN (r.valid_from_chapter IS NULL OR r.valid_from_chapter <= $chapter)
                     AND (r.valid_to_chapter IS NULL OR r.valid_to_chapter >= $chapter)
                ELSE true END)
-        WITH n, r, m
-        LIMIT $limit
-        RETURN collect(DISTINCT {
-            id: elementId(n),
-            labels: labels(n),
-            name: coalesce(n.canonical_name, n.name),
-            description: n.description,
-            confidence: n.confidence
-        }) + collect(DISTINCT {
-            id: elementId(m),
-            labels: labels(m),
-            name: coalesce(m.canonical_name, m.name),
-            description: m.description,
-            confidence: m.confidence
-        }) AS nodes,
-        collect(DISTINCT {
-            id: elementId(r),
-            type: type(r),
-            source: elementId(startNode(r)),
-            target: elementId(endNode(r)),
-            properties: properties(r)
-        }) AS edges
+        RETURN elementId(r) AS id, type(r) AS type,
+               elementId(a) AS source, elementId(b) AS target,
+               r.valid_from_chapter AS chapter,
+               r.valid_to_chapter AS valid_to_chapter,
+               r.context AS context, r.subtype AS subtype,
+               r.temporal_order AS temporal_order
+        LIMIT $edge_limit
         """,
         {
             "book_id": book_id,
             "chapter": chapter,
-            "limit": limit,
-            "label": label if label and label in ALLOWED_LABELS else "",
-            "has_label": label is not None and label in ALLOWED_LABELS,
             "has_chapter": chapter is not None,
+            "edge_limit": limit * 5,
         },
     )
+
+    # Build response — only include edges whose endpoints are in our node set
+    results = [{"nodes": node_results, "edges": [
+        e for e in edge_results if e["source"] in node_ids and e["target"] in node_ids
+    ]}]
 
     if not results:
         return {"nodes": [], "edges": []}
