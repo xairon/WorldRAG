@@ -27,21 +27,13 @@ async function getBookDetail(bookId: string) {
   }
 }
 
-async function getProjectInfo(slug: string) {
-  try {
-    return await apiFetch<{ books_count: number }>(`/projects/${slug}/stats`)
-  } catch {
-    return { books_count: 1 }
-  }
-}
-
 export default async function ExtractionPage({
   params,
 }: {
   params: Promise<{ slug: string; bookId: string }>
 }) {
   const { slug, bookId } = await params
-  const [detail, stats] = await Promise.all([getBookDetail(bookId), getProjectInfo(slug)])
+  const detail = await getBookDetail(bookId)
 
   return (
     <ExtractionDashboard
@@ -49,7 +41,6 @@ export default async function ExtractionPage({
       bookId={bookId}
       book={detail.book}
       chapters={detail.chapters}
-      isFirstBook={(stats.books_count ?? 1) <= 1}
     />
   )
 }

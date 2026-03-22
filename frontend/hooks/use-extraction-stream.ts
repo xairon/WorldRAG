@@ -45,10 +45,23 @@ export function useExtractionStream(bookId: string | null) {
           if (detail?.events) parts.push(`${detail.events} events`)
           if (detail?.locations) parts.push(`${detail.locations} locs`)
           if (detail?.items) parts.push(`${detail.items} items`)
+          // Derive the most specific type from entity breakdown if available
+          const entityTypes: string[] = []
+          if (detail?.characters) entityTypes.push("Character")
+          if (detail?.events) entityTypes.push("Event")
+          if (detail?.locations) entityTypes.push("Location")
+          if (detail?.items) entityTypes.push("Item")
+          if (detail?.skills) entityTypes.push("Skill")
+          if (detail?.classes) entityTypes.push("Class")
+          const feedType = data.status === "error" || data.status === "failed"
+            ? "error"
+            : entityTypes.length > 0
+              ? entityTypes[0]
+              : "success"
           s.addFeedMessage({
             time: new Date().toLocaleTimeString(),
             chapter: data.chapter,
-            type: data.status === "extracted" ? "success" : "error",
+            type: feedType,
             name: parts.length > 0 ? parts.join(", ") : data.status,
           })
         }

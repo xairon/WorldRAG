@@ -146,14 +146,15 @@ export function SigmaGraph({
     // Create sigma renderer
     const sigma = new Sigma(graph, container, {
       renderLabels: true,
-      renderEdgeLabels: false,
+      renderEdgeLabels: true,
       labelSize: 12,
       labelWeight: "bold",
       labelColor: { color: labelColorResolved },
       labelFont: "system-ui, sans-serif",
       stagePadding: 30,
       defaultEdgeType: "arrow",
-      edgeLabelSize: 9,
+      edgeLabelSize: 10,
+      edgeLabelColor: { color: "#666" },
       minCameraRatio: 0.1,
       maxCameraRatio: 10,
       nodeReducer: (node, nodeData) => {

@@ -45,7 +45,7 @@ const GENRES = [
 ] as const
 
 const MODELS = [
-  { value: "", label: "Default (DeepSeek V3.2)" },
+  { value: "", label: "Default (Gemini 2.5 Flash)" },
   { value: "openrouter:deepseek/deepseek-v3.2", label: "DeepSeek V3.2 — $0.26/M in" },
   { value: "openrouter:deepseek/deepseek-r1", label: "DeepSeek R1 — $0.55/M in (reasoning)" },
   { value: "openrouter:google/gemini-2.5-flash", label: "Gemini 2.5 Flash — $0.15/M in" },
@@ -150,7 +150,7 @@ export function ExtractionConfigPanel({
             <Label htmlFor="model">LLM Model (via OpenRouter)</Label>
             <Select value={provider} onValueChange={setProvider}>
               <SelectTrigger id="model">
-                <SelectValue placeholder="Default (DeepSeek V3.2)" />
+                <SelectValue placeholder="Default (Gemini 2.5 Flash)" />
               </SelectTrigger>
               <SelectContent>
                 {MODELS.map((m) => (

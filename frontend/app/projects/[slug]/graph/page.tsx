@@ -64,11 +64,15 @@ function applyFilters(raw: SubgraphData, filters: GraphFiltersState): SubgraphDa
 
   const filteredEdges = raw.edges.filter((edge) => {
     if (!nodeIds.has(edge.source) || !nodeIds.has(edge.target)) return false
-    const ch = edge.properties?.chapter
-    if (typeof ch === "number") {
-      return ch >= chapterRange[0] && ch <= chapterRange[1]
-    }
-    return true
+    const chapterMatch = !chapterRange || (() => {
+      const ch = edge.properties?.chapter ?? edge.properties?.valid_from_chapter
+      const validTo = edge.properties?.valid_to_chapter
+      if (!ch) return true // no chapter info = always show
+      if ((ch as number) > chapterRange[1]) return false // starts after range
+      if (validTo && (validTo as number) < chapterRange[0]) return false // ended before range
+      return true
+    })()
+    return chapterMatch
   })
 
   return { nodes: filteredNodes, edges: filteredEdges }
@@ -311,6 +315,7 @@ export default function GraphExplorerPage() {
         <NodeDetailPanel
           node={selectedNode}
           edges={rawData.edges}
+          nodes={rawData.nodes}
           slug={slug}
           bookId={selectedBookId ?? undefined}
           open={detailOpen}

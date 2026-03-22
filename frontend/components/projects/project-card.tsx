@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { toast } from "sonner"
+import { apiFetch } from "@/lib/api/client"
 
 interface Project {
   slug: string
@@ -44,9 +45,8 @@ export function ProjectCard({ project }: { project: Project }) {
     if (!newName.trim()) return
     setLoading(true)
     try {
-      await fetch(`/api/projects/${project.slug}`, {
+      await apiFetch(`/projects/${project.slug}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: newName.trim() }),
       })
       toast.success("Project renamed")
@@ -62,7 +62,7 @@ export function ProjectCard({ project }: { project: Project }) {
   async function handleDelete() {
     setLoading(true)
     try {
-      await fetch(`/api/projects/${project.slug}`, { method: "DELETE" })
+      await apiFetch(`/projects/${project.slug}`, { method: "DELETE" })
       toast.success("Project deleted")
       setDeleteOpen(false)
       router.refresh()

@@ -11,6 +11,7 @@ import { ThreadSidebar } from "@/components/chat/thread-sidebar"
 import { ChatHeader } from "@/components/chat/chat-header"
 import { ChatInput } from "@/components/chat/chat-input"
 import { ChatMessage } from "@/components/chat/chat-message"
+import { SpoilerGuard } from "@/components/chat/spoiler-guard"
 
 export default function ChatPage() {
   const { slug } = useParams<{ slug: string }>()
@@ -20,6 +21,7 @@ export default function ChatPage() {
 
   const selectedBookId = useChatStore((s) => s.selectedBookId)
   const spoilerMaxChapter = useChatStore((s) => s.spoilerMaxChapter)
+  const setSpoilerMaxChapter = useChatStore((s) => s.setSpoilerMaxChapter)
   const threadId = useChatStore((s) => s.threadId)
 
   const { messages, isStreaming, send, stop, clearMessages } = useChatStream()
@@ -100,6 +102,17 @@ export default function ChatPage() {
             <ChatHeader books={headerBooks} />
           </div>
         </div>
+
+        {/* Spoiler guard */}
+        {selectedBook && selectedBook.total_chapters > 1 && (
+          <div className="px-4 py-2 border-b">
+            <SpoilerGuard
+              maxChapter={spoilerMaxChapter}
+              totalChapters={selectedBook.total_chapters}
+              onChange={setSpoilerMaxChapter}
+            />
+          </div>
+        )}
 
         {/* Messages scroll area */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-6">

@@ -11,14 +11,21 @@ import type { GraphNode, GraphEdge } from "@/lib/api/types"
 interface NodeDetailPanelProps {
   node: GraphNode
   edges: GraphEdge[]
+  nodes: GraphNode[]
   slug: string
   bookId?: string
   open: boolean
   onClose: () => void
 }
 
-export function NodeDetailPanel({ node, edges, slug, bookId, open, onClose }: NodeDetailPanelProps) {
+export function NodeDetailPanel({ node, edges, nodes, slug, bookId, open, onClose }: NodeDetailPanelProps) {
   const primaryLabel = node.labels?.[0] ?? "Concept"
+
+  // Build a node ID → name lookup for human-readable display
+  const nodeNameMap = new Map<string, string>()
+  for (const n of nodes) {
+    nodeNameMap.set(n.id, n.name)
+  }
 
   // Collect relations involving this node, grouped by type
   const relatedEdges = edges.filter((e) => e.source === node.id || e.target === node.id)
@@ -111,6 +118,7 @@ export function NodeDetailPanel({ node, edges, slug, bookId, open, onClose }: No
                   type={type}
                   edges={typeEdges}
                   currentNodeId={node.id}
+                  nodeNameMap={nodeNameMap}
                 />
               ))}
             </div>
@@ -149,10 +157,12 @@ function RelationGroup({
   type,
   edges,
   currentNodeId,
+  nodeNameMap,
 }: {
   type: string
   edges: GraphEdge[]
   currentNodeId: string
+  nodeNameMap: Map<string, string>
 }) {
   const [expanded, setExpanded] = useState(false)
 
@@ -176,10 +186,11 @@ function RelationGroup({
       {(expanded || !hasMore) && (
         <div className="px-2.5 pb-2 space-y-1">
           {displayEdges.map((edge) => {
-            const targetId = edge.source === currentNodeId ? edge.target : edge.source
+            const otherId = edge.source === currentNodeId ? edge.target : edge.source
+            const otherName = nodeNameMap.get(otherId) ?? otherId
             return (
               <div key={edge.id} className="text-xs text-muted-foreground truncate pl-4">
-                {targetId}
+                {otherName}
               </div>
             )
           })}
