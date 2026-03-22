@@ -33,18 +33,21 @@ async def rerank_results(state: dict[str, Any]) -> dict[str, Any]:
     reranker = get_local_reranker()
     texts = [chunk.get("text") or "" for chunk in fused]
 
+    # Use predict() for compatibility across sentence-transformers versions
     loop = asyncio.get_running_loop()
-    ranked = await loop.run_in_executor(
-        None,
-        lambda: reranker.rank(query, texts, top_k=len(texts), return_documents=False),
+    pairs = [[query, t] for t in texts]
+    scores = await loop.run_in_executor(None, lambda: reranker.predict(pairs))
+
+    # Build ranked list sorted by score descending
+    indexed_scores = sorted(
+        enumerate(scores), key=lambda x: float(x[1]), reverse=True
     )
 
     # Filter to top-N and attach relevance_score
-    top = ranked[:RERANK_TOP_N]
     result = [
-        {**fused[r["corpus_id"]], "relevance_score": float(r["score"])}
-        for r in top
-        if r["corpus_id"] < len(fused)
+        {**fused[idx], "relevance_score": float(score)}
+        for idx, score in indexed_scores[:RERANK_TOP_N]
+        if idx < len(fused)
     ]
 
     logger.info(

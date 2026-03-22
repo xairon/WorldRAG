@@ -17,6 +17,7 @@ def _make_mock_reranker(scores: list[float]):
         reverse=True,
     )
     mock.rank = MagicMock(return_value=ranked)
+    mock.predict = MagicMock(return_value=scores)
     return mock
 
 
