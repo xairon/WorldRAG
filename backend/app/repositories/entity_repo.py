@@ -97,7 +97,7 @@ class EntityRepository(Neo4jRepository):
         data = [
             {
                 "name": c.name,
-                "canonical_name": c.canonical_name or c.name,
+                "canonical_name": (c.canonical_name or c.name).lower().strip(),
                 "aliases": c.aliases,
                 "description": c.description,
                 "role": c.role,
@@ -244,7 +244,7 @@ class EntityRepository(Neo4jRepository):
 
         data = [
             {
-                "name": s.name,
+                "name": s.name.lower().strip(),
                 "description": s.description,
                 "skill_type": s.skill_type,
                 "rank": s.rank,
@@ -355,7 +355,7 @@ class EntityRepository(Neo4jRepository):
 
         data = [
             {
-                "name": c.name,
+                "name": c.name.lower().strip(),
                 "description": c.description,
                 "tier": c.tier,
                 "owner": c.owner,
@@ -440,7 +440,7 @@ class EntityRepository(Neo4jRepository):
 
         data = [
             {
-                "name": t.name,
+                "name": t.name.lower().strip(),
                 "description": t.description,
                 "effects": t.effects,
                 "owner": t.owner,
@@ -499,7 +499,7 @@ class EntityRepository(Neo4jRepository):
 
         data = [
             {
-                "name": e.name,
+                "name": e.name.lower().strip(),
                 "description": e.description,
                 "event_type": e.event_type,
                 "significance": e.significance,
@@ -603,7 +603,7 @@ class EntityRepository(Neo4jRepository):
 
         data = [
             {
-                "name": loc.name,
+                "name": loc.name.lower().strip(),
                 "canonical_name": (loc.canonical_name or loc.name).lower().strip(),
                 "description": loc.description,
                 "location_type": loc.location_type,
@@ -670,7 +670,7 @@ class EntityRepository(Neo4jRepository):
 
         data = [
             {
-                "name": i.name,
+                "name": i.name.lower().strip(),
                 "canonical_name": (getattr(i, "canonical_name", "") or i.name).lower().strip(),
                 "description": getattr(i, "description", ""),
                 "item_type": i.item_type,
@@ -739,7 +739,7 @@ class EntityRepository(Neo4jRepository):
 
         data = [
             {
-                "name": c.name,
+                "name": c.name.lower().strip(),
                 "canonical_name": (getattr(c, "canonical_name", "") or c.name).lower().strip(),
                 "description": c.description,
                 "species": c.species,
@@ -790,7 +790,7 @@ class EntityRepository(Neo4jRepository):
 
         data = [
             {
-                "name": f.name,
+                "name": f.name.lower().strip(),
                 "canonical_name": (getattr(f, "canonical_name", "") or f.name).lower().strip(),
                 "description": f.description,
                 "faction_type": f.faction_type,
@@ -834,7 +834,7 @@ class EntityRepository(Neo4jRepository):
 
         data = [
             {
-                "name": c.name,
+                "name": c.name.lower().strip(),
                 "canonical_name": (getattr(c, "canonical_name", "") or c.name).lower().strip(),
                 "description": c.description,
                 "domain": c.domain,
@@ -936,9 +936,8 @@ class EntityRepository(Neo4jRepository):
             SET old.valid_to_chapter = lc.chapter - 1
             WITH ch, lc, b
             WHERE lc.new_level IS NOT NULL
-            MERGE (ch)-[r:AT_LEVEL {level: lc.new_level}]->(b)
+            MERGE (ch)-[r:AT_LEVEL {level: lc.new_level, valid_from_chapter: lc.chapter}]->(b)
             ON CREATE SET
-                r.valid_from_chapter = lc.chapter,
                 r.realm = lc.realm,
                 r.batch_id = $batch_id
             """,
@@ -1851,7 +1850,9 @@ class EntityRepository(Neo4jRepository):
 
         data = [
             {
-                "name": getattr(e, "name", e.get("name", "")) if isinstance(e, dict) else e.name,
+                "name": (
+                    getattr(e, "name", e.get("name", "")) if isinstance(e, dict) else e.name
+                ).lower().strip(),
                 "canonical_name": (
                     getattr(e, "name", e.get("name", "")) if isinstance(e, dict) else e.name
                 ).lower().strip(),

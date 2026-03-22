@@ -662,32 +662,38 @@ async def process_book_extraction_v4(
 
     logger.info("task_book_extraction_v4_completed", **result_summary)
 
-    # Book-level post-processing
+    # Book-level post-processing (each step isolated so failures don't cascade)
+    from app.services.extraction.book_level import (
+        community_cluster,
+        generate_entity_summaries,
+        iterative_cluster,
+    )
+
+    book_batch_id = f"book-level:{book_id}:{int(time.time())}"
+
+    # Book-level 1: Iterative clustering
     try:
-        from app.services.extraction.book_level import (
-            community_cluster,
-            generate_entity_summaries,
-            iterative_cluster,
-        )
-
-        book_batch_id = f"book-level:{book_id}:{int(time.time())}"
-
-        # 1. Iterative clustering
         from app.llm.embeddings import LocalEmbedder
 
         embedder = LocalEmbedder()
         cluster_aliases = await iterative_cluster(driver, book_id, embedder=embedder)
         logger.info("v4_book_clustering_done", merges=len(cluster_aliases))
+    except Exception:
+        logger.warning("v4_iterative_cluster_failed", book_id=book_id, exc_info=True)
 
-        # 2. Entity summaries
+    # Book-level 2: Entity summaries
+    try:
         summaries = await generate_entity_summaries(driver, book_id, batch_id=book_batch_id)
         logger.info("v4_book_summaries_done", count=len(summaries))
+    except Exception:
+        logger.warning("v4_entity_summaries_failed", book_id=book_id, exc_info=True)
 
-        # 3. Community clustering
+    # Book-level 3: Community detection
+    try:
         communities = await community_cluster(driver, book_id, batch_id=book_batch_id)
         logger.info("v4_book_communities_done", count=len(communities))
     except Exception:
-        logger.warning("v4_book_level_failed", book_id=book_id, exc_info=True)
+        logger.warning("v4_community_cluster_failed", book_id=book_id, exc_info=True)
 
     # Auto-enqueue embedding job after extraction
     await ctx["redis"].enqueue_job(

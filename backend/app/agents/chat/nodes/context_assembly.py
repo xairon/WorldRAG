@@ -79,12 +79,48 @@ async def assemble_context(
                 t_label = r.get("target_label", "?")
                 parts.append(f"  - {rel_type} → {target} ({t_label})")
 
+    # Community context: thematic summaries from entity communities
+    community_context = state.get("community_context", [])
+    if community_context:
+        parts.append("\n## Community Context\n")
+        seen_summaries: set[str] = set()
+        for cc in community_context:
+            summary = cc.get("community_summary") or ""
+            if not summary or summary in seen_summaries:
+                continue
+            seen_summaries.add(summary)
+            entity_name = cc.get("entity_name", "")
+            themes = cc.get("key_themes") or []
+            theme_str = f" (themes: {', '.join(themes)})" if themes else ""
+            parts.append(f"- {entity_name} belongs to a community: {summary}{theme_str}")
+            theme_summary = cc.get("theme_summary")
+            if theme_summary:
+                parts.append(f"  - Broader theme: {theme_summary}")
+
+    # Relationship context: semantically similar relationships from embedding search
+    relationship_context = state.get("relationship_context", [])
+    if relationship_context:
+        parts.append("\n## Related Knowledge\n")
+        for rc in relationship_context:
+            source = rc.get("source") or "?"
+            target = rc.get("target") or "?"
+            rel_type = rc.get("rel_type") or "RELATES_TO"
+            context_text = rc.get("context") or ""
+            score = rc.get("score", 0.0)
+            line = f"- {source} {rel_type} {target}"
+            if context_text:
+                line += f": {context_text}"
+            line += f" (relevance: {score:.2f})"
+            parts.append(line)
+
     context = "\n".join(parts)
 
     logger.info(
         "context_assembled",
         chunks=len(chunks),
         entities=len(kg_entities),
+        communities=len(community_context),
+        relationships=len(relationship_context),
         context_len=len(context),
     )
 

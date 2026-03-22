@@ -1,5 +1,6 @@
 """Chat/RAG LangGraph: compiles the StateGraph with all nodes and edges."""
 
+import asyncio
 from typing import Any
 
 from langgraph.graph import END, START, StateGraph
@@ -17,7 +18,7 @@ from .nodes.kg_query import kg_search
 from .nodes.memory import load_memory, summarize_memory
 from .nodes.query_transform import transform_query
 from .nodes.rerank import rerank_results
-from .nodes.retrieve import hybrid_retrieve
+from .nodes.retrieve import _relationship_embedding_search, hybrid_retrieve
 from .nodes.rewrite import rewrite_query
 from .nodes.router import classify_intent
 from .nodes.temporal_sort import temporal_sort
@@ -111,16 +112,29 @@ def build_chat_graph(
         extra_dense = embeddings[1:] if len(embeddings) > 1 else None
         extra_bm25 = queries[1:] if len(queries) > 1 else None
 
+        # Run chunk retrieval and relationship embedding search in parallel
+        fused_task = hybrid_retrieve(
+            repo,
+            query_text=queries[0],
+            query_embedding=primary_embedding,
+            extra_dense_embeddings=extra_dense,
+            book_id=state["book_id"],
+            max_chapter=state.get("max_chapter"),
+            extra_bm25_queries=extra_bm25,
+        )
+        rel_task = _relationship_embedding_search(
+            repo,
+            query_embedding=primary_embedding,
+            book_id=state["book_id"],
+            top_k=5,
+            max_chapter=state.get("max_chapter"),
+        )
+
+        fused_results, rel_results = await asyncio.gather(fused_task, rel_task)
+
         return {
-            "fused_results": await hybrid_retrieve(
-                repo,
-                query_text=queries[0],
-                query_embedding=primary_embedding,
-                extra_dense_embeddings=extra_dense,
-                book_id=state["book_id"],
-                max_chapter=state.get("max_chapter"),
-                extra_bm25_queries=extra_bm25,
-            ),
+            "fused_results": fused_results,
+            "relationship_context": rel_results,
         }
 
     async def _dedup_node(state: dict[str, Any]) -> dict[str, Any]:

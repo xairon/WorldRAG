@@ -135,11 +135,30 @@ async def kg_search(
         {"names": entity_names_found, "book_id": book_id, "max_chapter": max_chapter},
     )
 
+    # Step 5: Fetch community context for matched entities
+    community_context: list[dict[str, Any]] = []
+    if entity_names_found:
+        community_context = await repo.execute_read(
+            """
+            UNWIND $names AS ename
+            MATCH (entity {name: ename})-[:BELONGS_TO_COMMUNITY]->(comm:Community)
+            WHERE comm.book_id = $book_id AND comm.level = 0
+            OPTIONAL MATCH (comm)-[:PARENT_COMMUNITY]->(parent:Community)
+            RETURN DISTINCT entity.name AS entity_name,
+                   comm.summary AS community_summary,
+                   comm.key_themes AS key_themes,
+                   parent.summary AS theme_summary
+            LIMIT 10
+            """,
+            {"names": entity_names_found, "book_id": book_id},
+        )
+
     logger.info(
         "kg_query_completed",
         entities_found=len(entities),
         relationships_found=len(relationships),
         chunks_found=len(chunks),
+        communities_found=len(community_context),
         query_type=query_type,
     )
 
@@ -150,4 +169,5 @@ async def kg_search(
             for e in entities
         ],
         "reranked_chunks": chunks,
+        "community_context": community_context,
     }

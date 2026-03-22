@@ -118,8 +118,9 @@ async def iterative_cluster(
         if merges_this_round == 0:
             break
 
-    # Apply merges in Neo4j
+    # Apply merges in Neo4j: rename, transfer relationships, delete alias nodes
     if alias_map:
+        # Step 1: Rename alias nodes to canonical name
         async with driver.session() as session:
             for alias, canonical in alias_map.items():
                 await session.run(
@@ -133,7 +134,7 @@ async def iterative_cluster(
                     book_id=book_id,
                 )
 
-        # Fix RELATES_TO edge source/target properties to match renamed canonical_names
+        # Step 2: Fix RELATES_TO edge source/target properties
         async with driver.session() as session:
             for old_name, new_name in alias_map.items():
                 await session.run(
@@ -148,10 +149,103 @@ async def iterative_cluster(
                     new=new_name.lower(),
                 )
 
+        # Step 3: Merge duplicate nodes — transfer edges from alias to canonical, then delete alias
+        merged_count = 0
+        async with driver.session() as session:
+            for _old_name, new_name in alias_map.items():
+                # Find pairs of nodes that now share the same canonical_name
+                # The canonical node is the one WITHOUT merged_from (or the first one)
+                result = await session.run(
+                    """
+                    MATCH (n {canonical_name: $canonical, book_id: $book_id})
+                    RETURN id(n) AS nid, n.merged_from AS merged_from
+                    ORDER BY n.merged_from IS NOT NULL ASC, id(n) ASC
+                    """,
+                    canonical=new_name,
+                    book_id=book_id,
+                )
+                node_records = [r async for r in result]
+
+                if len(node_records) < 2:
+                    continue
+
+                # First node (no merged_from) is canonical; rest are aliases to merge
+                canonical_id = node_records[0]["nid"]
+                alias_ids = [r["nid"] for r in node_records[1:]]
+
+                for alias_id in alias_ids:
+                    # Transfer all outgoing relationships from alias to canonical
+                    await session.run(
+                        """
+                        MATCH (alias)-[r]->(target)
+                        WHERE id(alias) = $alias_id AND id(target) <> $canonical_id
+                        WITH alias, r, target, type(r) AS rel_type, properties(r) AS props
+                        MATCH (canonical) WHERE id(canonical) = $canonical_id
+                        // Check if equivalent edge already exists
+                        WITH alias, r, target, canonical, props
+                        WHERE NOT EXISTS {
+                            MATCH (canonical)-[existing]->(target)
+                            WHERE type(existing) = type(r)
+                        }
+                        // Use FOREACH + MERGE for each known relationship type
+                        FOREACH (_ IN CASE WHEN type(r) = 'RELATES_TO' THEN [1] ELSE [] END |
+                            MERGE (canonical)-[nr:RELATES_TO]->(target)
+                            SET nr += props
+                        )
+                        FOREACH (_ IN CASE WHEN type(r) = 'MENTIONED_IN' THEN [1] ELSE [] END |
+                            MERGE (canonical)-[nr:MENTIONED_IN]->(target)
+                            SET nr += props
+                        )
+                        FOREACH (_ IN CASE WHEN type(r) = 'BELONGS_TO' THEN [1] ELSE [] END |
+                            MERGE (canonical)-[nr:BELONGS_TO]->(target)
+                            SET nr += props
+                        )
+                        """,
+                        alias_id=alias_id,
+                        canonical_id=canonical_id,
+                    )
+
+                    # Transfer all incoming relationships from alias to canonical
+                    await session.run(
+                        """
+                        MATCH (source)-[r]->(alias)
+                        WHERE id(alias) = $alias_id AND id(source) <> $canonical_id
+                        WITH alias, r, source, type(r) AS rel_type, properties(r) AS props
+                        MATCH (canonical) WHERE id(canonical) = $canonical_id
+                        WITH alias, r, source, canonical, props
+                        WHERE NOT EXISTS {
+                            MATCH (source)-[existing]->(canonical)
+                            WHERE type(existing) = type(r)
+                        }
+                        FOREACH (_ IN CASE WHEN type(r) = 'RELATES_TO' THEN [1] ELSE [] END |
+                            MERGE (source)-[nr:RELATES_TO]->(canonical)
+                            SET nr += props
+                        )
+                        FOREACH (_ IN CASE WHEN type(r) = 'MENTIONED_IN' THEN [1] ELSE [] END |
+                            MERGE (source)-[nr:MENTIONED_IN]->(canonical)
+                            SET nr += props
+                        )
+                        FOREACH (_ IN CASE WHEN type(r) = 'BELONGS_TO' THEN [1] ELSE [] END |
+                            MERGE (source)-[nr:BELONGS_TO]->(canonical)
+                            SET nr += props
+                        )
+                        """,
+                        alias_id=alias_id,
+                        canonical_id=canonical_id,
+                    )
+
+                    # Delete the alias node and all its remaining relationships
+                    await session.run(
+                        "MATCH (n) WHERE id(n) = $alias_id DETACH DELETE n",
+                        alias_id=alias_id,
+                    )
+                    merged_count += 1
+
         logger.info(
-            "iterative_cluster_edges_fixed",
+            "iterative_cluster_nodes_merged",
             book_id=book_id,
             edges_updated=len(alias_map),
+            nodes_merged=merged_count,
         )
 
     logger.info("iterative_cluster_done", book_id=book_id, total_merges=len(alias_map))

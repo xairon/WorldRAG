@@ -260,13 +260,13 @@ async def embed_book_entities(
     Returns:
         EntityEmbeddingResult with stats.
     """
-    # Fetch entities without embeddings
+    # Fetch entities without embeddings (include those with no description)
     async with driver.session() as session:
         query_result = await session.run(
             """
             MATCH (n {book_id: $book_id})
-            WHERE n.description IS NOT NULL AND n.description <> ''
-              AND n.embedding IS NULL
+            WHERE n.embedding IS NULL
+              AND n.canonical_name IS NOT NULL
               AND NOT n:Book AND NOT n:Chapter AND NOT n:Chunk AND NOT n:Paragraph
             RETURN id(n) AS node_id, n.canonical_name AS name,
                    n.description AS description, labels(n)[0] AS label
@@ -285,12 +285,15 @@ async def embed_book_entities(
     if not entities:
         return result
 
-    # Build text representations
+    # Build text representations (handle missing description gracefully)
     for ent in entities:
         label = ent.get("label") or "Entity"
         name = ent.get("name") or "Unknown"
         description = ent.get("description") or ""
-        ent["text"] = f"{label}: {name}. {description}"
+        if description:
+            ent["text"] = f"{label}: {name}. {description}"
+        else:
+            ent["text"] = f"{label}: {name}"
 
     embedder = LocalEmbedder()
     batch_size = settings.embedding_batch_size

@@ -165,9 +165,9 @@ class TestUpsertSkillsCreatesStateChange:
         changes = params["changes"]
         assert len(changes) == 1
         assert changes[0]["category"] == "skill"
-        assert changes[0]["name"] == "Arcane Powershot"
+        assert changes[0]["name"] == "arcane powershot"
         assert changes[0]["action"] == "acquire"
-        assert changes[0]["character_name"] == "Jake Thayne"
+        assert changes[0]["character_name"].lower() == "jake thayne"
 
     async def test_empty_owner_filtered_out(self, repo, mock_neo4j_session):
         skills = [
@@ -196,7 +196,7 @@ class TestUpsertSkillsCreatesStateChange:
         # Only 2 with non-empty owners
         assert len(changes) == 2
         names = {c["name"] for c in changes}
-        assert names == {"Arcane Powershot", "Shadow Step"}
+        assert names == {"arcane powershot", "shadow step"}
 
 
 # ── upsert_classes ──────────────────────────────────────────────────────
@@ -221,7 +221,7 @@ class TestUpsertClassesCreatesStateChange:
         changes = params["changes"]
         assert len(changes) == 1
         assert changes[0]["category"] == "class"
-        assert changes[0]["name"] == "Arcane Hunter"
+        assert changes[0]["name"] == "arcane hunter"
         assert changes[0]["action"] == "acquire"
 
     async def test_empty_owner_filtered_out(self, repo, mock_neo4j_session):
@@ -257,7 +257,7 @@ class TestUpsertTitlesCreatesStateChange:
         changes = params["changes"]
         assert len(changes) == 1
         assert changes[0]["category"] == "title"
-        assert changes[0]["name"] == "Hydra Slayer"
+        assert changes[0]["name"] == "hydra slayer"
         assert changes[0]["action"] == "acquire"
 
     async def test_empty_owner_filtered_out(self, repo, mock_neo4j_session):
@@ -293,7 +293,7 @@ class TestUpsertItemsCreatesStateChange:
         changes = params["changes"]
         assert len(changes) == 1
         assert changes[0]["category"] == "item"
-        assert changes[0]["name"] == "Nanoblade"
+        assert changes[0]["name"] == "nanoblade"
         assert changes[0]["action"] == "acquire"
 
     async def test_empty_owner_filtered_out(self, repo, mock_neo4j_session):

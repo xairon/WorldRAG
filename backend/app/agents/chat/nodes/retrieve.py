@@ -157,6 +157,55 @@ async def _graph_search(
     )
 
 
+async def _relationship_embedding_search(
+    repo,
+    query_embedding: list[float],
+    book_id: str,
+    top_k: int,
+    max_chapter: int | None,
+) -> list[dict[str, Any]]:
+    """Semantic search on RELATES_TO relationship embeddings.
+
+    Uses the rel_relates_to_embedding vector index to find relationships
+    whose embedded context is semantically similar to the query.
+    """
+    try:
+        return await repo.execute_read(
+            """
+            CALL db.index.vector.queryRelationships(
+                'rel_relates_to_embedding', $top_k, $embedding
+            )
+            YIELD relationship AS r, score
+            WHERE r.book_id = $book_id
+              AND ($max_chapter IS NULL
+                   OR NOT exists(r.valid_from_chapter)
+                   OR r.valid_from_chapter <= $max_chapter)
+            RETURN startNode(r).canonical_name AS source,
+                   endNode(r).canonical_name AS target,
+                   r.type AS rel_type,
+                   r.context AS context,
+                   r.subtype AS subtype,
+                   score
+            ORDER BY score DESC
+            """,
+            {
+                "embedding": query_embedding,
+                "book_id": book_id,
+                "top_k": top_k,
+                "max_chapter": max_chapter,
+            },
+        )
+    except Exception:
+        # Graceful degradation: if the index doesn't exist or Neo4j version
+        # doesn't support queryRelationships, return empty results.
+        logger.warning(
+            "relationship_embedding_search_failed",
+            book_id=book_id,
+            exc_info=True,
+        )
+        return []
+
+
 async def hybrid_retrieve(
     repo,
     query_text: str,

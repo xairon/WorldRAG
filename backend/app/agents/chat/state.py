@@ -40,6 +40,8 @@ class ChatAgentState(TypedDict, total=False):
     # -- KG context --
     kg_entities: list[dict[str, Any]]
     kg_cypher_result: list[dict[str, Any]]
+    community_context: list[dict[str, Any]]  # community summaries for matched entities
+    relationship_context: list[dict[str, Any]]  # relationship embedding search results
 
     # -- Generation --
     context: str

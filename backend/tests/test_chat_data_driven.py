@@ -792,6 +792,8 @@ class TestKGQueryDataDriven:
                 FICTION_RELATIONSHIPS[:4],
                 # Grounded chunks
                 FICTION_CHUNKS[:3],
+                # Community context (empty for test)
+                [],
             ]
         )
 
@@ -838,6 +840,8 @@ class TestKGQueryDataDriven:
                 [],
                 # Grounded chunks
                 [{"node_id": "c1", "text": "Jake...", "chapter_number": 1, "chapter_title": "Ch1"}],
+                # Community context
+                [],
             ]
         )
 
@@ -911,6 +915,8 @@ class TestKGQueryDataDriven:
                 [],
                 # Grounded chunks
                 [{"node_id": "c1", "text": "t", "chapter_number": 1, "chapter_title": "T"}],
+                # Community context
+                [],
             ]
         )
 
@@ -970,6 +976,8 @@ class TestKGQueryDataDriven:
                 [{"name": "Jake", "label": "Character", "description": "", "score": 5.0}],
                 [],
                 [{"node_id": "c1", "text": "text", "chapter_number": 1, "chapter_title": "T"}],
+                # Community context
+                [],
             ]
         )
 
@@ -982,8 +990,8 @@ class TestKGQueryDataDriven:
                 repo=mock_repo,
             )
 
-        # All 3 calls should have max_chapter=25
-        for call in mock_repo.execute_read.call_args_list:
+        # First 3 calls (entity search, relationships, chunks) should have max_chapter=25
+        for call in mock_repo.execute_read.call_args_list[:3]:
             params = call[0][1]
             assert params["max_chapter"] == 25
 

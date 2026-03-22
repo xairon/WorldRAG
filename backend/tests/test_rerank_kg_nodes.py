@@ -108,6 +108,7 @@ class TestKGQueryNode:
                         "node_id": "c1",
                     }
                 ],
+                [],  # Community context
             ]
         )
 

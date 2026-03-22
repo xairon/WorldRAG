@@ -31,6 +31,7 @@ from typing import Any
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph  # noqa: TC002
 from langgraph.types import Send
+from thefuzz import fuzz
 
 from app.agents.state import ExtractionPipelineState
 from app.core.exceptions import QuotaExhaustedError
@@ -1459,10 +1460,10 @@ async def reconcile_and_persist_v4_node(state: dict[str, Any]) -> dict[str, Any]
     3. Persists to Neo4j via entity_repo
     4. Updates the EntityRegistry for next chapter
     """
+    from app.llm.providers import get_instructor_for_task
+    from app.services.extraction.entity_registry import EntityRegistry
     from app.services.extraction.reconciler import reconcile_flat_entities
     from app.services.graph_builder import apply_alias_map_v4
-    from app.services.extraction.entity_registry import EntityRegistry
-    from app.llm.providers import get_instructor_for_task
 
     chapter_number = state.get("chapter_number", 0)
     ended_relations = state.get("ended_relations", [])
@@ -1492,7 +1493,16 @@ async def reconcile_and_persist_v4_node(state: dict[str, Any]) -> dict[str, Any]
             continue
         entry = registry.lookup(name)
         if entry and entry.canonical_name != name:
-            registry_alias_map[name] = entry.canonical_name
+            registry_alias_map[name.lower()] = entry.canonical_name
+        elif entry is None:
+            # Fuzzy fallback against registry
+            best_score, best_match = 0, None
+            for reg_name in registry._entities:
+                score = fuzz.token_set_ratio(name, reg_name)
+                if score > best_score:
+                    best_score, best_match = score, reg_name
+            if best_score >= 90 and best_match and best_match != name:
+                registry_alias_map[name.lower()] = best_match
 
     if registry_alias_map:
         apply_alias_map_v4(entities, relations, registry_alias_map)
