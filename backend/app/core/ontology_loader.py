@@ -42,6 +42,7 @@ class OntologyNodeType:
     """A node type definition with its properties."""
 
     name: str
+    description: str = ""
     properties: dict[str, OntologyProperty] = field(default_factory=dict)
     constraints: list[dict] = field(default_factory=list)
     indexes: list[dict] = field(default_factory=list)
@@ -383,7 +384,11 @@ class OntologyLoader:
                 if prop_name not in props:
                     props[prop_name] = OntologyProperty(name=prop_name, type="string")
 
-            self.node_types[name] = OntologyNodeType(name=name, properties=props)
+            self.node_types[name] = OntologyNodeType(
+                name=name,
+                description=nt.get("description", ""),
+                properties=props,
+            )
             self._node_type_origin[name] = "induced"
             added_nodes += 1
 

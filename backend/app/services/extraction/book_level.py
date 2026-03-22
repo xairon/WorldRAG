@@ -133,6 +133,27 @@ async def iterative_cluster(
                     book_id=book_id,
                 )
 
+        # Fix RELATES_TO edge source/target properties to match renamed canonical_names
+        async with driver.session() as session:
+            for old_name, new_name in alias_map.items():
+                await session.run(
+                    """
+                    MATCH ()-[r:RELATES_TO {book_id: $book_id}]->()
+                    WHERE toLower(r.source) = $old OR toLower(r.target) = $old
+                    SET r.source = CASE WHEN toLower(r.source) = $old THEN $new ELSE r.source END,
+                        r.target = CASE WHEN toLower(r.target) = $old THEN $new ELSE r.target END
+                    """,
+                    book_id=book_id,
+                    old=old_name.lower(),
+                    new=new_name.lower(),
+                )
+
+        logger.info(
+            "iterative_cluster_edges_fixed",
+            book_id=book_id,
+            edges_updated=len(alias_map),
+        )
+
     logger.info("iterative_cluster_done", book_id=book_id, total_merges=len(alias_map))
     return alias_map
 

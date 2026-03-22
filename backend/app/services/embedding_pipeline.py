@@ -230,6 +230,141 @@ async def embed_book_relationships(
     return result
 
 
+@dataclass
+class EntityEmbeddingResult:
+    """Result of an entity embedding pipeline run."""
+
+    book_id: str
+    total_entities: int
+    embedded: int
+    failed: int
+    total_tokens: int = 0
+
+
+async def embed_book_entities(
+    driver: AsyncDriver,
+    book_id: str,
+    cost_tracker: CostTracker | None = None,
+) -> EntityEmbeddingResult:
+    """Embed entity descriptions and store vectors on entity nodes.
+
+    Queries for entity nodes with descriptions but no embeddings,
+    builds text from label + name + description, embeds locally,
+    and writes the vectors back to the node properties.
+
+    Args:
+        driver: Neo4j async driver.
+        book_id: Book identifier.
+        cost_tracker: Optional CostTracker for cost recording.
+
+    Returns:
+        EntityEmbeddingResult with stats.
+    """
+    # Fetch entities without embeddings
+    async with driver.session() as session:
+        query_result = await session.run(
+            """
+            MATCH (n {book_id: $book_id})
+            WHERE n.description IS NOT NULL AND n.description <> ''
+              AND n.embedding IS NULL
+              AND NOT n:Book AND NOT n:Chapter AND NOT n:Chunk AND NOT n:Paragraph
+            RETURN id(n) AS node_id, n.canonical_name AS name,
+                   n.description AS description, labels(n)[0] AS label
+            """,
+            {"book_id": book_id},
+        )
+        entities = [dict(record) for record in await query_result.data()]
+
+    result = EntityEmbeddingResult(
+        book_id=book_id,
+        total_entities=len(entities),
+        embedded=0,
+        failed=0,
+    )
+
+    if not entities:
+        return result
+
+    # Build text representations
+    for ent in entities:
+        label = ent.get("label") or "Entity"
+        name = ent.get("name") or "Unknown"
+        description = ent.get("description") or ""
+        ent["text"] = f"{label}: {name}. {description}"
+
+    embedder = LocalEmbedder()
+    batch_size = settings.embedding_batch_size
+
+    for i in range(0, len(entities), batch_size):
+        batch = entities[i : i + batch_size]
+        texts = [e["text"] for e in batch]
+
+        try:
+            embeddings = await embedder.embed_texts(texts, input_type="document")
+        except Exception:
+            logger.exception(
+                "entity_embedding_batch_failed",
+                book_id=book_id,
+                batch_start=i,
+                batch_size=len(batch),
+            )
+            result.failed += len(batch)
+            continue
+
+        batch_tokens = sum(count_tokens(t) for t in texts)
+        result.total_tokens += batch_tokens
+
+        # Write embeddings back to entity nodes
+        await _write_entity_embeddings(driver, batch, embeddings)
+        result.embedded += len(batch)
+
+        if cost_tracker:
+            await cost_tracker.record(
+                model=settings.embedding_model,
+                provider="local",
+                input_tokens=batch_tokens,
+                output_tokens=0,
+                operation="entity_embedding",
+                book_id=book_id,
+            )
+
+    logger.info(
+        "entity_embedding_completed",
+        book_id=book_id,
+        total=result.total_entities,
+        embedded=result.embedded,
+        failed=result.failed,
+        total_tokens=result.total_tokens,
+    )
+
+    return result
+
+
+async def _write_entity_embeddings(
+    driver: AsyncDriver,
+    batch: list[dict[str, Any]],
+    embeddings: list[list[float]],
+) -> None:
+    """Write a batch of embeddings to entity nodes via UNWIND."""
+    payload = [
+        {
+            "node_id": batch[j]["node_id"],
+            "embedding": embeddings[j],
+        }
+        for j in range(len(batch))
+    ]
+
+    async with driver.session() as session:
+        await session.run(
+            """
+            UNWIND $items AS item
+            MATCH (n) WHERE id(n) = item.node_id
+            SET n.embedding = item.embedding
+            """,
+            {"items": payload},
+        )
+
+
 async def _write_relationship_embeddings(
     driver: AsyncDriver,
     batch: list[dict[str, Any]],

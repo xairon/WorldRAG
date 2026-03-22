@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useCallback } from "react"
-import Graph from "graphology"
+import { MultiDirectedGraph } from "graphology"
 import Sigma from "sigma"
 import Forceatlas2Layout from "graphology-layout-forceatlas2/worker"
 import { ENTITY_HEX, getEntityHex } from "@/lib/constants"
@@ -59,14 +59,14 @@ export function SigmaGraph({
 }: SigmaGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const sigmaRef = useRef<Sigma | null>(null)
-  const graphRef = useRef<Graph | null>(null)
+  const graphRef = useRef<MultiDirectedGraph | null>(null)
   const layoutRef = useRef<Forceatlas2Layout | null>(null)
   const hoveredNodeRef = useRef<string | null>(null)
   const cameraRatioRef = useRef<number>(1)
 
   // Build graphology graph from API data
-  const buildGraph = useCallback((gData: SubgraphData, edgeColor: string): Graph => {
-    const graph = new Graph()
+  const buildGraph = useCallback((gData: SubgraphData, edgeColor: string): MultiDirectedGraph => {
+    const graph = new MultiDirectedGraph()
 
     for (const node of gData.nodes) {
       const label = node.labels?.[0] ?? "Concept"

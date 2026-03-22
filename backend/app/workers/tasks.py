@@ -828,6 +828,28 @@ async def process_book_embeddings(
         from app.services.embedding_pipeline import RelationshipEmbeddingResult
         rel_result = RelationshipEmbeddingResult(book_id=book_id, total_rels=0, embedded=0, failed=0)
 
+    # Phase 3: Embed entity descriptions
+    try:
+        from app.services.embedding_pipeline import embed_book_entities
+
+        ent_result = await embed_book_entities(
+            driver=driver,
+            book_id=book_id,
+            cost_tracker=cost_tracker,
+        )
+        if ent_result.failed > 0:
+            logger.warning(
+                "task_book_entity_embeddings_partial_failure",
+                book_id=book_id,
+                failed=ent_result.failed,
+            )
+    except Exception:
+        logger.warning("task_book_entity_embeddings_failed", book_id=book_id, exc_info=True)
+        from app.services.embedding_pipeline import EntityEmbeddingResult
+        ent_result = EntityEmbeddingResult(
+            book_id=book_id, total_entities=0, embedded=0, failed=0
+        )
+
     # Update book status
     if result.failed == 0:
         await book_repo.update_book_status(book_id, "embedded")
@@ -842,6 +864,8 @@ async def process_book_embeddings(
         cost_usd=round(result.cost_usd, 6),
         rel_embedded=rel_result.embedded,
         rel_failed=rel_result.failed,
+        ent_embedded=ent_result.embedded,
+        ent_failed=ent_result.failed,
     )
 
     return {
@@ -852,6 +876,8 @@ async def process_book_embeddings(
         "cost_usd": result.cost_usd,
         "rel_embedded": rel_result.embedded,
         "rel_failed": rel_result.failed,
+        "ent_embedded": ent_result.embedded,
+        "ent_failed": ent_result.failed,
     }
 
 

@@ -419,6 +419,7 @@ async def llm_dedup(
     entity_type: str,
     client: instructor.AsyncInstructor,
     model: str,
+    desc_map: dict[str, str] | None = None,
 ) -> list[EntityMergeCandidate]:
     """Tier 3: Use LLM to resolve ambiguous fuzzy matches in batches.
 
@@ -448,8 +449,13 @@ async def llm_dedup(
     results: list[EntityMergeCandidate] = []
 
     for batch_idx, batch in enumerate(batches):
+        _dm = desc_map or {}
         candidates_text = "\n".join(
-            f"{idx + 1}. '{a}' vs '{b}' (fuzzy score: {s}%)"
+            f"{idx + 1}. '{a}'"
+            + (f" — {_dm[a]}" if _dm.get(a) else "")
+            + f" vs '{b}'"
+            + (f" — {_dm[b]}" if _dm.get(b) else "")
+            + f" (fuzzy score: {s}%)"
             for idx, (a, b, s) in enumerate(batch)
         )
 
@@ -546,6 +552,13 @@ async def deduplicate_entities(
     if len(entities) <= 1:
         return entities, {}
 
+    # Build description map for LLM context (Tier 3)
+    desc_map: dict[str, str] = {
+        e["name"]: e["description"]
+        for e in entities
+        if e.get("name") and e.get("description")
+    }
+
     # Tier 1: exact
     entities, alias_map = exact_dedup(entities)
 
@@ -568,7 +581,7 @@ async def deduplicate_entities(
 
     # Tier 3: LLM batched (only if client provided and candidates remain)
     if candidates and client is not None:
-        merges = await llm_dedup(candidates, entity_type, client, model)
+        merges = await llm_dedup(candidates, entity_type, client, model, desc_map=desc_map)
 
         # Apply high-confidence merges
         for merge in merges:

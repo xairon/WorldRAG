@@ -107,6 +107,31 @@ def _build_type_descriptions(ontology: OntologyLoader, language: str) -> str:
                 if text:
                     sections.append(text.strip())
 
+    # Induced types (auto-discovered by ontology inducer, not in YAML)
+    rendered_lower = {
+        k.lower()
+        for section in [core_descs, genre_descs, series_descs]
+        for k in section
+    }
+    induced_lines: list[str] = []
+    for type_name, node_type in ontology.node_types.items():
+        if type_name.lower() in rendered_lower:
+            continue
+        origin = getattr(ontology, "_node_type_origin", {}).get(type_name, "")
+        if origin != "induced":
+            continue
+        desc = node_type.description or type_name
+        induced_lines.append(f"- {type_name}: {desc} (auto-discovered)")
+
+    if induced_lines:
+        header = (
+            "=== AUTO-DISCOVERED ENTITY TYPES ==="
+            if language == "en"
+            else "=== TYPES D'ENTITÉS AUTO-DÉCOUVERTS ==="
+        )
+        sections.append(header)
+        sections.extend(induced_lines)
+
     return "\n\n".join(sections)
 
 

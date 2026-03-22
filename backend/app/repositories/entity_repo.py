@@ -72,6 +72,8 @@ _HANDLED_ENTITY_TYPES: set[str] = {
     "bloodline",
     "profession",
     "church",
+    "arc",
+    "prophecy",
 }
 
 
@@ -626,8 +628,11 @@ class EntityRepository(Neo4jRepository):
                     WHEN size(l.description) > size(coalesce(loc.description, ''))
                     THEN l.description ELSE loc.description END,
                 loc.batch_id = $batch_id
+            WITH loc, l
+            MATCH (chap:Chapter {book_id: $book_id, number: $chapter})
+            MERGE (loc)-[:MENTIONED_IN]->(chap)
             """,
-            {"locs": data, "book_id": book_id, "batch_id": batch_id},
+            {"locs": data, "book_id": book_id, "batch_id": batch_id, "chapter": chapter_number},
         )
 
         # Link parent locations
@@ -686,6 +691,9 @@ class EntityRepository(Neo4jRepository):
                 it.rarity = i.rarity,
                 it.batch_id = $batch_id,
                 it.created_at = timestamp()
+            WITH it, i
+            MATCH (chap:Chapter {book_id: $book_id, number: $chapter})
+            MERGE (it)-[:MENTIONED_IN]->(chap)
             WITH it, i
             WHERE i.owner <> ''
             MATCH (ch:Character {canonical_name: i.owner, book_id: $book_id})
@@ -753,8 +761,16 @@ class EntityRepository(Neo4jRepository):
                 cr.habitat = c.habitat,
                 cr.batch_id = $batch_id,
                 cr.created_at = timestamp()
+            WITH cr, c
+            MATCH (chap:Chapter {book_id: $book_id, number: $chapter})
+            MERGE (cr)-[:MENTIONED_IN]->(chap)
             """,
-            {"creatures": data, "book_id": book_id, "batch_id": batch_id},
+            {
+                "creatures": data,
+                "book_id": book_id,
+                "batch_id": batch_id,
+                "chapter": chapter_number,
+            },
         )
 
         return len(creatures)
@@ -794,8 +810,11 @@ class EntityRepository(Neo4jRepository):
                 fa.alignment = f.alignment,
                 fa.batch_id = $batch_id,
                 fa.created_at = timestamp()
+            WITH fa, f
+            MATCH (chap:Chapter {book_id: $book_id, number: $chapter})
+            MERGE (fa)-[:MENTIONED_IN]->(chap)
             """,
-            {"factions": data, "book_id": book_id, "batch_id": batch_id},
+            {"factions": data, "book_id": book_id, "batch_id": batch_id, "chapter": chapter_number},
         )
 
         return len(factions)
@@ -838,8 +857,11 @@ class EntityRepository(Neo4jRepository):
                     WHEN size(c.description) > size(coalesce(co.description, ''))
                     THEN c.description ELSE co.description END,
                 co.batch_id = $batch_id
+            WITH co, c
+            MATCH (chap:Chapter {book_id: $book_id, number: $chapter})
+            MERGE (co)-[:MENTIONED_IN]->(chap)
             """,
-            {"concepts": data, "book_id": book_id, "batch_id": batch_id},
+            {"concepts": data, "book_id": book_id, "batch_id": batch_id, "chapter": chapter_number},
         )
 
         return len(concepts)
@@ -1684,6 +1706,125 @@ class EntityRepository(Neo4jRepository):
         )
         return len(churches)
 
+    # ── Arcs ─────────────────────────────────────────────────────────────
+
+    async def upsert_arcs(
+        self,
+        book_id: str,
+        chapter_number: int,
+        arcs: list,
+        batch_id: str = "",
+    ) -> int:
+        """Upsert Arc nodes and create MENTIONED_IN edge to the chapter."""
+        if not arcs:
+            return 0
+
+        data = [
+            {
+                "name": a.name,
+                "canonical_name": (
+                    getattr(a, "canonical_name", None) or a.name
+                ).lower().strip(),
+                "description": getattr(a, "description", ""),
+                "arc_type": getattr(a, "arc_type", ""),
+            }
+            for a in arcs
+        ]
+
+        await self.execute_write(
+            """
+            UNWIND $arcs AS a
+            MERGE (n:Arc {canonical_name: a.canonical_name, book_id: $book_id})
+            ON CREATE SET
+                n.name = a.name,
+                n.description = a.description,
+                n.arc_type = a.arc_type,
+                n.batch_id = $batch_id,
+                n.valid_from_chapter = $chapter,
+                n.created_at = timestamp()
+            ON MATCH SET
+                n.description = CASE
+                    WHEN size(a.description) > size(coalesce(n.description, ''))
+                    THEN a.description ELSE n.description END,
+                n.batch_id = $batch_id
+            WITH n
+            MATCH (ch:Chapter {book_id: $book_id, number: $chapter})
+            MERGE (n)-[:MENTIONED_IN]->(ch)
+            """,
+            {
+                "arcs": data,
+                "book_id": book_id,
+                "batch_id": batch_id,
+                "chapter": chapter_number,
+            },
+        )
+
+        logger.info(
+            "arcs_upserted", book_id=book_id, chapter=chapter_number, count=len(arcs)
+        )
+        return len(arcs)
+
+    # ── Prophecies ───────────────────────────────────────────────────────
+
+    async def upsert_prophecies(
+        self,
+        book_id: str,
+        chapter_number: int,
+        prophecies: list,
+        batch_id: str = "",
+    ) -> int:
+        """Upsert Prophecy nodes and create MENTIONED_IN edge to the chapter."""
+        if not prophecies:
+            return 0
+
+        data = [
+            {
+                "name": p.name,
+                "canonical_name": (
+                    getattr(p, "canonical_name", None) or p.name
+                ).lower().strip(),
+                "description": getattr(p, "description", ""),
+                "status": getattr(p, "status", ""),
+            }
+            for p in prophecies
+        ]
+
+        await self.execute_write(
+            """
+            UNWIND $prophecies AS p
+            MERGE (n:Prophecy {canonical_name: p.canonical_name, book_id: $book_id})
+            ON CREATE SET
+                n.name = p.name,
+                n.description = p.description,
+                n.status = p.status,
+                n.batch_id = $batch_id,
+                n.valid_from_chapter = $chapter,
+                n.created_at = timestamp()
+            ON MATCH SET
+                n.description = CASE
+                    WHEN size(p.description) > size(coalesce(n.description, ''))
+                    THEN p.description ELSE n.description END,
+                n.batch_id = $batch_id
+            WITH n
+            MATCH (ch:Chapter {book_id: $book_id, number: $chapter})
+            MERGE (n)-[:MENTIONED_IN]->(ch)
+            """,
+            {
+                "prophecies": data,
+                "book_id": book_id,
+                "batch_id": batch_id,
+                "chapter": chapter_number,
+            },
+        )
+
+        logger.info(
+            "prophecies_upserted",
+            book_id=book_id,
+            chapter=chapter_number,
+            count=len(prophecies),
+        )
+        return len(prophecies)
+
     # ── Generic genre entity upsert (fallback for unmapped sub_types) ───
 
     async def upsert_genre_entities(
@@ -1738,6 +1879,9 @@ class EntityRepository(Neo4jRepository):
                     WHEN size(e.description) > size(coalesce(n.description, ''))
                     THEN e.description ELSE n.description END,
                 n.batch_id = $batch_id
+            WITH n, e
+            MATCH (chap:Chapter {{book_id: $book_id, number: $chapter}})
+            MERGE (n)-[:MENTIONED_IN]->(chap)
             """,
             {
                 "entities": data,
@@ -2144,6 +2288,30 @@ class EntityRepository(Neo4jRepository):
                 if not hasattr(ch, "valid_from_chapter"):
                     ch.valid_from_chapter = chapter_number
 
+        # Arcs
+        arcs = []
+        if "arc" in by_type:
+            arcs = [_ns(e) for e in by_type["arc"]]
+            for a in arcs:
+                if not hasattr(a, "description"):
+                    a.description = ""
+                if not hasattr(a, "arc_type"):
+                    a.arc_type = ""
+                if not hasattr(a, "canonical_name") or not a.canonical_name:
+                    a.canonical_name = a.name
+
+        # Prophecies
+        prophecies = []
+        if "prophecy" in by_type:
+            prophecies = [_ns(e) for e in by_type["prophecy"]]
+            for p in prophecies:
+                if not hasattr(p, "description"):
+                    p.description = ""
+                if not hasattr(p, "status"):
+                    p.status = ""
+                if not hasattr(p, "canonical_name") or not p.canonical_name:
+                    p.canonical_name = p.name
+
         # Relations
         rel_ns = []
         if relations:
@@ -2232,6 +2400,17 @@ class EntityRepository(Neo4jRepository):
         if churches:
             entity_coros.append(
                 ("churches", self.upsert_churches(book_id, chapter_number, churches, batch_id))
+            )
+        if arcs:
+            entity_coros.append(
+                ("arcs", self.upsert_arcs(book_id, chapter_number, arcs, batch_id))
+            )
+        if prophecies:
+            entity_coros.append(
+                (
+                    "prophecies",
+                    self.upsert_prophecies(book_id, chapter_number, prophecies, batch_id),
+                )
             )
 
         # ── Fallback: unmapped genre sub_types (floor, alchemy_recipe, etc.)
