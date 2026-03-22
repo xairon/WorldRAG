@@ -42,7 +42,10 @@ async def hyde_expand(state: dict[str, Any]) -> dict[str, Any]:
         return {}
 
     try:
-        llm = get_langchain_llm(settings.llm_auxiliary)
+        try:
+            llm = get_langchain_llm(settings.llm_auxiliary)
+        except Exception:
+            llm = get_langchain_llm(settings.llm_chat)
         response = await llm.ainvoke(
             [
                 SystemMessage(content=HYDE_EXPAND_SYSTEM),

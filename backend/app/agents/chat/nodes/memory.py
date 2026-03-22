@@ -87,7 +87,10 @@ async def summarize_memory(state: dict[str, Any]) -> dict[str, Any]:
         prompt = history_text
 
     try:
-        llm = get_langchain_llm(settings.llm_auxiliary)
+        try:
+            llm = get_langchain_llm(settings.llm_auxiliary)
+        except Exception:
+            llm = get_langchain_llm(settings.llm_chat)
         response = await llm.ainvoke(
             [
                 SystemMessage(content=SUMMARIZE_MEMORY_SYSTEM),

@@ -43,8 +43,6 @@ async def classify_intent(state: dict[str, Any]) -> dict[str, Any]:
 
     Returns {"route": <one of VALID_ROUTES>}.
     """
-    llm = get_langchain_llm(settings.llm_auxiliary)
-
     messages: list = [SystemMessage(content=INTENT_ANALYZER_SYSTEM)]
 
     # Include up to 4 prior turns for context resolution
@@ -55,7 +53,14 @@ async def classify_intent(state: dict[str, Any]) -> dict[str, Any]:
 
     messages.append(HumanMessage(content=state["query"]))
 
-    response = await llm.ainvoke(messages)
+    # Try auxiliary (local Ollama) first, fallback to chat model (Gemini)
+    try:
+        llm = get_langchain_llm(settings.llm_auxiliary)
+        response = await llm.ainvoke(messages)
+    except Exception:
+        logger.warning("auxiliary_llm_unavailable", fallback=settings.llm_chat)
+        llm = get_langchain_llm(settings.llm_chat)
+        response = await llm.ainvoke(messages)
     raw = response.content.strip() if isinstance(response.content, str) else str(response.content)
 
     route = _parse_route(raw)
