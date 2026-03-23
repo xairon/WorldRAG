@@ -34,6 +34,51 @@ export function getTimeline(bookId: string, significance?: string, character?: s
   return apiFetch(`/graph/timeline/${bookId}${q}`)
 }
 
+// ── Ontology ──────────────────────────────────────────────────────────────
+
+export interface OntologyEntityType {
+  label: string
+  count: number
+  layer: "core" | "genre" | "induced"
+  sample_entities: string[]
+  avg_confidence: number
+}
+
+export interface OntologyRelationType {
+  type: string
+  count: number
+  temporal: boolean
+  source_types?: string[]
+  target_types?: string[]
+}
+
+export interface OntologySchemaEdge {
+  source: string
+  relation: string
+  target: string
+  count: number
+}
+
+export interface OntologyData {
+  entity_types: OntologyEntityType[]
+  relation_types: OntologyRelationType[]
+  schema_edges: OntologySchemaEdge[]
+  stats: {
+    total_entities: number
+    total_relations: number
+    entity_type_count: number
+    relation_type_count: number
+    avg_relations_per_entity: number
+  }
+  induced_types: string[]
+}
+
+export function getOntology(bookId: string): Promise<OntologyData> {
+  return apiFetch(`/graph/ontology/${bookId}`)
+}
+
+// ── Entities ──────────────────────────────────────────────────────────────
+
 export function listEntities(
   bookId: string,
   label: string,

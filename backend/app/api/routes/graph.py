@@ -101,6 +101,135 @@ async def graph_stats(
     }
 
 
+# ── Ontology schema ────────────────────────────────────────────────────────
+
+_STRUCTURAL_LABELS = frozenset(
+    {"Book", "Chapter", "Chunk", "Paragraph", "Community", "StateSnapshot", "StateChange"}
+)
+_STRUCTURAL_RELS = [
+    "HAS_CHAPTER", "HAS_CHUNK", "HAS_PARAGRAPH", "MENTIONED_IN",
+    "FIRST_MENTIONED_IN", "GROUNDED_IN", "MEMBER_OF", "PARENT_COMMUNITY",
+    "HAS_SNAPSHOT", "STATE_CHANGED", "LOCATION_PART_OF",
+]
+
+_CORE_TYPES = {"Character", "Event", "Location", "Item", "Creature", "Faction", "Concept", "Arc", "Prophecy"}
+_GENRE_TYPES = {"Skill", "Class", "Title", "System", "Level", "Bloodline", "Profession", "Achievement"}
+
+
+@router.get("/ontology/{book_id}", dependencies=[Depends(require_auth)])
+async def get_ontology(
+    book_id: str,
+    driver: AsyncDriver = Depends(get_neo4j),
+) -> dict:
+    """Return the ontology schema derived from actual graph data."""
+    repo = Neo4jRepository(driver)
+
+    # Three parallel queries
+    entity_task = repo.execute_read(
+        """
+        MATCH (n {book_id: $book_id})
+        WHERE none(l IN labels(n) WHERE l IN $exclude)
+        WITH [l IN labels(n) WHERE l <> 'Entity'][0] AS label, n
+        WITH label, count(n) AS cnt,
+             collect(n.canonical_name)[..5] AS samples,
+             avg(CASE WHEN n.confidence IS NOT NULL THEN n.confidence ELSE 1.0 END) AS avg_conf
+        RETURN label, cnt, samples, round(avg_conf * 100) / 100 AS avg_confidence
+        ORDER BY cnt DESC
+        """,
+        {"book_id": book_id, "exclude": list(_STRUCTURAL_LABELS)},
+    )
+
+    schema_task = repo.execute_read(
+        """
+        MATCH (a)-[r]->(b)
+        WHERE r.book_id = $book_id
+          AND NOT type(r) IN $exclude_rels
+        WITH [l IN labels(a) WHERE l <> 'Entity'][0] AS src,
+             type(r) AS rel,
+             [l IN labels(b) WHERE l <> 'Entity'][0] AS tgt,
+             count(r) AS cnt,
+             startNode(r).canonical_name AS s_name,
+             endNode(r).canonical_name AS t_name
+        RETURN src, rel, tgt, cnt,
+               collect(DISTINCT {source: s_name, target: t_name})[..2] AS sample_pairs
+        ORDER BY cnt DESC
+        """,
+        {"book_id": book_id, "exclude_rels": _STRUCTURAL_RELS},
+    )
+
+    rel_task = repo.execute_read(
+        """
+        MATCH ()-[r]->()
+        WHERE r.book_id = $book_id AND NOT type(r) IN $exclude_rels
+        WITH type(r) AS rel_type, count(r) AS cnt,
+             collect(CASE WHEN r.valid_from_chapter IS NOT NULL THEN 1 END)[..1] AS has_temporal,
+             collect(DISTINCT [l IN labels(startNode(r)) WHERE l <> 'Entity'][0]) AS src_types,
+             collect(DISTINCT [l IN labels(endNode(r)) WHERE l <> 'Entity'][0]) AS tgt_types
+        RETURN rel_type AS type, cnt AS count,
+               size(has_temporal) > 0 AS temporal,
+               src_types[..3] AS source_types, tgt_types[..3] AS target_types
+        ORDER BY cnt DESC
+        """,
+        {"book_id": book_id, "exclude_rels": _STRUCTURAL_RELS},
+    )
+
+    entities_raw, schema_raw, rels_raw = await asyncio.gather(
+        entity_task, schema_task, rel_task
+    )
+
+    # Build entity types with layer info
+    entity_types = []
+    for e in entities_raw:
+        label = e["label"]
+        if not label:
+            continue
+        layer = "core" if label in _CORE_TYPES else "genre" if label in _GENRE_TYPES else "induced"
+        entity_types.append({
+            "label": label,
+            "count": e["cnt"],
+            "layer": layer,
+            "sample_entities": [s for s in (e["samples"] or []) if s],
+            "avg_confidence": e["avg_confidence"] or 1.0,
+        })
+
+    # Build schema edges
+    schema_edges = [
+        {
+            "source": s["src"],
+            "relation": s["rel"],
+            "target": s["tgt"],
+            "count": s["cnt"],
+            "sample_pairs": s.get("sample_pairs", [])[:2],
+        }
+        for s in schema_raw
+        if s["src"] and s["tgt"]
+    ]
+
+    # Build relation types
+    relation_types = [dict(r) for r in rels_raw]
+
+    # Induced types = types not in core or genre
+    induced = [e["label"] for e in entity_types if e["layer"] == "induced"]
+
+    # Stats
+    total_entities = sum(e["count"] for e in entity_types)
+    total_relations = sum(r["count"] for r in relation_types)
+
+    return {
+        "entity_types": entity_types,
+        "relation_types": relation_types,
+        "schema_edges": schema_edges,
+        "stats": {
+            "total_entities": total_entities,
+            "total_relations": total_relations,
+            "entity_type_count": len(entity_types),
+            "relation_type_count": len(relation_types),
+            "avg_relations_per_entity": round(total_relations / max(total_entities, 1), 1),
+        },
+        "induced_types": induced,
+    }
+
+
 # ── Entity search ──────────────────────────────────────────────────────────
 
 

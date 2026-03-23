@@ -9,7 +9,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 const tools = [
   { label: "Graph", icon: Network, path: "graph" },
   { label: "Chat", icon: MessageCircle, path: "chat" },
-  { label: "Ontology", icon: Dna, path: "graph?view=ontology" },
+  { label: "Ontology", icon: Dna, path: "ontology" },
 ]
 
 export function SidebarProjectNav({ slug, collapsed }: { slug: string; collapsed: boolean }) {
