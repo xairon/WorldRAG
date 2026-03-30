@@ -1,7 +1,11 @@
-import pytest
 from unittest.mock import AsyncMock, patch
+
+import pytest
+
 from app.schemas.extraction_v4 import (
-    EntityExtractionResult, ExtractedCharacter, ExtractedGenreEntity,
+    EntityExtractionResult,
+    ExtractedCharacter,
+    ExtractedGenreEntity,
 )
 from app.services.extraction.entities import extract_entities_node
 
@@ -12,22 +16,30 @@ L'archer regarda la Grande Forêt au loin."""
 MOCK_RESULT = EntityExtractionResult(
     entities=[
         ExtractedCharacter(
-            name="Jake", canonical_name="jake",
+            name="Jake",
+            canonical_name="jake",
             extraction_text="Jake se leva",
-            char_offset_start=0, char_offset_end=12,
+            char_offset_start=0,
+            char_offset_end=12,
         ),
         ExtractedGenreEntity(
-            sub_type="skill", name="Shadow Step", owner="jake", rank="rare",
+            sub_type="skill",
+            name="Shadow Step",
+            owner="jake",
+            rank="rare",
             extraction_text="Shadow Step - Rare",
-            char_offset_start=68, char_offset_end=86,
+            char_offset_start=68,
+            char_offset_end=86,
         ),
     ],
     chapter_number=5,
 )
 
+
 @pytest.fixture
 def base_state():
     from app.core.ontology_loader import OntologyLoader
+
     return {
         "book_id": "test-book",
         "chapter_number": 5,
@@ -41,18 +53,28 @@ def base_state():
         "ontology": OntologyLoader.from_layers(genre="litrpg", series=""),
     }
 
+
 @pytest.mark.asyncio
 async def test_extract_entities_node_returns_entities(base_state):
-    with patch("app.services.extraction.entities._call_instructor", new_callable=AsyncMock, return_value=MOCK_RESULT):
+    with patch(
+        "app.services.extraction.entities._call_instructor",
+        new_callable=AsyncMock,
+        return_value=MOCK_RESULT,
+    ):
         result = await extract_entities_node(base_state)
     assert "entities" in result
     assert len(result["entities"]) == 2
     assert result["entities"][0]["entity_type"] == "character"
     assert result["total_entities"] == 2
 
+
 @pytest.mark.asyncio
 async def test_extract_entities_validates_grounding(base_state):
-    with patch("app.services.extraction.entities._call_instructor", new_callable=AsyncMock, return_value=MOCK_RESULT):
+    with patch(
+        "app.services.extraction.entities._call_instructor",
+        new_callable=AsyncMock,
+        return_value=MOCK_RESULT,
+    ):
         result = await extract_entities_node(base_state)
     assert len(result["grounded_entities"]) == 2
     for ge in result["grounded_entities"]:
@@ -64,7 +86,11 @@ async def test_extract_entities_validates_grounding(base_state):
 async def test_extract_entities_empty_result(base_state):
     """LLM returning zero entities produces a valid empty result."""
     empty_result = EntityExtractionResult(entities=[], chapter_number=5)
-    with patch("app.services.extraction.entities._call_instructor", new_callable=AsyncMock, return_value=empty_result):
+    with patch(
+        "app.services.extraction.entities._call_instructor",
+        new_callable=AsyncMock,
+        return_value=empty_result,
+    ):
         result = await extract_entities_node(base_state)
     assert result["entities"] == []
     assert result["total_entities"] == 0
@@ -75,6 +101,7 @@ async def test_extract_entities_empty_result(base_state):
 async def test_extract_entities_with_registry_context(base_state):
     """Passing a pre-populated entity_registry dict should not break the node."""
     from app.services.extraction.entity_registry import EntityRegistry
+
     registry = EntityRegistry()
     registry.add(
         name="Elara",
@@ -85,7 +112,11 @@ async def test_extract_entities_with_registry_context(base_state):
     )
     base_state["entity_registry"] = registry.to_dict()
 
-    with patch("app.services.extraction.entities._call_instructor", new_callable=AsyncMock, return_value=MOCK_RESULT):
+    with patch(
+        "app.services.extraction.entities._call_instructor",
+        new_callable=AsyncMock,
+        return_value=MOCK_RESULT,
+    ):
         result = await extract_entities_node(base_state)
 
     # Node still works and returns entities from the (mocked) LLM result
@@ -112,7 +143,11 @@ async def test_extract_entities_unknown_type_coerced(base_state):
     # Verify the schema-level coercion happened
     assert coerced_result.entities[0].entity_type == "genre_entity"
 
-    with patch("app.services.extraction.entities._call_instructor", new_callable=AsyncMock, return_value=coerced_result):
+    with patch(
+        "app.services.extraction.entities._call_instructor",
+        new_callable=AsyncMock,
+        return_value=coerced_result,
+    ):
         result = await extract_entities_node(base_state)
 
     assert len(result["entities"]) == 1

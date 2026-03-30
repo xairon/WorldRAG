@@ -4,13 +4,10 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
 
-import pytest
-
 from app.services.extraction.reconciler import (
     _get_name_from_flat_entity,
     reconcile_flat_entities,
 )
-
 
 # ── _get_name_from_flat_entity ──────────────────────────────────────────────
 
@@ -29,11 +26,21 @@ class TestGetNameFromFlatEntity:
         assert _get_name_from_flat_entity(entity) == "Basic Archery"
 
     def test_level_change_uses_character_field(self):
-        entity = {"entity_type": "level_change", "character": "Jake", "old_level": 1, "new_level": 5}
+        entity = {
+            "entity_type": "level_change",
+            "character": "Jake",
+            "old_level": 1,
+            "new_level": 5,
+        }
         assert _get_name_from_flat_entity(entity) == "Jake"
 
     def test_stat_change_uses_character_field(self):
-        entity = {"entity_type": "stat_change", "character": "Miranda", "stat": "Perception", "delta": 5}
+        entity = {
+            "entity_type": "stat_change",
+            "character": "Miranda",
+            "stat": "Perception",
+            "delta": 5,
+        }
         assert _get_name_from_flat_entity(entity) == "Miranda"
 
     def test_level_change_falls_back_to_name_if_no_character(self):
@@ -203,8 +210,18 @@ class TestReconcileFlatEntities:
 
     async def test_level_change_entities_use_character_field_for_dedup(self):
         entities = [
-            {"entity_type": "level_change", "character": "Jake", "old_level": 1, "new_level": 2},
-            {"entity_type": "level_change", "character": "Jake Thayne", "old_level": 2, "new_level": 5},
+            {
+                "entity_type": "level_change",
+                "character": "Jake",
+                "old_level": 1,
+                "new_level": 2,
+            },
+            {
+                "entity_type": "level_change",
+                "character": "Jake Thayne",
+                "old_level": 2,
+                "new_level": 5,
+            },
         ]
 
         with patch(

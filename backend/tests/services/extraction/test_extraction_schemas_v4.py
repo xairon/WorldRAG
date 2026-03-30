@@ -22,7 +22,6 @@ from app.schemas.extraction_v4 import (
     RelationExtractionResult,
 )
 
-
 # ── 1. ExtractedArc roundtrip ────────────────────────────────────────────
 
 
@@ -135,13 +134,22 @@ def test_all_12_entity_types():
     ]
 
     expected_types = [
-        "character", "event", "location", "item", "creature",
-        "faction", "concept", "arc", "prophecy",
-        "level_change", "stat_change", "genre_entity",
+        "character",
+        "event",
+        "location",
+        "item",
+        "creature",
+        "faction",
+        "concept",
+        "arc",
+        "prophecy",
+        "level_change",
+        "stat_change",
+        "genre_entity",
     ]
 
     assert len(entities) == 12
-    for entity, expected_type in zip(entities, expected_types):
+    for entity, expected_type in zip(entities, expected_types, strict=False):
         assert entity.entity_type == expected_type, (
             f"Expected {expected_type}, got {entity.entity_type}"
         )
@@ -160,7 +168,13 @@ def test_discriminated_union_deserialization_all_12():
         {"entity_type": "arc", "name": "Tutorial Arc"},
         {"entity_type": "prophecy", "name": "Dark Prophecy"},
         {"entity_type": "level_change", "character": "Jake", "extraction_text": "Level up."},
-        {"entity_type": "stat_change", "character": "Jake", "stat_name": "STR", "value": 3, "extraction_text": "STR+3."},
+        {
+            "entity_type": "stat_change",
+            "character": "Jake",
+            "stat_name": "STR",
+            "value": 3,
+            "extraction_text": "STR+3.",
+        },
         {"entity_type": "genre_entity", "sub_type": "class", "name": "Sword Saint"},
     ]
 
@@ -177,19 +191,13 @@ def test_discriminated_union_deserialization_all_12():
 
 def test_relation_type_is_plain_str():
     """relation_type accepts any string, no coercion."""
-    r1 = ExtractedRelation(
-        source="A", target="B", relation_type="CUSTOM_REL", context="test"
-    )
+    r1 = ExtractedRelation(source="A", target="B", relation_type="CUSTOM_REL", context="test")
     assert r1.relation_type == "CUSTOM_REL"
 
-    r2 = ExtractedRelation(
-        source="A", target="B", relation_type="whatever_string", context="test"
-    )
+    r2 = ExtractedRelation(source="A", target="B", relation_type="whatever_string", context="test")
     assert r2.relation_type == "whatever_string"
 
-    r3 = ExtractedRelation(
-        source="A", target="B", relation_type="RELATES_TO", context="test"
-    )
+    r3 = ExtractedRelation(source="A", target="B", relation_type="RELATES_TO", context="test")
     assert r3.relation_type == "RELATES_TO"
 
 
@@ -198,7 +206,12 @@ def test_relation_type_is_plain_str():
 
 def test_mixed_type_entity_extraction_result():
     raw = [
-        {"entity_type": "character", "name": "Jake", "role": "protagonist", "extraction_text": "Jake."},
+        {
+            "entity_type": "character",
+            "name": "Jake",
+            "role": "protagonist",
+            "extraction_text": "Jake.",
+        },
         {"entity_type": "genre_entity", "sub_type": "skill", "name": "Fireball"},
         {"entity_type": "arc", "name": "The Hunt"},
         {"entity_type": "location", "name": "Dark Forest", "extraction_text": "Forest."},
@@ -300,10 +313,18 @@ def test_relation_end():
 def test_relation_result_with_ended():
     result = RelationExtractionResult(
         relations=[
-            ExtractedRelation(source="A", target="B", relation_type="ALLIES_WITH", context="Together.")
+            ExtractedRelation(
+                source="A", target="B", relation_type="ALLIES_WITH", context="Together."
+            )
         ],
         ended_relations=[
-            RelationEnd(source="C", target="D", relation_type="MEMBER_OF", ended_at_chapter=7, reason="Conflict.")
+            RelationEnd(
+                source="C",
+                target="D",
+                relation_type="MEMBER_OF",
+                ended_at_chapter=7,
+                reason="Conflict.",
+            )
         ],
     )
     assert len(result.relations) == 1

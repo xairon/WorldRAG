@@ -13,10 +13,10 @@ import pytest
 from app.core.exceptions import CostCeilingError, QuotaExhaustedError
 from app.schemas.book import ChapterData
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_chapter(number: int, title: str = "") -> ChapterData:
     """Build a minimal ChapterData for testing."""
@@ -114,6 +114,7 @@ def _mock_ontology():
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def chapters_2() -> list[ChapterData]:
     return [_make_chapter(1), _make_chapter(2)]
@@ -127,6 +128,7 @@ def ctx() -> dict:
 # ---------------------------------------------------------------------------
 # TestWorkerV4HappyPath
 # ---------------------------------------------------------------------------
+
 
 class TestWorkerV4HappyPath:
     """Happy-path scenarios for process_book_extraction_v4."""
@@ -198,12 +200,16 @@ class TestWorkerV4HappyPath:
 # TestWorkerV4ErrorHandling
 # ---------------------------------------------------------------------------
 
+
 class TestWorkerV4ErrorHandling:
     """Error-handling scenarios for process_book_extraction_v4."""
 
     @pytest.mark.asyncio
     async def test_chapter_failure_pushes_to_dlq(self, ctx, chapters_2):
-        """Chapter 1 raises RuntimeError → DLQ.push_failure called, chapter 2 still processed, status 'partial'."""
+        """Chapter 1 raises RuntimeError → DLQ.push_failure called, chapter 2 still processed.
+
+        Expected status: 'partial'.
+        """
         from app.workers.tasks import process_book_extraction_v4
 
         book_repo = _make_book_repo_mock(chapters_2)
@@ -247,7 +253,10 @@ class TestWorkerV4ErrorHandling:
 
     @pytest.mark.asyncio
     async def test_quota_exhausted_stops_immediately(self, ctx, chapters_2):
-        """QuotaExhaustedError on chapter 1 → stops immediately, returns stopped_reason='quota_exhausted'."""
+        """QuotaExhaustedError on chapter 1 → stops immediately.
+
+        Expected: stopped_reason='quota_exhausted'.
+        """
         from app.workers.tasks import process_book_extraction_v4
 
         book_repo = _make_book_repo_mock(chapters_2)
@@ -321,6 +330,7 @@ class TestWorkerV4ErrorHandling:
 # TestWorkerV4ChapterFiltering
 # ---------------------------------------------------------------------------
 
+
 class TestWorkerV4ChapterFiltering:
     """Non-content chapter filtering in process_book_extraction_v4."""
 
@@ -358,5 +368,6 @@ class TestWorkerV4ChapterFiltering:
 
         # extract_chapter_v4 called exactly once (for chapter 2 only)
         from app.services.extraction import extract_chapter_v4  # noqa: F401 (just for the mock)
+
         # Verify via chapters_processed count — chapter 1 was skipped
         assert result["chapters_failed"] == 0

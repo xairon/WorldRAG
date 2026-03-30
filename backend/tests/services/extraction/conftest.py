@@ -18,7 +18,6 @@ from app.schemas.extraction_v4 import (
     RelationExtractionResult,
 )
 
-
 # ── Sample chapter texts ────────────────────────────────────────────────
 
 CHAPTER_1_TEXT = """Chapter 1: Awakening
@@ -111,6 +110,7 @@ def base_v4_state(ontology):
 
 # ── Mock Instructor results ─────────────────────────────────────────────
 
+
 @pytest.fixture
 def mock_entity_result_ch1():
     """Mock entity extraction result for chapter 1."""
@@ -123,7 +123,8 @@ def mock_entity_result_ch1():
                 role="protagonist",
                 extraction_text="Jake Thayne woke up",
                 char_offset_start=CHAPTER_1_TEXT.find("Jake Thayne woke up"),
-                char_offset_end=CHAPTER_1_TEXT.find("Jake Thayne woke up") + len("Jake Thayne woke up"),
+                char_offset_end=CHAPTER_1_TEXT.find("Jake Thayne woke up")
+                + len("Jake Thayne woke up"),
             ),
             ExtractedCharacter(
                 name="Casper",
@@ -131,7 +132,8 @@ def mock_entity_result_ch1():
                 role="minor",
                 extraction_text="Casper the ghostly figure",
                 char_offset_start=CHAPTER_1_TEXT.find("Casper the ghostly figure"),
-                char_offset_end=CHAPTER_1_TEXT.find("Casper the ghostly figure") + len("Casper the ghostly figure"),
+                char_offset_end=CHAPTER_1_TEXT.find("Casper the ghostly figure")
+                + len("Casper the ghostly figure"),
             ),
             ExtractedGenreEntity(
                 sub_type="skill",
@@ -140,14 +142,16 @@ def mock_entity_result_ch1():
                 rank="common",
                 extraction_text="Basic Archery - Common",
                 char_offset_start=CHAPTER_1_TEXT.find("Basic Archery - Common"),
-                char_offset_end=CHAPTER_1_TEXT.find("Basic Archery - Common") + len("Basic Archery - Common"),
+                char_offset_end=CHAPTER_1_TEXT.find("Basic Archery - Common")
+                + len("Basic Archery - Common"),
             ),
             ExtractedLocation(
                 name="The Tutorial",
                 canonical_name="the tutorial",
                 extraction_text="The Tutorial had begun",
                 char_offset_start=CHAPTER_1_TEXT.find("The Tutorial had begun"),
-                char_offset_end=CHAPTER_1_TEXT.find("The Tutorial had begun") + len("The Tutorial had begun"),
+                char_offset_end=CHAPTER_1_TEXT.find("The Tutorial had begun")
+                + len("The Tutorial had begun"),
             ),
         ],
         chapter_number=1,
@@ -187,7 +191,8 @@ def mock_entity_result_ch2():
                 role="protagonist",
                 extraction_text="Jake stalked through",
                 char_offset_start=CHAPTER_2_TEXT.find("Jake stalked through"),
-                char_offset_end=CHAPTER_2_TEXT.find("Jake stalked through") + len("Jake stalked through"),
+                char_offset_end=CHAPTER_2_TEXT.find("Jake stalked through")
+                + len("Jake stalked through"),
             ),
             ExtractedGenreEntity(
                 sub_type="skill",
@@ -196,7 +201,8 @@ def mock_entity_result_ch2():
                 rank="rare",
                 extraction_text="Shadow Step - Rare",
                 char_offset_start=CHAPTER_2_TEXT.find("Shadow Step - Rare"),
-                char_offset_end=CHAPTER_2_TEXT.find("Shadow Step - Rare") + len("Shadow Step - Rare"),
+                char_offset_end=CHAPTER_2_TEXT.find("Shadow Step - Rare")
+                + len("Shadow Step - Rare"),
             ),
             ExtractedLocation(
                 name="Dark Ravine",
@@ -211,7 +217,8 @@ def mock_entity_result_ch2():
                 event_type="combat",
                 extraction_text="pack of Shadow Wolves",
                 char_offset_start=CHAPTER_2_TEXT.find("pack of Shadow Wolves"),
-                char_offset_end=CHAPTER_2_TEXT.find("pack of Shadow Wolves") + len("pack of Shadow Wolves"),
+                char_offset_end=CHAPTER_2_TEXT.find("pack of Shadow Wolves")
+                + len("pack of Shadow Wolves"),
             ),
         ],
         chapter_number=2,
@@ -271,7 +278,7 @@ def make_async_iter(rows: list):
             try:
                 return next(self._it)
             except StopIteration:
-                raise StopAsyncIteration
+                raise StopAsyncIteration from None
 
     return _AsyncIter()
 

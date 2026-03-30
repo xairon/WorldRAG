@@ -1,16 +1,18 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from app.services.extraction.book_level import (
-    iterative_cluster,
-    generate_entity_summaries,
-    community_cluster,
-    generate_state_snapshots,
-)
 
+import pytest
+
+from app.services.extraction.book_level import (
+    community_cluster,
+    generate_entity_summaries,
+    generate_state_snapshots,
+    iterative_cluster,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_async_iter(rows: list):
     """Return an object that supports `async for` over *rows*."""
@@ -26,7 +28,7 @@ def _make_async_iter(rows: list):
             try:
                 return next(self._it)
             except StopIteration:
-                raise StopAsyncIteration
+                raise StopAsyncIteration from None
 
     return _AsyncIter()
 
@@ -64,8 +66,8 @@ def _make_row(data: dict):
 # TestIterativeCluster
 # ---------------------------------------------------------------------------
 
-class TestIterativeCluster:
 
+class TestIterativeCluster:
     @pytest.mark.asyncio
     async def test_empty_book(self):
         """No entities in Neo4j → empty alias_map returned immediately."""
@@ -100,8 +102,8 @@ class TestIterativeCluster:
 # TestGenerateEntitySummaries
 # ---------------------------------------------------------------------------
 
-class TestGenerateEntitySummaries:
 
+class TestGenerateEntitySummaries:
     @pytest.mark.asyncio
     async def test_empty_book(self):
         """No entities above mention threshold → returns empty list."""
@@ -122,9 +124,7 @@ class TestGenerateEntitySummaries:
         so the function must return an empty list without calling any LLM.
         """
         # min_mentions default is 3 — driver returns nothing (filtered by Neo4j)
-        result = await generate_entity_summaries(
-            _make_mock_driver([]), "book-2", min_mentions=5
-        )
+        result = await generate_entity_summaries(_make_mock_driver([]), "book-2", min_mentions=5)
         assert result == []
 
     @pytest.mark.asyncio
@@ -157,8 +157,8 @@ class TestGenerateEntitySummaries:
 # TestGenerateStateSnapshots
 # ---------------------------------------------------------------------------
 
-class TestGenerateStateSnapshots:
 
+class TestGenerateStateSnapshots:
     @pytest.mark.asyncio
     async def test_calls_entity_repo_no_chapters(self):
         """When max_chapter is None / 0, returns 0 immediately."""
@@ -214,9 +214,7 @@ class TestGenerateStateSnapshots:
         )
         mock_repo.execute_write = AsyncMock(return_value=None)
 
-        result = await generate_state_snapshots(
-            mock_repo, "book-3", snapshot_interval=10
-        )
+        result = await generate_state_snapshots(mock_repo, "book-3", snapshot_interval=10)
 
         assert result == 2
         assert mock_repo.execute_write.call_count == 2
@@ -236,8 +234,8 @@ class TestGenerateStateSnapshots:
 # TestCommunityCluster
 # ---------------------------------------------------------------------------
 
-class TestCommunityCluster:
 
+class TestCommunityCluster:
     @pytest.mark.asyncio
     async def test_empty_graph_no_nodes(self):
         """No nodes in graph → returns empty community list immediately."""
@@ -247,7 +245,6 @@ class TestCommunityCluster:
             call_idx = [0]
 
             async def _run(*args, **kwargs):
-                idx = call_idx[0]
                 call_idx[0] += 1
                 # First call: node query → []
                 # Second call: edge query → []

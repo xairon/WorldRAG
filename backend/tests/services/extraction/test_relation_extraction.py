@@ -1,27 +1,52 @@
-import pytest
 from unittest.mock import AsyncMock, patch
+
+import pytest
+
 from app.schemas.extraction_v4 import (
-    RelationExtractionResult, ExtractedRelation, RelationEnd,
+    ExtractedRelation,
+    RelationEnd,
+    RelationExtractionResult,
 )
 from app.services.extraction.relations import extract_relations_node
 
 ENTITIES = [
-    {"entity_type": "character", "name": "Jake", "canonical_name": "jake", "extraction_text": "Jake"},
-    {"entity_type": "skill", "name": "Shadow Step", "owner": "jake", "extraction_text": "Shadow Step"},
+    {
+        "entity_type": "character",
+        "name": "Jake",
+        "canonical_name": "jake",
+        "extraction_text": "Jake",
+    },
+    {
+        "entity_type": "skill",
+        "name": "Shadow Step",
+        "owner": "jake",
+        "extraction_text": "Shadow Step",
+    },
 ]
 
 MOCK_RESULT = RelationExtractionResult(
     relations=[
-        ExtractedRelation(source="jake", target="Shadow Step", relation_type="HAS_SKILL", valid_from_chapter=5),
+        ExtractedRelation(
+            source="jake",
+            target="Shadow Step",
+            relation_type="HAS_SKILL",
+            valid_from_chapter=5,
+        ),
     ],
     ended_relations=[
-        RelationEnd(source="jake", target="Old Skill", relation_type="HAS_SKILL", ended_at_chapter=5),
+        RelationEnd(
+            source="jake",
+            target="Old Skill",
+            relation_type="HAS_SKILL",
+            ended_at_chapter=5,
+        ),
     ],
 )
 
 
 def _onto():
     from app.core.ontology_loader import OntologyLoader
+
     return OntologyLoader.from_layers(genre="litrpg", series="")
 
 
@@ -35,7 +60,11 @@ async def test_extract_relations_node():
         "model_override": None,
         "ontology": _onto(),
     }
-    with patch("app.services.extraction.relations._call_instructor_relations", new_callable=AsyncMock, return_value=MOCK_RESULT):
+    with patch(
+        "app.services.extraction.relations._call_instructor_relations",
+        new_callable=AsyncMock,
+        return_value=MOCK_RESULT,
+    ):
         result = await extract_relations_node(state)
     assert len(result["relations"]) == 1
     assert len(result["ended_relations"]) == 1
@@ -56,7 +85,11 @@ async def test_sets_valid_from_chapter_if_missing():
         "model_override": None,
         "ontology": _onto(),
     }
-    with patch("app.services.extraction.relations._call_instructor_relations", new_callable=AsyncMock, return_value=mock_result):
+    with patch(
+        "app.services.extraction.relations._call_instructor_relations",
+        new_callable=AsyncMock,
+        return_value=mock_result,
+    ):
         result = await extract_relations_node(state)
     assert result["relations"][0]["valid_from_chapter"] == 42
 
@@ -65,7 +98,11 @@ async def test_sets_valid_from_chapter_if_missing():
 async def test_empty_entities_still_extracts_relations():
     """Relations node with an empty entities list should not raise and should return results."""
     mock_result = RelationExtractionResult(
-        relations=[ExtractedRelation(source="x", target="y", relation_type="RELATES_TO", valid_from_chapter=3)],
+        relations=[
+            ExtractedRelation(
+                source="x", target="y", relation_type="RELATES_TO", valid_from_chapter=3
+            )
+        ],
         ended_relations=[],
     )
     state = {
@@ -76,7 +113,11 @@ async def test_empty_entities_still_extracts_relations():
         "model_override": None,
         "ontology": _onto(),
     }
-    with patch("app.services.extraction.relations._call_instructor_relations", new_callable=AsyncMock, return_value=mock_result):
+    with patch(
+        "app.services.extraction.relations._call_instructor_relations",
+        new_callable=AsyncMock,
+        return_value=mock_result,
+    ):
         result = await extract_relations_node(state)
     assert len(result["relations"]) == 1
     assert result["ended_relations"] == []
@@ -88,8 +129,19 @@ async def test_ended_relations_extracted():
     mock_result = RelationExtractionResult(
         relations=[],
         ended_relations=[
-            RelationEnd(source="jake", target="Old Skill", relation_type="HAS_SKILL", ended_at_chapter=7, reason="skill replaced"),
-            RelationEnd(source="jake", target="Iron Guild", relation_type="MEMBER_OF", ended_at_chapter=7),
+            RelationEnd(
+                source="jake",
+                target="Old Skill",
+                relation_type="HAS_SKILL",
+                ended_at_chapter=7,
+                reason="skill replaced",
+            ),
+            RelationEnd(
+                source="jake",
+                target="Iron Guild",
+                relation_type="MEMBER_OF",
+                ended_at_chapter=7,
+            ),
         ],
     )
     state = {
@@ -100,7 +152,11 @@ async def test_ended_relations_extracted():
         "model_override": None,
         "ontology": _onto(),
     }
-    with patch("app.services.extraction.relations._call_instructor_relations", new_callable=AsyncMock, return_value=mock_result):
+    with patch(
+        "app.services.extraction.relations._call_instructor_relations",
+        new_callable=AsyncMock,
+        return_value=mock_result,
+    ):
         result = await extract_relations_node(state)
     assert result["relations"] == []
     assert len(result["ended_relations"]) == 2
