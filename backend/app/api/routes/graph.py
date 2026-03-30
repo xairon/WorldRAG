@@ -107,13 +107,40 @@ _STRUCTURAL_LABELS = frozenset(
     {"Book", "Chapter", "Chunk", "Paragraph", "Community", "StateSnapshot", "StateChange"}
 )
 _STRUCTURAL_RELS = [
-    "HAS_CHAPTER", "HAS_CHUNK", "HAS_PARAGRAPH", "MENTIONED_IN",
-    "FIRST_MENTIONED_IN", "GROUNDED_IN", "MEMBER_OF", "PARENT_COMMUNITY",
-    "HAS_SNAPSHOT", "STATE_CHANGED", "LOCATION_PART_OF",
+    "HAS_CHAPTER",
+    "HAS_CHUNK",
+    "HAS_PARAGRAPH",
+    "MENTIONED_IN",
+    "FIRST_MENTIONED_IN",
+    "GROUNDED_IN",
+    "MEMBER_OF",
+    "PARENT_COMMUNITY",
+    "HAS_SNAPSHOT",
+    "STATE_CHANGED",
+    "LOCATION_PART_OF",
 ]
 
-_CORE_TYPES = {"Character", "Event", "Location", "Item", "Creature", "Faction", "Concept", "Arc", "Prophecy"}
-_GENRE_TYPES = {"Skill", "Class", "Title", "System", "Level", "Bloodline", "Profession", "Achievement"}
+_CORE_TYPES = {
+    "Character",
+    "Event",
+    "Location",
+    "Item",
+    "Creature",
+    "Faction",
+    "Concept",
+    "Arc",
+    "Prophecy",
+}
+_GENRE_TYPES = {
+    "Skill",
+    "Class",
+    "Title",
+    "System",
+    "Level",
+    "Bloodline",
+    "Profession",
+    "Achievement",
+}
 
 
 @router.get("/ontology/{book_id}", dependencies=[Depends(require_auth)])
@@ -173,9 +200,7 @@ async def get_ontology(
         {"book_id": book_id, "exclude_rels": _STRUCTURAL_RELS},
     )
 
-    entities_raw, schema_raw, rels_raw = await asyncio.gather(
-        entity_task, schema_task, rel_task
-    )
+    entities_raw, schema_raw, rels_raw = await asyncio.gather(entity_task, schema_task, rel_task)
 
     # Build entity types with layer info
     entity_types = []
@@ -184,13 +209,15 @@ async def get_ontology(
         if not label:
             continue
         layer = "core" if label in _CORE_TYPES else "genre" if label in _GENRE_TYPES else "induced"
-        entity_types.append({
-            "label": label,
-            "count": e["cnt"],
-            "layer": layer,
-            "sample_entities": [s for s in (e["samples"] or []) if s],
-            "avg_confidence": e["avg_confidence"] or 1.0,
-        })
+        entity_types.append(
+            {
+                "label": label,
+                "count": e["cnt"],
+                "layer": layer,
+                "sample_entities": [s for s in (e["samples"] or []) if s],
+                "avg_confidence": e["avg_confidence"] or 1.0,
+            }
+        )
 
     # Build schema edges
     schema_edges = [
@@ -500,9 +527,14 @@ async def get_book_subgraph(
     )
 
     # Build response — only include edges whose endpoints are in our node set
-    results = [{"nodes": node_results, "edges": [
-        e for e in edge_results if e["source"] in node_ids and e["target"] in node_ids
-    ]}]
+    results = [
+        {
+            "nodes": node_results,
+            "edges": [
+                e for e in edge_results if e["source"] in node_ids and e["target"] in node_ids
+            ],
+        }
+    ]
 
     if not results:
         return {"nodes": [], "edges": []}
@@ -868,3 +900,240 @@ def _format_subgraph(results: list[dict]) -> dict:
                 )
 
     return {"nodes": nodes, "edges": edges}
+
+
+# ── Entity / Relationship mutations ────────────────────────────────────────
+
+
+@router.patch("/entity/{entity_id}", dependencies=[Depends(require_auth)])
+async def update_entity(
+    entity_id: str,
+    body: dict,
+    driver: AsyncDriver = Depends(get_neo4j),
+) -> dict:
+    """Update mutable fields on an entity node (name, canonical_name, description).
+
+    At least one field must be provided; unknown fields are ignored.
+    Returns the updated labels and the list of property keys that were set.
+    """
+    allowed_fields = {"name", "canonical_name", "description"}
+    updates = {k: v for k, v in body.items() if k in allowed_fields and v is not None}
+
+    if not updates:
+        raise HTTPException(
+            status_code=400,
+            detail="At least one of name, canonical_name, description must be provided",
+        )
+
+    repo = Neo4jRepository(driver)
+
+    # Verify entity exists
+    existing = await repo.execute_read(
+        "MATCH (n) WHERE elementId(n) = $id RETURN labels(n) AS labels",
+        {"id": entity_id},
+    )
+    if not existing:
+        raise NotFoundError("Entity not found")
+
+    # Build dynamic SET clause — keys are safe (from allowlist above)
+    set_clause = ", ".join(f"n.{k} = ${k}" for k in updates)
+    params = {"id": entity_id, **updates}
+
+    await repo.execute_write(
+        f"MATCH (n) WHERE elementId(n) = $id SET {set_clause}",  # noqa: S608
+        params,
+    )
+
+    logger.info("entity_updated", entity_id=entity_id, fields=list(updates.keys()))
+    return {
+        "id": entity_id,
+        "labels": existing[0]["labels"],
+        "updated_properties": list(updates.keys()),
+    }
+
+
+@router.delete("/entity/{entity_id}", dependencies=[Depends(require_auth)])
+async def delete_entity(
+    entity_id: str,
+    driver: AsyncDriver = Depends(get_neo4j),
+) -> dict:
+    """Detach-delete an entity node and all its relationships."""
+    repo = Neo4jRepository(driver)
+
+    # Count relationships first
+    rel_count_result = await repo.execute_read(
+        "MATCH (n)-[r]-() WHERE elementId(n) = $id RETURN count(r) AS cnt",
+        {"id": entity_id},
+    )
+    rel_count = rel_count_result[0]["cnt"] if rel_count_result else 0
+
+    # DETACH DELETE — summary tells us if anything was deleted
+    _, summary = await repo.execute_write_with_summary(
+        "MATCH (n) WHERE elementId(n) = $id DETACH DELETE n",
+        {"id": entity_id},
+    )
+
+    nodes_deleted = summary.counters.nodes_deleted if summary else 0
+    if nodes_deleted == 0:
+        raise NotFoundError("Entity not found")
+
+    logger.info("entity_deleted", entity_id=entity_id, relationships_removed=rel_count)
+    return {"deleted": True, "relationships_removed": rel_count}
+
+
+@router.post("/entities/merge", dependencies=[Depends(require_auth)])
+async def merge_entities(
+    body: dict,
+    driver: AsyncDriver = Depends(get_neo4j),
+) -> dict:
+    """Merge source entity into target entity.
+
+    Transfers all relationships and aliases from the source to the target,
+    then deletes the source.  Self-loops to the target are skipped.
+    """
+    source_id: str | None = body.get("source_id")
+    target_id: str | None = body.get("target_id")
+
+    if not source_id or not target_id:
+        raise HTTPException(status_code=400, detail="source_id and target_id are required")
+    if source_id == target_id:
+        raise HTTPException(status_code=400, detail="source_id and target_id must be different")
+
+    repo = Neo4jRepository(driver)
+
+    # Fetch both entities
+    source_result, target_result = await asyncio.gather(
+        repo.execute_read(
+            "MATCH (n) WHERE elementId(n) = $id RETURN properties(n) AS props, labels(n) AS labels",
+            {"id": source_id},
+        ),
+        repo.execute_read(
+            "MATCH (n) WHERE elementId(n) = $id RETURN properties(n) AS props, labels(n) AS labels",
+            {"id": target_id},
+        ),
+    )
+
+    if not source_result:
+        raise NotFoundError("Source entity not found")
+    if not target_result:
+        raise NotFoundError("Target entity not found")
+
+    source_props = source_result[0]["props"]
+    target_props = target_result[0]["props"]
+
+    # Compute aliases to add
+    source_names: list[str] = []
+    if source_props.get("name"):
+        source_names.append(source_props["name"])
+    if source_props.get("canonical_name"):
+        source_names.append(source_props["canonical_name"])
+    source_names.extend(source_props.get("aliases") or [])
+
+    existing_aliases: list[str] = list(target_props.get("aliases") or [])
+    target_name = target_props.get("name", "")
+    target_canon = target_props.get("canonical_name", "")
+
+    new_aliases = [
+        a
+        for a in source_names
+        if a and a not in existing_aliases and a != target_name and a != target_canon
+    ]
+    merged_aliases = existing_aliases + new_aliases
+
+    # Fetch outgoing relationships from source (excluding self-loops to target)
+    out_rels = await repo.execute_read(
+        """
+        MATCH (s)-[r]->(o)
+        WHERE elementId(s) = $source_id
+          AND elementId(o) <> $target_id
+        RETURN type(r) AS rel_type, elementId(o) AS other_id, properties(r) AS props
+        """,
+        {"source_id": source_id, "target_id": target_id},
+    )
+
+    # Fetch incoming relationships to source (excluding self-loops from target)
+    in_rels = await repo.execute_read(
+        """
+        MATCH (o)-[r]->(s)
+        WHERE elementId(s) = $source_id
+          AND elementId(o) <> $target_id
+        RETURN type(r) AS rel_type, elementId(o) AS other_id, properties(r) AS props
+        """,
+        {"source_id": source_id, "target_id": target_id},
+    )
+
+    # Transfer relationships + update aliases
+    transferred = 0
+    for rel in out_rels:
+        rel_type = rel["rel_type"]
+        other_id = rel["other_id"]
+        props = dict(rel["props"])
+        await repo.execute_write(
+            f"""
+            MATCH (t) WHERE elementId(t) = $target_id
+            MATCH (o) WHERE elementId(o) = $other_id
+            CREATE (t)-[r:`{rel_type}`]->(o)
+            SET r = $props
+            """,  # noqa: S608
+            {"target_id": target_id, "other_id": other_id, "props": props},
+        )
+        transferred += 1
+
+    for rel in in_rels:
+        rel_type = rel["rel_type"]
+        other_id = rel["other_id"]
+        props = dict(rel["props"])
+        await repo.execute_write(
+            f"""
+            MATCH (t) WHERE elementId(t) = $target_id
+            MATCH (o) WHERE elementId(o) = $other_id
+            CREATE (o)-[r:`{rel_type}`]->(t)
+            SET r = $props
+            """,  # noqa: S608
+            {"target_id": target_id, "other_id": other_id, "props": props},
+        )
+        transferred += 1
+
+    # Update target aliases and delete source
+    await repo.execute_write(
+        "MATCH (n) WHERE elementId(n) = $id SET n.aliases = $aliases",
+        {"id": target_id, "aliases": merged_aliases},
+    )
+    await repo.execute_write_with_summary(
+        "MATCH (n) WHERE elementId(n) = $id DETACH DELETE n",
+        {"id": source_id},
+    )
+
+    logger.info(
+        "entities_merged",
+        source_id=source_id,
+        target_id=target_id,
+        aliases_added=len(new_aliases),
+        relationships_transferred=transferred,
+    )
+    return {
+        "merged_into": target_id,
+        "aliases_added": new_aliases,
+        "relationships_transferred": transferred,
+    }
+
+
+@router.delete("/relationship/{relationship_id}", dependencies=[Depends(require_auth)])
+async def delete_relationship(
+    relationship_id: str,
+    driver: AsyncDriver = Depends(get_neo4j),
+) -> dict:
+    """Delete a single relationship by its element ID."""
+    repo = Neo4jRepository(driver)
+
+    _, summary = await repo.execute_write_with_summary(
+        "MATCH ()-[r]->() WHERE elementId(r) = $id DELETE r",
+        {"id": relationship_id},
+    )
+
+    rels_deleted = summary.counters.relationships_deleted if summary else 0
+    if rels_deleted == 0:
+        raise NotFoundError("Relationship not found")
+
+    logger.info("relationship_deleted", relationship_id=relationship_id)
+    return {"deleted": True}
