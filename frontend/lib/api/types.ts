@@ -18,6 +18,10 @@ export interface BookInfo {
   status: string
   chapters_processed: number
   total_cost_usd: number
+  // Optional legacy / alternative field names from some API responses
+  book_id?: string
+  filename?: string
+  chapters_count?: number
 }
 
 export interface ChapterInfo {

@@ -11,6 +11,7 @@ const STATUS_ICONS: Record<UIStatus, string> = {
   embedding: "◌",
   done: "●",
   error: "✕",
+  error_quota: "✕",
 }
 
 export function StatusBadge({ status, className }: { status: UIStatus; className?: string }) {
