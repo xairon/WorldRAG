@@ -1,14 +1,15 @@
-import pytest
 from contextlib import contextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
 from app.schemas.extraction_v4 import (
     EntityExtractionResult,
     ExtractedCharacter,
     ExtractedGenreEntity,
-    RelationExtractionResult,
     ExtractedRelation,
+    RelationExtractionResult,
 )
-
 
 CHAPTER_TEXT = "Jake se leva et utilisa Shadow Step."
 

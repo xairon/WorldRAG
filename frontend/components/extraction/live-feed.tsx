@@ -2,7 +2,12 @@
 
 import { useRef, useEffect, useCallback } from "react"
 import { getEntityHex } from "@/lib/constants"
-import type { FeedMessage } from "@/stores/extraction-store"
+export interface FeedMessage {
+  time: string
+  chapter: number
+  type: string
+  name: string
+}
 
 interface LiveFeedProps {
   messages: FeedMessage[]

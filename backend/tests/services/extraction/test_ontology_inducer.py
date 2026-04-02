@@ -1,17 +1,17 @@
 """Tests for ontology_inducer — filtering, caps, model override, case sensitivity."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from app.services.extraction.ontology_inducer import (
+    _MAX_CHAPTERS,
+    _MAX_SAMPLE_CHARS,
     InducedEntityType,
     InducedOntology,
     InducedRelationType,
-    _MAX_CHAPTERS,
-    _MAX_SAMPLE_CHARS,
     induce_ontology,
 )
-
 
 # ── Helpers ────────────────────────────────────────────────────────────
 

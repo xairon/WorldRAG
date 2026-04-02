@@ -23,12 +23,14 @@ export function ChapterRow({ chapter, bookId }: ChapterRowProps) {
   // Fetch chapter subgraph when expanded
   useEffect(() => {
     if (!expanded || !canExpand || graphData) return
-    setLoading(true)
+    let active = true
+    setLoading(true) // eslint-disable-line react-hooks/set-state-in-effect
     fetch(`/api/graph/subgraph/${bookId}?chapter=${chapter.number}`)
       .then((res) => res.json())
-      .then((data: SubgraphData) => setGraphData(data))
-      .catch(() => setGraphData({ nodes: [], edges: [] }))
-      .finally(() => setLoading(false))
+      .then((data: SubgraphData) => { if (active) setGraphData(data) })
+      .catch(() => { if (active) setGraphData({ nodes: [], edges: [] }) })
+      .finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
   }, [expanded, canExpand, bookId, chapter.number, graphData])
 
   // Build a lookup map from node ID to node name for the relation list

@@ -8,7 +8,6 @@ from app.services.extraction.verify import (
     verify_extractions_node,
 )
 
-
 # ── extract_chunk_metadata ──────────────────────────────────────────────
 
 

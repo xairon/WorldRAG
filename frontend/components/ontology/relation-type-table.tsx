@@ -6,6 +6,15 @@ import type { OntologyRelationType, OntologySchemaEdge } from "@/lib/api/graph"
 
 type SortKey = "type" | "count" | "temporal"
 
+function SortHeader({ label, field, onSort }: { label: string; field: SortKey; onSort: (field: SortKey) => void }) {
+  return (
+    <button onClick={() => onSort(field)} className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">
+      {label}
+      <ArrowUpDown className="h-3 w-3" />
+    </button>
+  )
+}
+
 export function RelationTypeTable({
   relationTypes,
   schemaEdges,
@@ -41,15 +50,6 @@ export function RelationTypeTable({
     }
   }
 
-  function SortHeader({ label, field }: { label: string; field: SortKey }) {
-    return (
-      <button onClick={() => toggleSort(field)} className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">
-        {label}
-        <ArrowUpDown className="h-3 w-3" />
-      </button>
-    )
-  }
-
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/50">
       <div className="border-b border-slate-200 px-5 py-3 dark:border-slate-800">
@@ -59,9 +59,9 @@ export function RelationTypeTable({
         <table className="w-full text-sm">
           <thead className="sticky top-0 bg-slate-50 dark:bg-slate-800/80">
             <tr>
-              <th className="px-5 py-2.5 text-left"><SortHeader label="Type" field="type" /></th>
-              <th className="px-3 py-2.5 text-right"><SortHeader label="Count" field="count" /></th>
-              <th className="px-3 py-2.5 text-center"><SortHeader label="Temporal" field="temporal" /></th>
+              <th className="px-5 py-2.5 text-left"><SortHeader label="Type" field="type" onSort={toggleSort} /></th>
+              <th className="px-3 py-2.5 text-right"><SortHeader label="Count" field="count" onSort={toggleSort} /></th>
+              <th className="px-3 py-2.5 text-center"><SortHeader label="Temporal" field="temporal" onSort={toggleSort} /></th>
               <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Endpoints</th>
             </tr>
           </thead>

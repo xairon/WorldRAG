@@ -13,6 +13,28 @@ const LAYER_STYLES: Record<string, string> = {
 
 type SortKey = "label" | "count" | "layer" | "avg_confidence"
 
+function ConfidenceBar({ value }: { value: number }) {
+  const pct = Math.round(value * 100)
+  const color = value < 0.5 ? "bg-red-500" : value < 0.7 ? "bg-yellow-500" : "bg-emerald-500"
+  return (
+    <div className="flex items-center gap-2">
+      <div className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+        <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
+      </div>
+      <span className="text-xs text-slate-500">{pct}%</span>
+    </div>
+  )
+}
+
+function SortHeader({ label, field, onSort }: { label: string; field: SortKey; onSort: (field: SortKey) => void }) {
+  return (
+    <button onClick={() => onSort(field)} className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">
+      {label}
+      <ArrowUpDown className="h-3 w-3" />
+    </button>
+  )
+}
+
 export function EntityTypeTable({ entityTypes }: { entityTypes: OntologyEntityType[] }) {
   const [sortKey, setSortKey] = useState<SortKey>("count")
   const [sortAsc, setSortAsc] = useState(false)
@@ -32,28 +54,6 @@ export function EntityTypeTable({ entityTypes }: { entityTypes: OntologyEntityTy
     }
   }
 
-  function ConfidenceBar({ value }: { value: number }) {
-    const pct = Math.round(value * 100)
-    const color = value < 0.5 ? "bg-red-500" : value < 0.7 ? "bg-yellow-500" : "bg-emerald-500"
-    return (
-      <div className="flex items-center gap-2">
-        <div className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
-          <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
-        </div>
-        <span className="text-xs text-slate-500">{pct}%</span>
-      </div>
-    )
-  }
-
-  function SortHeader({ label, field }: { label: string; field: SortKey }) {
-    return (
-      <button onClick={() => toggleSort(field)} className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">
-        {label}
-        <ArrowUpDown className="h-3 w-3" />
-      </button>
-    )
-  }
-
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/50">
       <div className="border-b border-slate-200 px-5 py-3 dark:border-slate-800">
@@ -63,10 +63,10 @@ export function EntityTypeTable({ entityTypes }: { entityTypes: OntologyEntityTy
         <table className="w-full text-sm">
           <thead className="sticky top-0 bg-slate-50 dark:bg-slate-800/80">
             <tr>
-              <th className="px-5 py-2.5 text-left"><SortHeader label="Type" field="label" /></th>
-              <th className="px-3 py-2.5 text-left"><SortHeader label="Layer" field="layer" /></th>
-              <th className="px-3 py-2.5 text-right"><SortHeader label="Count" field="count" /></th>
-              <th className="px-3 py-2.5 text-left"><SortHeader label="Confidence" field="avg_confidence" /></th>
+              <th className="px-5 py-2.5 text-left"><SortHeader label="Type" field="label" onSort={toggleSort} /></th>
+              <th className="px-3 py-2.5 text-left"><SortHeader label="Layer" field="layer" onSort={toggleSort} /></th>
+              <th className="px-3 py-2.5 text-right"><SortHeader label="Count" field="count" onSort={toggleSort} /></th>
+              <th className="px-3 py-2.5 text-left"><SortHeader label="Confidence" field="avg_confidence" onSort={toggleSort} /></th>
               <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Samples</th>
             </tr>
           </thead>

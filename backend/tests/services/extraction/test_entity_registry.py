@@ -1,6 +1,6 @@
 """Tests for EntityRegistry — growing context accumulator."""
 
-from app.services.extraction.entity_registry import EntityRegistry, RegistryEntry
+from app.services.extraction.entity_registry import EntityRegistry
 
 
 class TestAdd:
@@ -125,8 +125,14 @@ class TestPromptContext:
 class TestSerialization:
     def test_roundtrip(self):
         reg = EntityRegistry()
-        reg.add("Jake Thayne", "character", aliases=["Jake"], significance="protagonist",
-                first_seen_chapter=1, description="A hunter")
+        reg.add(
+            "Jake Thayne",
+            "character",
+            aliases=["Jake"],
+            significance="protagonist",
+            first_seen_chapter=1,
+            description="A hunter",
+        )
         reg.update_last_seen("Jake Thayne", 5)
         reg.add_chapter_summary(1, "First chapter")
 

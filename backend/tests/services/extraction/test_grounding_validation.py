@@ -1,6 +1,6 @@
 """Tests for grounding post-validation (TDD — written before implementation)."""
-from dataclasses import dataclass
 
+from dataclasses import dataclass
 
 from backend.app.services.extraction.grounding import validate_and_fix_grounding
 
@@ -42,7 +42,7 @@ def test_wrong_offset_fuzzy_recovery():
     correct_idx = CHAPTER.find(phrase)
     entity = MockEntity(
         extraction_text=phrase,
-        char_offset_start=50,   # deliberately wrong
+        char_offset_start=50,  # deliberately wrong
         char_offset_end=50 + len(phrase),
     )
     status, confidence = validate_and_fix_grounding(entity, CHAPTER)
@@ -86,7 +86,7 @@ def test_exact_match_with_trailing_whitespace():
     phrase = "Elara stepped into the sunlit hall."
     idx = CHAPTER.find(phrase)
     entity = MockEntity(
-        extraction_text=f"  {phrase}  ",   # padded with spaces
+        extraction_text=f"  {phrase}  ",  # padded with spaces
         char_offset_start=idx,
         char_offset_end=idx + len(phrase),
     )

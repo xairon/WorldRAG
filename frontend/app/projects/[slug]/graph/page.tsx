@@ -113,7 +113,7 @@ export default function GraphExplorerPage() {
   // ── Fetch books for the project ────────────────────────────────────────
   useEffect(() => {
     let cancelled = false
-    setBooksLoading(true)
+    setBooksLoading(true) // eslint-disable-line react-hooks/set-state-in-effect
     apiFetch<BookEntry[]>(`/projects/${slug}/books`)
       .then((data) => {
         if (cancelled) return
@@ -142,7 +142,7 @@ export default function GraphExplorerPage() {
   useEffect(() => {
     if (!selectedBookId) return
     let cancelled = false
-    setGraphLoading(true)
+    setGraphLoading(true) // eslint-disable-line react-hooks/set-state-in-effect
     setSelectedNode(null)
     setDetailOpen(false)
 
