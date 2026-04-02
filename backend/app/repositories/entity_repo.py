@@ -208,15 +208,20 @@ class EntityRepository(Neo4jRepository):
                 WHERE (b.canonical_name = toLower(r.target) OR toLower(b.name) = toLower(r.target))
                   AND NOT b:Book AND NOT b:Chapter AND NOT b:Chunk AND NOT b:Paragraph
                 WITH a, b, r LIMIT 1
-                MERGE (a)-[rel:{rel_type} {{valid_from_chapter: r.since_chapter}}]->(b)
+                MERGE (a)-[rel:{rel_type}]->(b)
                 ON CREATE SET
+                    rel.valid_from_chapter = r.since_chapter,
                     rel.subtype = r.subtype,
                     rel.context = r.context,
                     rel.book_id = $book_id,
                     rel.batch_id = $batch_id,
                     rel.type = r.rel_type,
                     rel.temporal_order = r.temporal_order,
-                    rel.confidence = r.confidence
+                    rel.confidence = r.confidence,
+                    rel.occurrences = 1
+                ON MATCH SET
+                    rel.last_seen_chapter = r.since_chapter,
+                    rel.occurrences = coalesce(rel.occurrences, 1) + 1
                 RETURN rel
                 """,
                 {"rel": rel, "book_id": book_id, "batch_id": batch_id},
