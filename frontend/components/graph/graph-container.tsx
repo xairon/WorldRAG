@@ -47,7 +47,8 @@ function buildGraph(data: SubgraphData): MultiDirectedGraph {
   for (const edge of data.edges) {
     if (graph.hasNode(edge.source) && graph.hasNode(edge.target)) {
       graph.addEdge(edge.source, edge.target, {
-        type: edge.type,
+        type: "arrow",
+        relationType: edge.type,
         ...(edge.properties ?? {}),
       })
     }
@@ -158,7 +159,8 @@ export function GraphContainer({
       if (g.hasNode(edge.source) && g.hasNode(edge.target)) {
         try {
           g.addEdge(edge.source, edge.target, {
-            type: edge.type,
+            type: "arrow",
+            relationType: edge.type,
             ...(edge.properties ?? {}),
           })
         } catch {

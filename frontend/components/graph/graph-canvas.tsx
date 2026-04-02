@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react"
 import type { MultiDirectedGraph } from "graphology"
 import Sigma from "sigma"
+import { EdgeArrowProgram } from "sigma/rendering"
 import Forceatlas2Layout from "graphology-layout-forceatlas2/worker"
 import { getEntityHex, ENTITY_HEX_FALLBACK } from "@/lib/constants"
 
@@ -70,6 +71,10 @@ export function GraphCanvas({
       "#71717a"
 
     const sigma = new Sigma(graph, el, {
+      defaultEdgeType: "arrow",
+      edgeProgramClasses: {
+        arrow: EdgeArrowProgram,
+      },
       renderLabels: true,
       labelColor: {
         color:
