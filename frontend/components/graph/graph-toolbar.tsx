@@ -77,8 +77,8 @@ export function GraphToolbar({
   // Open dropdown when results arrive
   useEffect(() => {
     if (searchResults && searchResults.length > 0) {
-      setSearchOpen(true)
-      setActiveIdx(0)
+      setSearchOpen(true) // eslint-disable-line react-hooks/set-state-in-effect
+      setActiveIdx(0) // eslint-disable-line react-hooks/set-state-in-effect
     }
   }, [searchResults])
 
