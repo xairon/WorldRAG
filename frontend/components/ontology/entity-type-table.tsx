@@ -3,6 +3,8 @@
 import { useState } from "react"
 import { ArrowUpDown } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
+import { ConfidenceBar } from "@/components/ui/confidence-bar"
+import { cn } from "@/lib/utils"
 import type { OntologyEntityType } from "@/lib/api/graph"
 
 const LAYER_STYLES: Record<string, string> = {
@@ -13,19 +15,6 @@ const LAYER_STYLES: Record<string, string> = {
 
 type SortKey = "label" | "count" | "layer" | "avg_confidence"
 
-function ConfidenceBar({ value }: { value: number }) {
-  const pct = Math.round(value * 100)
-  const color = value < 0.5 ? "bg-red-500" : value < 0.7 ? "bg-yellow-500" : "bg-emerald-500"
-  return (
-    <div className="flex items-center gap-2">
-      <div className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
-        <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
-      </div>
-      <span className="text-xs text-slate-500">{pct}%</span>
-    </div>
-  )
-}
-
 function SortHeader({ label, field, onSort }: { label: string; field: SortKey; onSort: (field: SortKey) => void }) {
   return (
     <button onClick={() => onSort(field)} className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">
@@ -35,7 +24,13 @@ function SortHeader({ label, field, onSort }: { label: string; field: SortKey; o
   )
 }
 
-export function EntityTypeTable({ entityTypes }: { entityTypes: OntologyEntityType[] }) {
+export function EntityTypeTable({
+  entityTypes,
+  selectedType,
+}: {
+  entityTypes: OntologyEntityType[]
+  selectedType?: string | null
+}) {
   const [sortKey, setSortKey] = useState<SortKey>("count")
   const [sortAsc, setSortAsc] = useState(false)
 
@@ -72,7 +67,13 @@ export function EntityTypeTable({ entityTypes }: { entityTypes: OntologyEntityTy
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
             {sorted.map((e) => (
-              <tr key={e.label} className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/40">
+              <tr
+                key={e.label}
+                className={cn(
+                  "transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/40",
+                  selectedType === e.label && "bg-accent",
+                )}
+              >
                 <td className="px-5 py-2.5 font-medium text-slate-800 dark:text-slate-200">{e.label}</td>
                 <td className="px-3 py-2.5">
                   <Badge variant="secondary" className={LAYER_STYLES[e.layer] || ""}>
@@ -80,7 +81,14 @@ export function EntityTypeTable({ entityTypes }: { entityTypes: OntologyEntityTy
                   </Badge>
                 </td>
                 <td className="px-3 py-2.5 text-right font-mono text-slate-600 dark:text-slate-400">{e.count.toLocaleString()}</td>
-                <td className="px-3 py-2.5"><ConfidenceBar value={e.avg_confidence} /></td>
+                <td className="px-3 py-2.5">
+                  <div className="flex items-center gap-2">
+                    <div className="w-16">
+                      <ConfidenceBar value={e.avg_confidence} size="sm" />
+                    </div>
+                    <span className="text-xs text-slate-500">{Math.round(e.avg_confidence * 100)}%</span>
+                  </div>
+                </td>
                 <td className="px-3 py-2.5">
                   <div className="flex flex-wrap gap-1">
                     {e.sample_entities.slice(0, 3).map((s) => (

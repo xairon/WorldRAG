@@ -4,7 +4,6 @@ import { useEffect, useState } from "react"
 import { mapBackendStatus, getEntityHex } from "@/lib/constants"
 import { formatNumber } from "@/lib/utils"
 import { StatusBadge } from "@/components/shared/status-badge"
-import { SigmaGraph } from "@/components/graph/sigma-graph"
 import type { ChapterData } from "./chapter-table"
 import type { SubgraphData, GraphEdge } from "@/lib/api/types"
 
@@ -146,8 +145,8 @@ export function ChapterRow({ chapter, bookId }: ChapterRowProps) {
                     Knowledge Graph ({graphData.nodes.length} nodes,{" "}
                     {graphData.edges.length} edges)
                   </h4>
-                  <div className="relative h-[250px] rounded-md border overflow-hidden bg-background">
-                    <SigmaGraph data={graphData} />
+                  <div className="relative h-[250px] rounded-md border overflow-hidden bg-background flex items-center justify-center text-xs text-muted-foreground">
+                    Graph preview not available
                   </div>
                 </div>
               )}

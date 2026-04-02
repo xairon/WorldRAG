@@ -18,9 +18,11 @@ function SortHeader({ label, field, onSort }: { label: string; field: SortKey; o
 export function RelationTypeTable({
   relationTypes,
   schemaEdges,
+  selectedType,
 }: {
   relationTypes: OntologyRelationType[]
   schemaEdges: OntologySchemaEdge[]
+  selectedType?: string | null
 }) {
   const [sortKey, setSortKey] = useState<SortKey>("count")
   const [sortAsc, setSortAsc] = useState(false)
@@ -36,7 +38,19 @@ export function RelationTypeTable({
     return m
   }, [schemaEdges])
 
-  const sorted = [...relationTypes].sort((a, b) => {
+  // Build set of relation types connected to the selected entity type
+  const filteredRelationTypes = useMemo(() => {
+    if (!selectedType) return relationTypes
+    const relevantTypes = new Set<string>()
+    for (const e of schemaEdges) {
+      if (e.source === selectedType || e.target === selectedType) {
+        relevantTypes.add(e.relation)
+      }
+    }
+    return relationTypes.filter((r) => relevantTypes.has(r.type))
+  }, [relationTypes, schemaEdges, selectedType])
+
+  const sorted = [...filteredRelationTypes].sort((a, b) => {
     if (sortKey === "type") return sortAsc ? a.type.localeCompare(b.type) : b.type.localeCompare(a.type)
     if (sortKey === "temporal") return sortAsc ? (a.temporal ? 1 : -1) : b.temporal ? 1 : -1
     return sortAsc ? a.count - b.count : b.count - a.count
@@ -53,7 +67,14 @@ export function RelationTypeTable({
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/50">
       <div className="border-b border-slate-200 px-5 py-3 dark:border-slate-800">
-        <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300">Relation Types</h3>
+        <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+          Relation Types
+          {selectedType && (
+            <span className="ml-2 text-xs font-normal text-slate-500">
+              filtered by {selectedType}
+            </span>
+          )}
+        </h3>
       </div>
       <div className="max-h-[400px] overflow-y-auto">
         <table className="w-full text-sm">

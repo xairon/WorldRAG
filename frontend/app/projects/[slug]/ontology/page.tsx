@@ -1,9 +1,17 @@
 "use client"
 
-import { useParams } from "next/navigation"
-import { OntologyDashboard } from "@/components/ontology/ontology-dashboard"
+import { use } from "react"
+import { OntologyPageContent } from "@/components/ontology/ontology-page-content"
 
-export default function OntologyPage() {
-  const { slug } = useParams<{ slug: string }>()
-  return <OntologyDashboard slug={slug} />
+export default function OntologyPage({
+  params,
+}: {
+  params: Promise<{ slug: string }>
+}) {
+  const { slug } = use(params)
+  return (
+    <div className="container max-w-6xl py-8">
+      <OntologyPageContent slug={slug} />
+    </div>
+  )
 }
