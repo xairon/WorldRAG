@@ -69,7 +69,7 @@ def get_instructor_client(
         return instructor.from_anthropic(client)
     elif provider == "gemini":
         client = get_gemini_client()
-        return instructor.from_gemini(client)
+        return instructor.from_genai(client)
     elif provider == "openrouter":
         if not settings.openrouter_api_key:
             raise ValueError("OPENROUTER_API_KEY required for openrouter provider")
