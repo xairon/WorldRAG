@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import { ThemeProvider } from "next-themes"
+import { NuqsAdapter } from "nuqs/adapters/next/app"
 import { Toaster } from "@/components/ui/sonner"
 import { Providers } from "@/lib/query-client"
 import "./globals.css"
@@ -14,10 +15,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" suppressHydrationWarning>
       <body className="bg-background text-foreground antialiased">
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
-          <Providers>
-            {children}
-            <Toaster />
-          </Providers>
+          <NuqsAdapter>
+            <Providers>
+              {children}
+              <Toaster />
+            </Providers>
+          </NuqsAdapter>
         </ThemeProvider>
       </body>
     </html>
