@@ -367,7 +367,7 @@ async def cross_encoder_rerank(
     loop = asyncio.get_running_loop()
     raw_scores = await loop.run_in_executor(
         None,
-        lambda: reranker.predict(pairs).tolist(),
+        lambda: list(reranker.predict(pairs)),
     )
 
     alias_map: dict[str, str] = {}
