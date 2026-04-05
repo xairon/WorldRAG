@@ -41,7 +41,6 @@ dependencies = [
     "aiolimiter>=1.1",
     # Document parsing
     "ebooklib>=0.18",
-    "pdfplumber>=0.11",
     "beautifulsoup4>=4.12",
     "httpx>=0.28",
     # Utils
@@ -60,6 +59,7 @@ dependencies = [
     "kg-gen>=0.1",
     "leidenalg>=0.10",
     "jsonref>=1.1.0",
+    "pymupdf4llm>=1.27.2.2",
 ]
 
 [project.optional-dependencies]

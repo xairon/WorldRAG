@@ -5,7 +5,7 @@ from raw book files. The primary input for the WorldRAG pipeline.
 
 Supported formats:
 - ePub: Parsed via ebooklib + BeautifulSoup (HTML chapters)
-- PDF: Parsed via pdfplumber (page-based, heuristic chapter detection)
+- PDF: Parsed via pymupdf4llm (structured Markdown with heading detection)
 - TXT: Plain text with chapter delimiter detection
 """
 
@@ -316,6 +316,7 @@ async def extract_epub_metadata(file_path: Path) -> dict[str, Any]:
 
     # Extract cover image
     import ebooklib
+
     cover_image: bytes | None = None
     cover_mime: str | None = None
 
@@ -464,30 +465,27 @@ async def parse_epub(file_path: Path) -> tuple[list[ChapterData], str]:
 
 
 async def parse_pdf(file_path: Path) -> list[ChapterData]:
-    """Parse a PDF file into chapters.
+    """Parse a PDF file into chapters using pymupdf4llm for structured Markdown extraction.
 
-    Uses pdfplumber for text extraction, then applies heuristic
-    chapter boundary detection based on chapter heading patterns.
+    pymupdf4llm detects headings from font size, producing Markdown with # markers
+    for actual chapter headings — far more reliable than raw text extraction.
+    Falls back to regex-based splitting if no Markdown headings are found.
     """
+    import pymupdf4llm
 
-    def _read_pdf() -> str:
-        import pdfplumber
+    md_text = await asyncio.to_thread(pymupdf4llm.to_markdown, str(file_path))
 
-        text_parts: list[str] = []
-        with pdfplumber.open(str(file_path)) as pdf:
-            for page in pdf.pages:
-                page_text = page.extract_text()
-                if page_text:
-                    text_parts.append(page_text)
-        return "\n".join(text_parts)
-
-    full_text = await asyncio.to_thread(_read_pdf)
-
-    if not full_text.strip():
+    if not md_text.strip():
         logger.warning("pdf_empty", file=str(file_path))
         return []
 
-    chapters = _split_text_into_chapters(full_text)
+    # Try Markdown heading-based splitting first (uses font-size detected headings)
+    chapters = _split_markdown_into_chapters(md_text)
+
+    if not chapters:
+        # Fallback: regex-based splitting on raw text (same as old pdfplumber path)
+        chapters = _split_text_into_chapters(md_text)
+
     logger.info("pdf_parsed", file=str(file_path), chapters=len(chapters))
     return chapters
 
@@ -517,11 +515,149 @@ async def parse_txt(file_path: Path) -> list[ChapterData]:
 # --- Shared chapter splitting ---
 
 
+def _parse_chapter_number_from_heading(heading_text: str) -> int | None:
+    """Parse chapter number from a heading string.
+
+    Returns None if no chapter number can be determined.
+    """
+    for pattern in CHAPTER_PATTERNS:
+        match = pattern.match(heading_text)
+        if match:
+            num = _parse_chapter_number(match.group(1))
+            if num > 0:
+                return num
+    return None
+
+
+def _split_paragraphs_from_markdown(text: str) -> list[ParagraphData]:
+    """Split Markdown text into structured ParagraphData entries.
+
+    Splits on double newlines (Markdown paragraph boundaries) and classifies
+    each block by its content type.
+    """
+    paragraphs: list[ParagraphData] = []
+    offset = 0
+
+    for block in re.split(r"\n\n+", text):
+        block = block.strip()
+        if not block:
+            continue
+
+        char_start = text.find(block, offset)
+        char_end = char_start + len(block)
+        offset = char_end
+
+        # Classify block
+        if block.startswith("#"):
+            ptype = ParagraphType.HEADER
+        elif re.match(r"^[\*\-_]{3,}$|^\*\s\*\s\*$", block):
+            ptype = ParagraphType.SCENE_BREAK
+        elif _BLUE_BOX_RE.match(block.strip()):
+            ptype = ParagraphType.BLUE_BOX
+        elif block.startswith(("\u00ab", "\u201c", "\u201d", "\u2014", "\u2013", '"')):
+            ptype = ParagraphType.DIALOGUE
+        else:
+            ptype = ParagraphType.NARRATION
+
+        speaker = None
+        if ptype == ParagraphType.DIALOGUE:
+            speaker = _extract_speaker(block)
+
+        paragraphs.append(
+            ParagraphData(
+                index=len(paragraphs),
+                type=ptype,
+                text=block,
+                html=block,  # Markdown as-is for PDF
+                char_start=char_start,
+                char_end=char_end,
+                speaker=speaker,
+                sentence_count=_count_sentences(block),
+                word_count=len(block.split()),
+            )
+        )
+
+    return paragraphs
+
+
+def _split_markdown_into_chapters(md_text: str) -> list[ChapterData]:
+    """Split pymupdf4llm Markdown output into chapters using heading markers.
+
+    pymupdf4llm emits # / ## for headings detected from font size, making
+    structural chapter detection much more reliable than regex on raw text.
+    Returns an empty list if no chapter-like headings are found (caller falls back).
+    """
+    heading_pattern = re.compile(r"^(#{1,3})\s+(.*?)$", re.MULTILINE)
+
+    headings = list(heading_pattern.finditer(md_text))
+    if not headings:
+        return []
+
+    # Filter to chapter-like headings
+    chapter_headings = []
+    for match in headings:
+        heading_text = match.group(2).strip()
+        level = match.group(1)
+
+        is_chapter = False
+        for pattern in CHAPTER_PATTERNS:
+            if pattern.match(heading_text):
+                is_chapter = True
+                break
+
+        # Any top-level heading (#) is treated as a potential chapter boundary
+        if level == "#":
+            is_chapter = True
+
+        if is_chapter:
+            chapter_headings.append(match)
+
+    if not chapter_headings:
+        return []
+
+    chapters: list[ChapterData] = []
+    for i, heading in enumerate(chapter_headings):
+        start = heading.start()
+        end = chapter_headings[i + 1].start() if i + 1 < len(chapter_headings) else len(md_text)
+
+        heading_text = heading.group(2).strip()
+
+        # Body is everything after the heading line
+        body_start = md_text.find("\n", start)
+        body = md_text[body_start:end].strip() if body_start != -1 and body_start < end else ""
+
+        if len(body) < 100:
+            continue  # Skip very short sections (TOC entries, etc.)
+
+        chapter_num = _parse_chapter_number_from_heading(heading_text)
+        if chapter_num is None:
+            chapter_num = len(chapters) + 1
+
+        chapters.append(
+            ChapterData(
+                number=chapter_num,
+                title=heading_text,
+                text=body,
+                xhtml="",  # PDF has no XHTML
+                paragraphs=_split_paragraphs_from_markdown(body),
+                word_count=len(body.split()),
+            )
+        )
+
+    return chapters
+
+
 def _split_text_into_chapters(text: str) -> list[ChapterData]:
     """Split a full text into chapters using heading pattern detection.
 
-    Returns at least one chapter even if no markers are found.
+    First tries Markdown heading detection (for pymupdf4llm output), then falls back
+    to regex-based pattern matching on raw text. Returns at least one chapter.
     """
+    # Try Markdown heading-based splitting first (handles pymupdf4llm output)
+    md_chapters = _split_markdown_into_chapters(text)
+    if md_chapters:
+        return md_chapters
+
     # Find all chapter boundary positions
     boundaries: list[tuple[int, int, str]] = []  # (position, chapter_num, title)
 
