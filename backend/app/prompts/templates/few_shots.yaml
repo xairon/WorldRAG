@@ -179,6 +179,26 @@ litrpg:
       5. Text: "A scout reported back to the camp."
          WRONG: {"entity_type": "character", "name": "a scout"}
          WHY: Indefinite article + generic role. Not a named entity.
+
+      6. Text: "Jake reached level 24!"
+         WRONG: {"entity_type": "event", "name": "jake levels to 24"}
+         WHY: Level-ups use entity_type="level_change" with character + new_level fields. Never create Events named after characters or their actions.
+
+      7. Text: "Jake activated Shadow Step and dodged the attack."
+         WRONG: {"entity_type": "event", "name": "jake activated Shadow Step"}
+         WHY: A single character using a skill is NOT an Event. Events are world-level happenings (battles, discoveries, system announcements) involving multiple participants.
+
+      8. Text: "+5 Free Points, +3 Perception"
+         WRONG: {"entity_type": "concept", "name": "free points"}
+         WHY: Game mechanics (stamina, mana, HP, free points, XP, stat names) are system attributes, NOT standalone entities. Do not extract them as Concepts, Items, or GenreEntities.
+
+      9. Text: "Jake walked through the Dark Forest."
+         WRONG: {"entity_type": "concept", "name": "jake"} or {"entity_type": "arc", "name": "jake"}
+         WHY: If an entity is already known as a Character, do NOT re-extract it as any other type (Event, Concept, Arc, Item, etc.).
+
+      10. Text: "The System awarded 2500 XP for the kill."
+          WRONG: {"entity_type": "event", "name": "the System awarded 2500 XP"}
+          WHY: System notifications are not Events. XP awards are game mechanics, not narrative events.
     fr: |
       Les extractions suivantes sont INCORRECTES. NE PAS faire ces erreurs :
 
@@ -197,6 +217,26 @@ litrpg:
       4. Texte : "Un eclaireur fit son rapport au camp."
          FAUX : {"entity_type": "character", "name": "un eclaireur"}
          POURQUOI : Article indefini + role generique. Pas une entite nommee.
+
+      6. Texte : "Jake atteint le niveau 24 !"
+         FAUX : {"entity_type": "event", "name": "jake atteint le niveau 24"}
+         POURQUOI : Les montees de niveau utilisent entity_type="level_change" avec les champs character + new_level. Ne jamais creer des Evenements nommes d'apres des personnages ou leurs actions.
+
+      7. Texte : "Jake activa Pas de l'Ombre et esquiva l'attaque."
+         FAUX : {"entity_type": "event", "name": "jake activa Pas de l'Ombre"}
+         POURQUOI : Un personnage utilisant une competence seul n'est PAS un Evenement. Les Evenements sont des faits mondiaux (batailles, decouvertes, annonces systeme) impliquant plusieurs participants.
+
+      8. Texte : "+5 Points Libres, +3 Perception"
+         FAUX : {"entity_type": "concept", "name": "points libres"}
+         POURQUOI : Les mecaniques de jeu (stamina, mana, PV, points libres, XP, noms de stats) sont des attributs systeme, PAS des entites independantes.
+
+      9. Texte : "Jake traversa la Foret Sombre."
+         FAUX : {"entity_type": "concept", "name": "jake"} ou {"entity_type": "arc", "name": "jake"}
+         POURQUOI : Si une entite est deja connue comme Personnage, ne PAS la re-extraire sous un autre type.
+
+      10. Texte : "Le Systeme accorda 2500 XP pour le meurtre."
+          FAUX : {"entity_type": "event", "name": "le Systeme accorda 2500 XP"}
+          POURQUOI : Les notifications systeme ne sont pas des Evenements. Les recompenses XP sont des mecaniques de jeu, pas des evenements narratifs.
 
 core:
   entities:

@@ -312,8 +312,18 @@ EntityUnion = Annotated[
 
 
 _VALID_ENTITY_TYPES = {
-    "character", "event", "location", "item", "creature", "faction",
-    "concept", "arc", "prophecy", "level_change", "stat_change", "genre_entity",
+    "character",
+    "event",
+    "location",
+    "item",
+    "creature",
+    "faction",
+    "concept",
+    "arc",
+    "prophecy",
+    "level_change",
+    "stat_change",
+    "genre_entity",
 }
 
 
@@ -333,14 +343,19 @@ class EntityExtractionResult(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def coerce_unknown_entity_types(cls, data: Any) -> Any:
-        """Coerce unknown entity_type values to genre_entity with sub_type."""
+        """Drop entities with unknown entity_type values (silently)."""
         if isinstance(data, dict) and "entities" in data:
-            for entity in data["entities"]:
+            valid = []
+            for entity in data.get("entities", []):
                 if isinstance(entity, dict):
                     et = entity.get("entity_type", "")
-                    if et and et not in _VALID_ENTITY_TYPES:
-                        entity["sub_type"] = entity.get("sub_type") or et
-                        entity["entity_type"] = "genre_entity"
+                    if not et or et in _VALID_ENTITY_TYPES:
+                        valid.append(entity)
+                    # else: silently drop — invalid type
+                else:
+                    # Already a Pydantic model instance — pass through as-is
+                    valid.append(entity)
+            data["entities"] = valid
         return data
 
 
@@ -386,9 +401,7 @@ class RelationExtractionResult(BaseModel):
 
     reasoning: str = Field(
         default="",
-        description=(
-            "Brief reasoning about relationships between entities before listing them"
-        ),
+        description=("Brief reasoning about relationships between entities before listing them"),
     )
     relations: list[ExtractedRelation] = Field(default_factory=list)
     ended_relations: list[RelationEnd] = Field(default_factory=list)

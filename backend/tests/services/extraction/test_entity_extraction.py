@@ -125,8 +125,8 @@ async def test_extract_entities_with_registry_context(base_state):
 
 
 @pytest.mark.asyncio
-async def test_extract_entities_unknown_type_coerced(base_state):
-    """model_validate coerces an unknown entity_type to genre_entity; node handles it."""
+async def test_extract_entities_unknown_type_dropped(base_state):
+    """model_validate drops entities with unknown entity_type (silently)."""
     raw = {
         "entities": [
             {
@@ -139,17 +139,6 @@ async def test_extract_entities_unknown_type_coerced(base_state):
         ],
         "chapter_number": 5,
     }
-    coerced_result = EntityExtractionResult.model_validate(raw)
-    # Verify the schema-level coercion happened
-    assert coerced_result.entities[0].entity_type == "genre_entity"
-
-    with patch(
-        "app.services.extraction.entities._call_instructor",
-        new_callable=AsyncMock,
-        return_value=coerced_result,
-    ):
-        result = await extract_entities_node(base_state)
-
-    assert len(result["entities"]) == 1
-    assert result["entities"][0]["entity_type"] == "genre_entity"
-    assert result["total_entities"] == 1
+    dropped_result = EntityExtractionResult.model_validate(raw)
+    # Verify the schema-level drop happened
+    assert len(dropped_result.entities) == 0

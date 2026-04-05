@@ -137,6 +137,19 @@ class EntityRegistry:
             lines.append(line)
             token_estimate += words
 
+        # Add type constraints for major characters
+        constraint_lines = []
+        for entry in self._entities.values():
+            if entry.entity_type == "character" and entry.significance in ("protagonist", "major"):
+                constraint_lines.append(
+                    f"- '{entry.canonical_name}' is a {entry.entity_type}. "
+                    f"Do NOT extract as Event, Concept, Item, Arc, or any other type."
+                )
+        if constraint_lines:
+            lines.append("")
+            lines.append("## TYPE CONSTRAINTS — Do NOT re-extract these as other types:")
+            lines.extend(constraint_lines)
+
         return "\n".join(lines)
 
     def get_all_names(self) -> set[str]:

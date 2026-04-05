@@ -17,18 +17,95 @@ import structlog
 
 logger = structlog.get_logger(__name__)
 
+# ── Generic game mechanics that should not be entities ──────────────────
+_GENERIC_MECHANICS = frozenset(
+    {
+        "stamina",
+        "mana",
+        "health",
+        "hp",
+        "mp",
+        "free points",
+        "skill points",
+        "experience",
+        "xp",
+        "level",
+        "attribute",
+        "stat",
+        "stat points",
+        "agility",
+        "strength",
+        "perception",
+        "vitality",
+        "willpower",
+        "wisdom",
+        "toughness",
+        "endurance",
+        "intelligence",
+        "luck",
+        "charisma",
+        "dexterity",
+    }
+)
+
 # ── Generic role names that should not be Characters ────────────────────
-_GENERIC_ROLES = frozenset({
-    "guard", "guards", "soldier", "soldiers", "merchant", "merchants",
-    "villager", "villagers", "innkeeper", "bartender", "shopkeeper",
-    "servant", "servants", "bandit", "bandits", "thief", "thieves",
-    "farmer", "farmers", "priest", "priestess", "healer", "hunter",
-    "hunters", "traveler", "travelers", "stranger", "strangers",
-    "warrior", "warriors", "mage", "mages", "knight", "knights",
-    "scout", "scouts", "assassin", "assassins", "elder", "elders",
-    "child", "children", "boy", "girl", "man", "woman", "old man",
-    "old woman", "narrator", "voice", "crowd", "mob", "army",
-})
+_GENERIC_ROLES = frozenset(
+    {
+        "guard",
+        "guards",
+        "soldier",
+        "soldiers",
+        "merchant",
+        "merchants",
+        "villager",
+        "villagers",
+        "innkeeper",
+        "bartender",
+        "shopkeeper",
+        "servant",
+        "servants",
+        "bandit",
+        "bandits",
+        "thief",
+        "thieves",
+        "farmer",
+        "farmers",
+        "priest",
+        "priestess",
+        "healer",
+        "hunter",
+        "hunters",
+        "traveler",
+        "travelers",
+        "stranger",
+        "strangers",
+        "warrior",
+        "warriors",
+        "mage",
+        "mages",
+        "knight",
+        "knights",
+        "scout",
+        "scouts",
+        "assassin",
+        "assassins",
+        "elder",
+        "elders",
+        "child",
+        "children",
+        "boy",
+        "girl",
+        "man",
+        "woman",
+        "old man",
+        "old woman",
+        "narrator",
+        "voice",
+        "crowd",
+        "mob",
+        "army",
+    }
+)
 
 # ── Dialogue / POV patterns ────────────────────────────────────────────
 _DIALOGUE_RE = re.compile(r'"[^"]{2,}"')
@@ -103,6 +180,7 @@ def _verify_single_entity(
     entity: dict[str, Any],
     chapter_text_lower: str,
     chapter_text: str,
+    known_character_names: frozenset[str] | None = None,
 ) -> tuple[bool, str]:
     """Verify a single entity against source text.
 
@@ -135,7 +213,23 @@ def _verify_single_entity(
     if entity_type == "character" and name_lower in _GENERIC_ROLES:
         return False, f"generic_role_as_character:{name}"
 
-    # Check 3: extraction_text should exist in chapter text (if provided)
+    # Check 3: Events should not use character names
+    if entity_type == "event" and known_character_names:
+        if name_lower in known_character_names:
+            return False, f"event_named_after_character:{name}"
+        for char_name in known_character_names:
+            if name_lower.startswith(char_name + " "):
+                return False, f"event_starts_with_character:{name}"
+
+    # Check 4: Generic game mechanics should not be entities
+    if entity_type in ("concept", "genre_entity", "item") and name_lower in _GENERIC_MECHANICS:
+        return False, f"generic_mechanic_as_entity:{name}"
+
+    # Check 5: Known characters extracted as wrong type
+    if known_character_names and name_lower in known_character_names and entity_type != "character":
+        return False, f"known_character_wrong_type:{name}:{entity_type}"
+
+    # Check 6: extraction_text should exist in chapter text (if provided)
     extraction_text = entity.get("extraction_text", "")
     if extraction_text and len(extraction_text) > 10:
         # Normalize whitespace for comparison
@@ -174,12 +268,21 @@ async def verify_extractions_node(state: dict[str, Any]) -> dict[str, Any]:
 
     chapter_text_lower = chapter_text.lower()
 
+    # Build known character names from entities already in this extraction
+    known_character_names = frozenset(
+        (_entity_name(e) or "").lower()
+        for e in entities
+        if e.get("entity_type") == "character" and _entity_name(e)
+    )
+
     verified: list[dict[str, Any]] = []
     removed_count = 0
     removal_reasons: dict[str, int] = {}
 
     for entity in entities:
-        is_valid, reason = _verify_single_entity(entity, chapter_text_lower, chapter_text)
+        is_valid, reason = _verify_single_entity(
+            entity, chapter_text_lower, chapter_text, known_character_names
+        )
         if is_valid:
             verified.append(entity)
         else:
