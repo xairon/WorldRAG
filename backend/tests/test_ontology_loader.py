@@ -77,37 +77,69 @@ class TestOntologySchemaExport:
 
 
 class TestRegexPatternsFromYaml:
-    def test_loads_genre_regex(self):
+    """Regex patterns are no longer hardcoded in YAML — they are induced at runtime.
+
+    The YAML files intentionally have no regex_patterns section. Patterns are
+    discovered by pattern_inducer.induce_patterns_and_ontology() and stored via
+    OntologyLoader.extend_with_induced(). These tests validate the induction path.
+    """
+
+    def test_no_yaml_regex_patterns(self):
+        """YAML layers load zero regex patterns (by design — patterns are induced)."""
         loader = OntologyLoader.from_layers(genre="litrpg")
         patterns = loader.get_regex_patterns_list()
-        names = {p["name"] for p in patterns}
-        assert "skill_acquired" in names
-        assert "skill_evolved" in names
-        assert "xp_gain" in names
-        assert "quest_received" in names
+        assert len(patterns) == 0
 
-    def test_loads_series_regex(self):
+    def test_no_series_yaml_regex_patterns(self):
+        """Series YAML layer also loads zero regex patterns."""
         loader = OntologyLoader.from_layers(genre="litrpg", series="primal_hunter")
         patterns = loader.get_regex_patterns_list()
-        names = {p["name"] for p in patterns}
-        assert "bloodline_notification" in names
-        assert "profession_obtained" in names
+        assert len(patterns) == 0
 
-    def test_regex_pattern_count(self):
-        loader = OntologyLoader.from_layers(genre="litrpg", series="primal_hunter")
-        patterns = loader.get_regex_patterns_list()
-        assert len(patterns) >= 25  # 20 genre + 5 series
-
-    def test_regex_patterns_have_layer_info(self):
-        loader = OntologyLoader.from_layers(genre="litrpg", series="primal_hunter")
-        patterns = loader.get_regex_patterns_list()
-        genre_patterns = [p for p in patterns if p["layer"] == "litrpg"]
-        series_patterns = [p for p in patterns if p["layer"] == "primal_hunter"]
-        assert len(genre_patterns) >= 20
-        assert len(series_patterns) >= 5
-
-    def test_regex_pattern_structure(self):
+    def test_extend_with_induced_adds_regex_patterns(self):
+        """extend_with_induced() stores regex patterns with layer='induced'."""
         loader = OntologyLoader.from_layers(genre="litrpg")
+        loader.extend_with_induced(
+            {
+                "node_types": [],
+                "relationship_types": [],
+                "regex_patterns": [
+                    {
+                        "name": "skill_test",
+                        "pattern": r"\[Skill.*?: (?P<name>.+?)\]",
+                        "entity_type": "Skill",
+                        "captures": {"name": 1},
+                        "description": "Captures skill notifications",
+                        "example_matches": ["[Skill Acquired: Shadow Step]"],
+                    },
+                ],
+            }
+        )
+        patterns = loader.get_regex_patterns_list()
+        names = {p["name"] for p in patterns}
+        assert "skill_test" in names
+        induced_patterns = [p for p in patterns if p["layer"] == "induced"]
+        assert len(induced_patterns) >= 1
+
+    def test_regex_pattern_structure_after_induction(self):
+        """Induced regex patterns have the expected structure."""
+        loader = OntologyLoader.from_layers(genre="litrpg")
+        loader.extend_with_induced(
+            {
+                "node_types": [],
+                "relationship_types": [],
+                "regex_patterns": [
+                    {
+                        "name": "level_test",
+                        "pattern": r"Level: (?P<level>\d+)",
+                        "entity_type": "Level",
+                        "captures": {"level": 1},
+                        "description": "Level display",
+                        "example_matches": ["Level: 42"],
+                    },
+                ],
+            }
+        )
         patterns = loader.get_regex_patterns_list()
         for p in patterns:
             assert "name" in p
@@ -118,9 +150,30 @@ class TestRegexPatternsFromYaml:
 
 
 class TestBackwardCompatibility:
-    def test_existing_regex_patterns_dict_still_works(self):
+    def test_regex_patterns_dict_is_empty_from_yaml(self):
+        """regex_patterns dict starts empty — populated only via extend_with_induced."""
         loader = OntologyLoader.from_layers(genre="litrpg")
-        # The old dict-based access still works
+        assert len(loader.regex_patterns) == 0
+
+    def test_regex_patterns_dict_populated_via_induction(self):
+        """The dict-based access works after extend_with_induced."""
+        loader = OntologyLoader.from_layers(genre="litrpg")
+        loader.extend_with_induced(
+            {
+                "node_types": [],
+                "relationship_types": [],
+                "regex_patterns": [
+                    {
+                        "name": "skill_acquired",
+                        "pattern": r"\[Skill.*?\]",
+                        "entity_type": "Skill",
+                        "captures": {},
+                        "description": "",
+                        "example_matches": [],
+                    },
+                ],
+            }
+        )
         assert "skill_acquired" in loader.regex_patterns
         assert "pattern" in loader.regex_patterns["skill_acquired"]
 

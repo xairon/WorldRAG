@@ -85,33 +85,6 @@ relationship_types:
     properties:
       cleared_chapter: { type: integer }
 
-# Additional regex patterns specific to Primal Hunter
-regex_patterns:
-  bloodline_notification:
-    pattern: '\[Bloodline\s+(?:Awakened|Evolved|Activated):\s*(.+?)\]'
-    entity_type: Bloodline
-    captures: { name: 1 }
-
-  profession_obtained:
-    pattern: 'Profession\s+(?:Obtained|Acquired|Gained):\s*(.+?)\s*(?:\((.+?)\))?(?:\n|$)'
-    entity_type: Profession
-    captures: { name: 1, tier: 2 }
-
-  blessing_received:
-    pattern: '\[Blessing\s+(?:of|from)\s+(.+?)(?:\s+received|\])'
-    entity_type: Blessing
-    captures: { deity: 1 }
-
-  grade_reference:
-    pattern: '\b([FEDCBAS]{1,3})-grade\b'
-    entity_type: GradeReference
-    captures: { grade: 1 }
-
-  nevermore_floor:
-    pattern: '(?:Floor|Level)\s+(\d+)\s+(?:of\s+)?Nevermore'
-    entity_type: Floor
-    captures: { number: 1 }
-
 # Few-shot examples for LangExtract prompts (embedded in Passe 1-4 prompts)
 few_shot_examples:
   character_extraction:

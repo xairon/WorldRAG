@@ -438,18 +438,29 @@ class OntologyLoader:
             )
             added_rels += 1
 
+        # Store induced regex patterns
+        added_patterns = 0
+        for pattern_dict in induced.get("regex_patterns", []):
+            name = pattern_dict.get("name", "")
+            if name:
+                self.regex_patterns[name] = pattern_dict
+                self._regex_origin[name] = "induced"
+                added_patterns += 1
+
         # Rebuild enum index with any new types
         self._build_enum_index()
 
-        if added_nodes or added_rels:
+        if (added_nodes or added_rels or added_patterns) and "induced" not in self.layers_loaded:
             self.layers_loaded.append("induced")
 
         logger.info(
             "ontology_extended_with_induced",
             added_node_types=added_nodes,
             added_relationship_types=added_rels,
+            added_regex_patterns=added_patterns,
             total_node_types=len(self.node_types),
             total_relationship_types=len(self.relationship_types),
+            total_regex_patterns=len(self.regex_patterns),
         )
 
     def get_regex_patterns_list(self) -> list[dict[str, Any]]:

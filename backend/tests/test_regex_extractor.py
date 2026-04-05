@@ -189,72 +189,96 @@ class TestLayer3Patterns:
 
 
 class TestYamlDrivenRegex:
-    """Tests for RegexExtractor.from_ontology() — loading patterns from YAML ontology."""
+    """Tests for RegexExtractor.from_ontology() and from_induced().
 
-    def test_loads_from_ontology(self):
-        """Genre + series layers should load >= 25 patterns."""
+    Regex patterns are no longer hardcoded in YAML — they are discovered at runtime
+    by pattern_inducer.induce_patterns_and_ontology() and loaded via extend_with_induced().
+    from_ontology() loads whatever patterns are in the ontology (empty from YAML,
+    populated after induction). from_induced() constructs directly from pattern dicts.
+    """
+
+    def test_from_ontology_empty_without_induction(self):
+        """from_ontology() returns only the blue_box_generic catch-all when no YAML patterns."""
         from app.core.ontology_loader import OntologyLoader
 
         loader = OntologyLoader.from_layers(genre="litrpg", series="primal_hunter")
         extractor = RegexExtractor.from_ontology(loader)
-        assert len(extractor.patterns) >= 25
+        # No YAML patterns; from_ontology returns 0 patterns (blue_box is added by from_induced)
+        assert len(extractor.patterns) == 0
 
-    def test_new_skill_evolution_pattern(self):
-        """skill_evolved pattern from litrpg.yaml should match evolution arrows."""
+    def test_from_ontology_with_induced_patterns(self):
+        """from_ontology() picks up patterns added via extend_with_induced."""
         from app.core.ontology_loader import OntologyLoader
 
         loader = OntologyLoader.from_layers(genre="litrpg")
-        extractor = RegexExtractor.from_ontology(loader)
-        text = "[Skill Evolved: Basic Archery \u2192 Advanced Archery - Rare]"
-        matches = extractor.extract(text, chapter_number=1)
-        evolved = [m for m in matches if m.pattern_name == "skill_evolved"]
-        assert len(evolved) >= 1
-
-    def test_xp_gain_pattern(self):
-        """xp_gain pattern should match XP notifications with commas."""
-        from app.core.ontology_loader import OntologyLoader
-
-        loader = OntologyLoader.from_layers(genre="litrpg")
-        extractor = RegexExtractor.from_ontology(loader)
-        text = "+1,500 XP"
-        matches = extractor.extract(text, chapter_number=1)
-        xp = [m for m in matches if m.pattern_name == "xp_gain"]
-        assert len(xp) >= 1
-
-    def test_quest_patterns(self):
-        """Quest received + completed should produce >= 2 matches."""
-        from app.core.ontology_loader import OntologyLoader
-
-        loader = OntologyLoader.from_layers(genre="litrpg")
-        extractor = RegexExtractor.from_ontology(loader)
-        text = (
-            "[Quest Received: Defeat the Dungeon Boss]\n[Quest Completed: Defeat the Dungeon Boss]"
+        loader.extend_with_induced(
+            {
+                "node_types": [],
+                "relationship_types": [],
+                "regex_patterns": [
+                    {
+                        "name": "skill_evolved",
+                        "pattern": r"\[Skill Evolved: (?P<old>.+?) → (?P<new>.+?)\]",
+                        "entity_type": "SkillEvolution",
+                        "captures": {"old_name": 1, "new_name": 2},
+                        "description": "Skill evolution",
+                        "example_matches": ["[Skill Evolved: Basic Archery → Advanced Archery]"],
+                    },
+                ],
+            }
         )
-        matches = extractor.extract(text, chapter_number=1)
-        quests = [m for m in matches if "quest" in m.pattern_name.lower()]
-        assert len(quests) >= 2
-
-    def test_item_acquired_pattern(self):
-        """item_acquired pattern should match item notifications with rarity."""
-        from app.core.ontology_loader import OntologyLoader
-
-        loader = OntologyLoader.from_layers(genre="litrpg")
         extractor = RegexExtractor.from_ontology(loader)
-        text = "[Item Acquired: Sword of Shadows - Legendary]"
-        matches = extractor.extract(text, chapter_number=1)
-        items = [m for m in matches if m.pattern_name == "item_acquired"]
-        assert len(items) >= 1
+        names = {p.name for p in extractor.patterns}
+        assert "skill_evolved" in names
 
-    def test_death_event_pattern(self):
-        """death_event pattern should match slain notifications."""
-        from app.core.ontology_loader import OntologyLoader
-
-        loader = OntologyLoader.from_layers(genre="litrpg")
-        extractor = RegexExtractor.from_ontology(loader)
-        text = "[Dark Beast has been slain]"
+    def test_from_induced_skill_pattern_matches(self):
+        """from_induced() creates a working extractor that matches skill notifications."""
+        induced_patterns = [
+            {
+                "name": "skill_acquired",
+                "pattern": r"\[Skill.*?: (?P<name>.+?)\]",
+                "entity_type": "Skill",
+                "captures": {"name": 1},
+                "description": "Captures skill notifications",
+                "example_matches": [],
+            },
+        ]
+        extractor = RegexExtractor.from_induced(induced_patterns)
+        text = "[Skill Acquired: Shadow Step]"
         matches = extractor.extract(text, chapter_number=1)
-        deaths = [m for m in matches if m.pattern_name == "death_event"]
-        assert len(deaths) >= 1
+        skill_matches = [m for m in matches if m.pattern_name == "skill_acquired"]
+        assert len(skill_matches) >= 1
+
+    def test_from_induced_always_has_blue_box_generic(self):
+        """from_induced() always appends blue_box_generic as catch-all."""
+        extractor = RegexExtractor.from_induced([])
+        names = {p.name for p in extractor.patterns}
+        assert "blue_box_generic" in names
+
+    def test_from_induced_invalid_pattern_skipped(self):
+        """from_induced() skips patterns that fail to compile."""
+        induced_patterns = [
+            {
+                "name": "bad_pattern",
+                "pattern": r"[invalid",
+                "entity_type": "Test",
+                "captures": {},
+                "description": "",
+                "example_matches": [],
+            },
+            {
+                "name": "good_pattern",
+                "pattern": r"\[(?P<name>.+?)\]",
+                "entity_type": "Test",
+                "captures": {"name": 1},
+                "description": "",
+                "example_matches": [],
+            },
+        ]
+        extractor = RegexExtractor.from_induced(induced_patterns)
+        names = {p.name for p in extractor.patterns}
+        assert "bad_pattern" not in names
+        assert "good_pattern" in names
 
     def test_backward_compat_default_constructor(self):
         """Ensure the default constructor still works."""

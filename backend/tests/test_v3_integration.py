@@ -174,14 +174,57 @@ class TestV3PipelineResultAssembly:
 
 
 class TestV3RegexWithOntology:
-    """Test regex extraction from ontology YAML patterns."""
+    """Test regex extraction from ontology patterns.
 
-    def test_from_ontology_extracts_skills(self):
-        """RegexExtractor.from_ontology finds skill patterns in text."""
+    Regex patterns are no longer hardcoded in YAML — they are induced at runtime.
+    from_ontology() returns patterns that were loaded via extend_with_induced().
+    """
+
+    def test_from_ontology_extracts_skills_after_induction(self):
+        """RegexExtractor.from_ontology finds skill patterns after extend_with_induced."""
         from app.core.ontology_loader import OntologyLoader
         from app.services.extraction.regex_extractor import RegexExtractor
 
         loader = OntologyLoader.from_layers(genre="litrpg")
+        # Simulate induction populating the ontology with patterns
+        loader.extend_with_induced(
+            {
+                "node_types": [],
+                "relationship_types": [],
+                "regex_patterns": [
+                    {
+                        "name": "skill_acquired",
+                        "pattern": (
+                            r"\[(?:Skill|Ability)\s+(?:Acquired|Learned|Gained):"
+                            r"\s*(?P<name>.+?)(?:\s*-\s*(?P<rank>.+?))?\]"
+                        ),
+                        "entity_type": "Skill",
+                        "captures": {"name": 1, "rank": 2},
+                        "description": "Skill acquisition notification",
+                        "example_matches": ["[Skill Acquired: Shadow Step]"],
+                    },
+                    {
+                        "name": "stat_increase",
+                        "pattern": (
+                            r"\+(?P<value>\d+)\s+(?P<stat_name>Strength|Agility|Perception"
+                            r"|Vitality|Willpower|Wisdom|Intelligence|Endurance|Toughness|Charisma)"
+                        ),
+                        "entity_type": "StatIncrease",
+                        "captures": {"value": 1, "stat_name": 2},
+                        "description": "Stat gain notification",
+                        "example_matches": ["+5 Perception"],
+                    },
+                    {
+                        "name": "level_up",
+                        "pattern": r"Level:\s*(?P<old>\d+)\s*(?:→|->|=>)\s*(?P<new>\d+)",
+                        "entity_type": "Level",
+                        "captures": {"old_value": 1, "new_value": 2},
+                        "description": "Level up notification",
+                        "example_matches": ["Level: 1 -> 3"],
+                    },
+                ],
+            }
+        )
         extractor = RegexExtractor.from_ontology(loader)
 
         matches = extractor.extract(SAMPLE_CHAPTER_TEXT, chapter_number=1)
@@ -191,13 +234,34 @@ class TestV3RegexWithOntology:
         assert "stat_increase" in pattern_names
         assert "level_up" in pattern_names
 
-    def test_from_ontology_pattern_count(self):
-        """Ontology-driven extractor has at least as many patterns as hardcoded."""
+    def test_from_ontology_empty_without_induction(self):
+        """from_ontology() returns 0 patterns when YAML has no regex_patterns section."""
         from app.core.ontology_loader import OntologyLoader
         from app.services.extraction.regex_extractor import RegexExtractor
 
         loader = OntologyLoader.from_layers(genre="litrpg")
         extractor = RegexExtractor.from_ontology(loader)
+
+        assert len(extractor.patterns) == 0
+
+    def test_from_induced_richer_than_default(self):
+        """from_induced() with many patterns can exceed default() pattern count."""
+        from app.services.extraction.regex_extractor import RegexExtractor
+
+        # Build a large induced set
+        induced = [
+            {
+                "name": f"pattern_{i}",
+                "pattern": r"\[test\]",
+                "entity_type": "Test",
+                "captures": {},
+                "description": "",
+                "example_matches": [],
+            }
+            for i in range(20)
+        ]
+        extractor = RegexExtractor.from_induced(induced)
         default_extractor = RegexExtractor.default()
 
+        # from_induced adds blue_box_generic, so 20 induced + 1 = 21 > 10
         assert len(extractor.patterns) >= len(default_extractor.patterns)

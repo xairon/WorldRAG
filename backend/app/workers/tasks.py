@@ -422,31 +422,40 @@ async def process_book_extraction_v4(
         relationship_types=len(ontology.relationship_types),
     )
 
-    # ── Ontology induction: auto-discover types from first chapters ────
+    # ── Joint pattern + ontology induction: auto-discover types and regex ────
     try:
-        from app.services.extraction.ontology_inducer import induce_ontology
+        from app.services.extraction.pattern_inducer import induce_patterns_and_ontology
 
         # Get first 3 chapters' text for induction
         induction_chapters = await book_repo.get_chapters_for_extraction(
-            book_id, chapters=None,
+            book_id,
+            chapters=None,
         )
         sample_texts = [ch.text for ch in induction_chapters[:3] if ch.text]
         if sample_texts:
-            induced = await induce_ontology(
+            induced = await induce_patterns_and_ontology(
                 chapters_text=sample_texts,
                 existing_ontology=ontology,
                 model_override=provider,
             )
-            if induced.get("node_types") or induced.get("relationship_types"):
+            has_induced = (
+                induced.get("node_types")
+                or induced.get("relationship_types")
+                or induced.get("regex_patterns")
+            )
+            if has_induced:
                 ontology.extend_with_induced(induced)
                 logger.info(
-                    "v4_ontology_induction_applied",
+                    "v4_joint_induction_applied",
                     book_id=book_id,
                     induced_entity_types=[nt["name"] for nt in induced.get("node_types", [])],
-                    induced_relation_types=[rt["name"] for rt in induced.get("relationship_types", [])],
+                    induced_relation_types=[
+                        rt["name"] for rt in induced.get("relationship_types", [])
+                    ],
+                    induced_regex_patterns=[p["name"] for p in induced.get("regex_patterns", [])],
                 )
     except Exception:
-        logger.warning("v4_ontology_induction_failed", book_id=book_id, exc_info=True)
+        logger.warning("v4_joint_induction_failed", book_id=book_id, exc_info=True)
 
     # Load entity registries from other books in same series
     if series_name:
@@ -880,7 +889,10 @@ async def process_book_embeddings(
     except Exception:
         logger.warning("task_book_rel_embeddings_failed", book_id=book_id, exc_info=True)
         from app.services.embedding_pipeline import RelationshipEmbeddingResult
-        rel_result = RelationshipEmbeddingResult(book_id=book_id, total_rels=0, embedded=0, failed=0)
+
+        rel_result = RelationshipEmbeddingResult(
+            book_id=book_id, total_rels=0, embedded=0, failed=0
+        )
 
     # Phase 3: Embed entity descriptions
     try:
@@ -900,9 +912,8 @@ async def process_book_embeddings(
     except Exception:
         logger.warning("task_book_entity_embeddings_failed", book_id=book_id, exc_info=True)
         from app.services.embedding_pipeline import EntityEmbeddingResult
-        ent_result = EntityEmbeddingResult(
-            book_id=book_id, total_entities=0, embedded=0, failed=0
-        )
+
+        ent_result = EntityEmbeddingResult(book_id=book_id, total_entities=0, embedded=0, failed=0)
 
     # Update book status
     if result.failed == 0:
@@ -933,5 +944,3 @@ async def process_book_embeddings(
         "ent_embedded": ent_result.embedded,
         "ent_failed": ent_result.failed,
     }
-
-

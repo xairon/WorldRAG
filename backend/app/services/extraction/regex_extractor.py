@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import yaml
 
@@ -126,7 +126,9 @@ class RegexExtractor:
     def default(cls) -> RegexExtractor:
         """Create extractor with hardcoded default patterns.
 
-        Fallback if YAML loading fails. Covers the most common LitRPG patterns.
+        Deprecated: Use from_induced() for auto-discovered patterns, or
+        from_ontology() to load from YAML. Kept for backward compatibility.
+        Covers the most common LitRPG patterns as a static fallback.
         """
         patterns = [
             RegexPattern(
@@ -183,7 +185,6 @@ class RegexExtractor:
                 entity_type="Evolution",
                 captures={"target": 1},
             ),
-            # Layer 3: Primal Hunter series-specific
             RegexPattern(
                 name="bloodline_notification",
                 pattern=re.compile(
@@ -221,6 +222,42 @@ class RegexExtractor:
             ),
         ]
         return cls(patterns=patterns)
+
+    @classmethod
+    def from_induced(cls, induced_patterns: list[dict[str, Any]]) -> RegexExtractor:
+        """Create extractor from LLM-induced patterns.
+
+        Args:
+            induced_patterns: List of validated pattern dicts from pattern_inducer.
+        """
+        instance = cls()
+        for spec in induced_patterns:
+            try:
+                compiled = re.compile(spec["pattern"], re.IGNORECASE | re.MULTILINE)
+                instance.patterns.append(
+                    RegexPattern(
+                        name=spec["name"],
+                        pattern=compiled,
+                        entity_type=spec.get("entity_type", ""),
+                        captures=spec.get("captures", {}),
+                    )
+                )
+            except re.error:
+                logger.warning("induced_pattern_compile_failed", name=spec["name"])
+                continue
+
+        # Always add the generic blue_box pattern as catch-all
+        instance.patterns.append(
+            RegexPattern(
+                name="blue_box_generic",
+                pattern=re.compile(r"\[((?:[^\[\]]|\[[^\[\]]*\]){5,200})\]"),
+                entity_type="SystemNotification",
+                captures={"content": 1},
+            )
+        )
+
+        logger.info("regex_extractor_from_induced", pattern_count=len(instance.patterns))
+        return instance
 
     def extract(self, text: str, chapter_number: int) -> list[RegexMatch]:
         """Extract all regex matches from chapter text.
