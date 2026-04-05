@@ -1,12 +1,38 @@
 # Cahier des charges v2 : Refondation ontologique complète sur GOLEM v1.1
 
-> **Version** : 3.0 — ontologie + implémentation opérationnelle complète  
+> **Version** : 3.2 — ontologie + implémentation + architecture review + TTL cross-check  
 > **Date** : 2026-04-05  
 > **Objectif** : Refonder la couche core de WorldRAG sur GOLEM v1.1, en exploitant **100%** des classes et propriétés pertinentes, y compris le support multi-série (Stoff), la structure narrative formelle, et les contraintes opérationnelles concrètes (extraction, induction, registry, rétro-compatibilité, RAG).
 >
 > **Sections 1-5 + Annexes** : Mapping ontologique GOLEM (94% classes, 89% propriétés)  
 > **Sections 6-6sexies** : Implémentation opérationnelle (extraction strategy, induction, registry, backward compat, RAG)  
 > **Section 9** : Plan de migration en 6 phases avec inventaire complet des fichiers impactés
+>
+> ### Décisions architecturales (v3.2 — post architecture review + TTL cross-check + feasibility audit)
+>
+> Les décisions suivantes **supersèdent** les détails dans le corps du document :
+>
+> 1. **RelationshipRole (G6) → propriété sur INVOLVED_IN** : RelationshipRole ne sera PAS un nœud Neo4j. G6 est modélisé comme `role: str` sur l'edge INVOLVED_IN (Character → SocialRelationship). Raison : la structure 4-edges (Character → INVOLVED_IN → SR → HAS_RELATIONSHIP_ROLE → RelationshipRole + Character → PLAYS_RELATIONSHIP_ROLE → RelationshipRole) est sur-ingénierie pour un rôle extractible par un seul attribut. Économise 1 type, 3 relations, réduit la densité graphe de ~4x sur ce sous-graphe. Les relations `HAS_RELATIONSHIP_ROLE`, `PLAYS_RELATIONSHIP_ROLE` sont supprimées. L'edge `INVOLVED_IN` gagne `{role: str, valid_from_chapter: int}`.
+>
+> 2. **NarrativeUnit (G9) → différé (Phase future)** : NarrativeUnit ne sera PAS implémenté dans cette refondation. Raison : le per-Event programmatique produit des copies de Event.description sans valeur ajoutée (invisible au RAG, invisible au registry, aucune requête l'utilise). À implémenter proprement quand l'analyse hylémique LLM-based sera développée. Les relations `UNIT_REFERS_TO`, `UNIT_PLAYS_FUNCTION`, `UNIT_IN_WORK` sont différées.
+>
+> 3. **CharacterStoff MERGE key** : `(canonical_name, series_id)` — PAS `(canonical_name)` seul. Évite la collision de personnages homonymes entre séries différentes.
+>
+> 4. **Setting UNIQUE constraint** : `(name, series_id)` composite — PAS `(name)` seul. Le même nom de Setting dans 2 livres d'une série doit rester un seul nœud, mais entre 2 séries différentes ce sont des nœuds distincts.
+>
+> 5. **Embedding pipeline** : Exclure PsychologicalState, NarrativeRole, CharacterFeature du pipeline embedding. Ce sont des attributs de personnage, pas des entités standalone — leurs embeddings dilueraient les résultats vector search. Seuls Setting, SocialRelationship, CharacterStoff, NarrativeStoff seront embedés (entités standalone avec descriptions riches).
+>
+> 6. **Disjonctions** : Réduire de 37 à **8 paires opérationnellement pertinentes** (celles où la confusion LLM est plausible). Le discriminated union Pydantic rend la plupart des paires structurellement impossibles.
+>
+> 7. **Couverture temporelle GOLEM** : Les restrictions `temporally-overlaps` (G3↔G3, G3↔G5, G5↔G5) et `temporally-included-in` cross-type (G3↔G5) existent dans le TTL mais ne sont PAS mappées. Raison : ces relations temporelles fines ne sont pas extractibles par LLM à partir de texte de fiction. Les chaînes `FOLLOWS_STATE` et `STATE_TRIGGERED_BY`/`TRIGGERS_EVENT` capturent la causalité temporelle extractible. La couverture complète est un enrichissement futur (annotation manuelle ou analyse spécialisée).
+>
+> 8. **Phase gap fixes** : (a) Significance populated dans Phase C (pas E). (b) RELATES_TO fallback → "UNKNOWN" en Phase B, suppression en Phase C. (c) INSTANCE_OF_STOFF edges via MERGE pas CREATE.
+>
+> 9. **Blockers faisabilité** : (a) `_VALID_ENTITY_TYPES` mis à jour atomiquement avec EntityUnion en Phase A. (b) `_load_layer()` doit parser `description:` du YAML (sinon `to_induction_context()` produit des strings vides). (c) CharacterStoff creation via Neo4j query directe (pas via `EntityRegistry.get_cross_book_entities()` qui n'existe pas). (d) TextualFeature et NarrativeUnit : append to `state["entities"]` list dans le LangGraph node, consommé par le worker via `upsert_v4_entities()`.
+>
+> 10. **Output tokens** : L'analyse de coût est complétée — +450 tokens output/chapitre × 200 chapitres = +90K tokens/livre = +$0.10/livre OpenRouter. Négligeable.
+>
+> **Couverture GOLEM mise à jour** : 16/18 classes comme nœuds Neo4j (G2 via sous-classes, G6 via propriété INVOLVED_IN.role, G9 et G15 différés). 89% propriétés. 8 paires disjonction opérationnelles.
 
 ---
 
@@ -1094,12 +1120,12 @@ Tous les nouveaux types ne nécessitent pas une extraction LLM. Stratégie hybri
 | **CharacterFeature** | LLM (single-pass) | Sémantique |
 | **NarrativeRole** | LLM (single-pass) | Sémantique |
 | **SocialRelationship** | LLM (relation pass) | Extrait dans `extract_relations_node`, pas `extract_entities_node` — c'est une relation réifiée |
-| **RelationshipRole** | LLM (relation pass) | Idem, découle de SocialRelationship |
-| **NarrativeUnit** | **Programmatique** (per-Event) | Chaque Event extrait génère automatiquement un NarrativeUnit. Zéro coût LLM. |
+| ~~RelationshipRole~~ | ~~LLM~~ | **SUPPRIMÉ** (décision archi v3.2) → propriété `role: str` sur INVOLVED_IN |
+| ~~NarrativeUnit~~ | ~~Programmatique~~ | **DIFFÉRÉ** (décision archi v3.2) → Phase future |
 | **TextualFeature** (structural) | **Programmatique** (verify.py) | `dialogue_ratio`, `pov_character`, `scene_count` restent heuristiques — plus précis que le LLM |
 | **TextualFeature** (enriched) | LLM (optionnel, futur) | `narrative_tension`, `prose_style` — LLM nécessaire. Phase future. |
 
-**Conséquence** : Le LLM single-pass passe de 12 à **16 types** (pas 20), ce qui reste dans la zone fiable. NarrativeUnit et TextualFeature structural sont générés sans LLM.
+**Conséquence** : Le LLM single-pass passe de 12 à **15 types** (pas 20). RelationshipRole supprimé (propriété sur edge), NarrativeUnit différé. TextualFeature structural reste programmatique. 15 types est confortablement dans la zone fiable.
 
 ### 6bis.3 Dépendances inter-types à l'extraction
 
@@ -1554,8 +1580,10 @@ Idem pour les embeddings de relations (type-agnostique) et la traversée multi-h
 
 1. Créer le nouveau `core.yaml` v4.0.0 GOLEM-aligned (§5)
 2. Mettre à jour `OntologyLoader` : parser `golem_alignment`, `to_induction_context()`, section `disjointness`
-3. Ajouter les 6 nouveaux modèles Pydantic LLM-extracted dans `extraction_v4.py` (PsychologicalState, Setting, CharacterFeature, NarrativeRole, SocialRelationship, RelationshipRole) + 2 modèles programmatiques (NarrativeUnit, TextualFeature) = **8 modèles total**
-4. Renommer `ExtractedItem` → `ExtractedObject`, `ExtractedArc` → `ExtractedNarrativeSequence` + mise à jour `EntityUnion` (6 LLM-extracted ajoutés au union, 2 programmatiques utilisés uniquement en interne)
+3. Ajouter les **5 nouveaux modèles Pydantic** LLM-extracted dans `extraction_v4.py` (PsychologicalState, Setting, CharacterFeature, NarrativeRole, SocialRelationship) + 1 modèle programmatique (TextualFeature) = **6 modèles total**. RelationshipRole supprimé (→ propriété sur INVOLVED_IN). NarrativeUnit différé.
+4. Renommer `ExtractedItem` → `ExtractedObject`, `ExtractedArc` → `ExtractedNarrativeSequence` + mise à jour `EntityUnion` (5 LLM-extracted ajoutés au union, 1 programmatique interne)
+4b. **Blocker** : Mettre à jour `_VALID_ENTITY_TYPES` atomiquement avec le EntityUnion — sinon les nouvelles entités sont silencieusement droppées par le validateur
+4c. **Blocker** : Ajouter parsing de `description:` dans `OntologyLoader._load_layer()` — sinon `to_induction_context()` Phase D produit des strings vides
 5. Mettre à jour `_VALID_ENTITY_TYPES` dans extraction_v4.py
 6. Mettre à jour `base.py:125-164` — liste des entity_type dans `[CONSTRAINTS]` block (EN + FR)
 7. Ajouter descriptions des 6 nouveaux types dans `entity_descriptions.yaml` (core section)
@@ -1572,7 +1600,7 @@ Idem pour les embeddings de relations (type-agnostique) et la traversée multi-h
 2. `character_state_repo.py` : renommer Item→Object dans les MATCH queries
 3. `graph.py` API routes : `ALLOWED_LABELS`, `_CORE_TYPES`, `ev.event_type` → `ev.event_category`
 4. `reader.py` : whitelist label Item→Object
-5. Supprimer les 6 fallbacks `"RELATES_TO"` : `entity_repo.py` (3 sites), `relations.py` (1), `book_level.py` (2), `context_assembly.py` (1), `embedding_pipeline.py` (1)
+5. Remplacer les 6 fallbacks `"RELATES_TO"` par `"UNKNOWN"` + log warning : `entity_repo.py` (3 sites), `relations.py` (1), `book_level.py` (2), `context_assembly.py` (1), `embedding_pipeline.py` (1). **Ne pas supprimer** — le safety net reste jusqu'à Phase C quand INVOLVED_IN write path est en place.
 6. `reconciler.py` : nouveau `_TYPE_PRIORITY` avec tous les types GOLEM (§6.4)
 7. `frontend/lib/constants.ts` : `EntityType` union + `ENTITY_HEX` + `ENTITY_COLORS` pour tous les nouveaux types
 8. `frontend/components/graph/graph-detail-panel.tsx` : fallback edge label
@@ -1598,7 +1626,10 @@ Idem pour les embeddings de relations (type-agnostique) et la traversée multi-h
 7. NarrativeUnit génération programmatique dans reconcile_and_persist (§6bis.4)
 8. Référence resolution dans reconciler (§6bis.3)
 9. `init_neo4j.cypher` : réécriture complète
-10. **Tester** : re-extraire Primal Hunter complet, comparer avant/après
+10. Supprimer les fallbacks `"UNKNOWN"` (Phase B safety net) maintenant que INVOLVED_IN est en place
+11. Fixer `significance` dead code : populer depuis NarrativeRole dans reconcile_and_persist (§6quater.4) — PAS attendre Phase E
+12. Stoff edges : utiliser MERGE (pas CREATE) pour INSTANCE_OF_STOFF (race condition multi-chapter)
+13. **Tester** : re-extraire Primal Hunter complet, comparer avant/après
 
 ### Phase D : Co-evolutionary induction GOLEM-aware — ~2 jours
 
@@ -1616,11 +1647,11 @@ Idem pour les embeddings de relations (type-agnostique) et la traversée multi-h
 
 **Objectif** : CharacterStoff créé automatiquement au Book 2+.
 
-1. `series_name` auto-rempli depuis CONTAINS_WORK (§6quater.3)
-2. Création CharacterStoff dans `reconcile_and_persist_v4_node` au merge registry (§6quater.3)
-3. Lien INSTANCE_OF_STOFF : Character → CharacterStoff
-4. NarrativeStoff pour les arcs récurrents (optionnel, peut être reporté)
-5. Fix `significance` dead code : populer depuis NarrativeRole (§6quater.4)
+1. `series_name` auto-rempli depuis CONTAINS_WORK : ajouter `book_repo.get_series_name_for_book(book_id)` (~5 lignes Cypher)
+2. Création CharacterStoff via **Neo4j query directe** (pas EntityRegistry.get_cross_book_entities() qui n'existe pas) : `MATCH (c:Character {canonical_name: $name}) WHERE c.book_id <> $book_id RETURN c` pour détecter les personnages cross-book
+3. MERGE CharacterStoff avec clé composite `(canonical_name, series_id)` — PAS `(canonical_name)` seul
+4. Lien INSTANCE_OF_STOFF via MERGE (pas CREATE) : Character → CharacterStoff
+5. NarrativeStoff pour les arcs récurrents (optionnel, peut être reporté)
 6. **Tester** : mock Book 2 extraction, vérifier CharacterStoff + INSTANCE_OF_STOFF
 
 ### Phase F : Chat RAG + Frontend polish — ~3 jours
@@ -2024,55 +2055,21 @@ GOLEM définit des axiomes `owl:disjointWith` entre classes. Ces contraintes emp
 ```yaml
 validation_rules:
   disjointness:
-    # Complete pairs from GOLEM TTL owl:disjointWith axioms
-    # G10 NarrativeFunction disjoint with:
-    - [narrative_function, setting]
-    - [narrative_function, location]
-    - [narrative_function, character]
-    - [narrative_function, social_relationship]
-    - [narrative_function, narrative_sequence]
-    - [narrative_function, narrative_unit]
-    - [narrative_function, narrative_stoff]
-    # G11 NarrativeRole disjoint with:
-    - [narrative_role, setting]
-    - [narrative_role, location]
-    - [narrative_role, character]
-    - [narrative_role, social_relationship]
-    - [narrative_role, narrative_sequence]
-    - [narrative_role, narrative_unit]
-    - [narrative_role, narrative_stoff]
-    # G1 Character disjoint with:
-    - [character, social_relationship]
-    - [character, relationship_role]
-    - [character, narrative_sequence]
-    - [character, narrative_unit]
-    # G4 SocialRelationship disjoint with:
-    - [social_relationship, relationship_role]
-    - [social_relationship, narrative_sequence]
-    # G6 RelationshipRole disjoint with:
-    - [relationship_role, narrative_sequence]
-    - [relationship_role, narrative_unit]
-    # G14 NarrativeStoff disjoint with:
-    - [narrative_stoff, character]
-    - [narrative_stoff, relationship_role]
-    - [narrative_stoff, narrative_sequence]
-    # G12 Setting disjoint with (via DOLCE situation hierarchy):
-    - [setting, location]
-    - [setting, social_relationship]
-    - [setting, relationship_role]
-    - [setting, narrative_sequence]
-    - [setting, narrative_unit]
-    - [setting, narrative_stoff]
-    # G13 Location disjoint with:
-    - [location, narrative_stoff]
-    - [location, social_relationship]
-    - [location, narrative_sequence]
-    - [location, narrative_unit]
-    # G7 NarrativeSequence disjoint with:
-    - [narrative_sequence, narrative_unit]
+    # 8 paires opérationnellement pertinentes (confusion LLM plausible)
+    # Les ~37 paires du TTL GOLEM sont documentées en Annexe D pour référence,
+    # mais seules les suivantes sont enforced à runtime — les autres sont
+    # rendues structurellement impossibles par le discriminated union Pydantic.
+    - [setting, location]                    # "The Tutorial" : Setting ou Location ?
+    - [psychological_state, character_feature]  # "brave" : état mental ou trait ?
+    - [psychological_state, narrative_role]     # "determined leader" : état ou rôle ?
+    - [character_feature, narrative_role]       # "mentor" : trait ou rôle ?
+    - [character, narrative_function]           # "Mentor" : personnage ou fonction ?
+    - [character, narrative_role]               # "Protagonist" : personnage ou rôle ?
+    - [event, psychological_state]             # "Jake's rage" : événement ou état ?
+    - [narrative_sequence, narrative_stoff]     # "Tutorial Arc" : instance ou archétype ?
 ```
 
-**37 paires de disjonction** extraites du TTL GOLEM v1.1. Le cross-type dedup du reconciler utilise ces paires pour résoudre les conflits : si le LLM extrait "The Tutorial" comme Location ET comme Setting, la contrainte de disjonction force le choix (Setting prioritaire d'après le priority map).
+**8 paires de disjonction opérationnelles** (sur ~37 dans le TTL GOLEM v1.1). Les paires restantes sont rendues structurellement impossibles par le discriminated union Pydantic (on ne peut pas extraire un Location comme un SocialRelationship — ce sont des modèles différents). Le cross-type dedup du reconciler utilise ces 8 paires pour résoudre les conflits : si le LLM extrait "The Tutorial" comme Location ET comme Setting, la contrainte de disjonction force le choix (Setting prioritaire d'après le priority map).
 
 ---
 
@@ -2130,4 +2127,10 @@ SETTING_OF_WORK:
 
 ### Contraintes OWL
 
-**Couverture contraintes de disjonction : 37/37 = 100%** (toutes les paires owl:disjointWith extraites du TTL GOLEM v1.1 sont dans les validation_rules)
+**Couverture contraintes de disjonction : 8/~37 paires enforced à runtime** (les 8 paires où la confusion LLM est plausible). Les ~29 autres sont rendues structurellement impossibles par le discriminated union Pydantic. L'intégralité des ~37 paires TTL est documentée en Annexe D pour référence.
+
+**Restrictions temporelles non mappées** (décision archi v3.2 §7) :
+- `temporally-overlaps` (G3↔G3, G3↔G5, G5↔G5) — 4 restrictions OWL existantes dans le TTL. Non extractibles par LLM à partir de texte de fiction. Enrichissement futur.
+- `temporally-included-in` cross-type (G3↔G5) — 2 restrictions OWL. Non extractibles. Enrichissement futur.
+- `duration/duration-of` (G5→time-interval) — propriété non mentionnée dans le CDC v2. Non extractible par LLM (la durée des événements narratifs est rarement explicite).
+- `setting-for time-interval` (G12→time-interval) — couvert implicitement par `chapter_start/chapter_end` sur Setting, mais pas formellement lié à un nœud time-interval.
