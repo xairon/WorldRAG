@@ -65,7 +65,7 @@ graph TD
         E --> F[Stockage Neo4j]
     end
 
-    B -->|"epub: lit OPF metadata<br>pdf: pdfminer<br>txt: split sur marqueurs"| C
+    B -->|"epub: ebooklib + BeautifulSoup<br>pdf: pymupdf4llm (Markdown structure)<br>txt: split sur marqueurs"| C
     D -->|"~1000 tokens/chunk<br>coupe aux frontieres de scene<br>overlap 100 tokens"| E
     E -->|"skill_acquired, level_up,<br>title_earned, stat_increase..."| F
     F -->|"Cree: Book, Chapter,<br>Chunk, Paragraph"| G[(Neo4j)]
@@ -73,6 +73,39 @@ graph TD
     style A fill:#1e293b,stroke:#3b82f6,color:#fff
     style G fill:#1e293b,stroke:#10b981,color:#fff
 ```
+
+### Comment chaque format est parse ?
+
+Le parsing est adapte a chaque format :
+
+```mermaid
+graph TD
+    subgraph "Parsing par format"
+        EPUB["EPUB<br>(structure riche)"]
+        PDF["PDF<br>(pas de structure native)"]
+        TXT["TXT<br>(texte brut)"]
+    end
+
+    EPUB -->|"ebooklib parse OPF<br>BeautifulSoup extrait HTML<br>Paragraphes types: narration,<br>dialogue, blue_box, scene_break"| STRUCT["Chapitres structures<br>+ paragraphes + XHTML"]
+    PDF -->|"pymupdf4llm convertit<br>en Markdown structure<br>Headings detectes par taille de police"| MD["Markdown avec # headings<br>puis split sur headings"]
+    TXT -->|"Regex 'Chapter N'<br>sur le texte brut"| RAW["Chapitres par regex"]
+
+    STRUCT --> CHAP[Chapitres]
+    MD --> CHAP
+    RAW --> CHAP
+
+    style EPUB fill:#10b981,stroke:#10b981,color:#fff
+    style PDF fill:#f59e0b,stroke:#f59e0b,color:#fff
+    style TXT fill:#94a3b8,stroke:#94a3b8,color:#fff
+```
+
+| Format | Librairie | Structure extraite | Qualite |
+|--------|-----------|-------------------|---------|
+| **EPUB** | `ebooklib` + `BeautifulSoup4` | Chapitres via spine, paragraphes types (narration/dialogue/blue_box/scene_break), XHTML preserve, CSS, metadata (titre, auteur, serie, couverture) | Excellente |
+| **PDF** | `pymupdf4llm` (MuPDF) | Markdown structure avec headings detectes par taille de police. TOC PDF utilise si disponible. Chapitres par `# heading` | Bonne |
+| **TXT** | Regex built-in | Chapitres detectes par patterns "Chapter N", "Ch. N", ou numeros seuls | Basique |
+
+**Pourquoi pymupdf4llm ?** Les PDFs n'ont pas de structure semantique native (pas de "chapitre"). pymupdf4llm analyse la **taille des polices** pour detecter les headings et les convertit en Markdown (`# Chapter 1: The Hunt`). C'est plus fiable que du regex sur du texte brut car ca exploite la structure visuelle du document.
 
 ### Qu'est-ce que le Chunking narratif ?
 
@@ -97,6 +130,10 @@ Avant tout LLM, des expressions regulieres detectent les patterns recurrents dan
 | `stat_increase` | `+5 Perception` | stat=Perception, valeur=5 |
 
 Ces resultats sont stockes et reinjectes plus tard comme **indices** dans le prompt d'extraction LLM.
+
+**Pourquoi de la regex et pas directement le LLM ?** C'est un pattern SOTA (ODKE+, Apple 2025) : extraction rule-based en pre-traitement + LLM pour le reste. La regex est **gratuite, instantanee, et precise a 95%+** sur les patterns structures (blue boxes LitRPG). Le LLM recoit ces indices comme contexte, ce qui l'aide a ne pas rater les skills/levels evidents.
+
+Les patterns regex sont definis dans l'ontologie YAML (`litrpg.yaml` section `regex_patterns`), pas hardcodes dans le code. Changer de genre = changer de patterns automatiquement.
 
 **A la fin de la Phase 1**, le statut du livre passe a `completed`. Le livre est pret pour l'extraction.
 
