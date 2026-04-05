@@ -120,20 +120,20 @@ Le chunk coupe en priorite a une frontiere de scene, meme si ca fait un chunk pl
 
 ### Qu'est-ce que la Passe 0 (Regex) ?
 
-Avant tout LLM, des expressions regulieres detectent les patterns recurrents dans la fiction :
+Avant tout LLM, des expressions regulieres detectent les patterns recurrents dans la fiction. **Ces patterns ne sont PAS hardcodes** — ils sont **auto-decouverts** par le systeme d'induction co-evolutive (voir Section 3).
 
-| Pattern | Exemple dans le texte | Ce qui est capture |
-|---------|----------------------|-------------------|
-| `skill_acquired` | `[Skill Acquired: Shadow Step - Rare]` | nom=Shadow Step, rang=Rare |
-| `level_up` | `Level: 42 -> 43` | ancien=42, nouveau=43 |
-| `title_earned` | `Title earned: Hydra Slayer` | nom=Hydra Slayer |
-| `stat_increase` | `+5 Perception` | stat=Perception, valeur=5 |
+A l'ingestion, seule la capture naive tourne (tout ce qui est entre crochets, lignes avec +N stat, etc.). Les vrais patterns types (skill_acquired, level_up...) sont induits plus tard par le LLM.
 
-Ces resultats sont stockes et reinjectes plus tard comme **indices** dans le prompt d'extraction LLM.
+Exemples de captures naives (domain-agnostic) :
 
-**Pourquoi de la regex et pas directement le LLM ?** C'est un pattern SOTA (ODKE+, Apple 2025) : extraction rule-based en pre-traitement + LLM pour le reste. La regex est **gratuite, instantanee, et precise a 95%+** sur les patterns structures (blue boxes LitRPG). Le LLM recoit ces indices comme contexte, ce qui l'aide a ne pas rater les skills/levels evidents.
+| Pattern naif | Ce qu'il capture | Pourquoi |
+|-------------|-----------------|----------|
+| `[...{5-500}...]` | Tout contenu entre crochets | Blue boxes, notifications systeme |
+| `+N Stat` | Lignes de gain de stat | `+5 Perception`, `+3 Agility` |
+| `N -> N` | Transitions de progression | `Level: 42 -> 43` |
+| `Label: Value` | Valeurs etiquetees | `Class: Arcane Hunter (Tier 2)` |
 
-Les patterns regex sont definis dans l'ontologie YAML (`litrpg.yaml` section `regex_patterns`), pas hardcodes dans le code. Changer de genre = changer de patterns automatiquement.
+Ces captures brutes sont stockees et passees au systeme d'induction en Phase 2.
 
 **A la fin de la Phase 1**, le statut du livre passe a `completed`. Le livre est pret pour l'extraction.
 
@@ -146,14 +146,16 @@ Declenchee par `POST /books/{id}/extract/v4`. Un worker arq prend le relais en a
 ```mermaid
 graph TD
     subgraph "Phase 2 — Preparation (worker async)"
-        A[Charger ontologie<br>3 couches YAML] --> B[Induction ontologique<br>LLM analyse 3 chapitres]
-        B --> C[Charger EntityRegistry<br>livres precedents de la serie]
+        A[Charger ontologie<br>3 couches YAML] --> B["Induction co-evolutive<br>🤖 LLM analyse 3 chapitres<br>+ captures naives"]
+        B --> B2[Validation patterns<br>regex compile ?<br>match ≥80% exemples ?]
+        B2 --> C[Charger EntityRegistry<br>livres precedents de la serie]
         C --> D[Filtrer chapitres<br>non-contenu]
         D --> E[Reset extraction<br>precedente si re-run]
     end
 
-    A -->|"core.yaml + litrpg.yaml<br>+ primal_hunter.yaml"| B
-    B -->|"LLM decouvre: Bloodline,<br>Profession, RankTier..."| C
+    A -->|"core.yaml + litrpg.yaml<br>(sans regex hardcodees)"| B
+    B -->|"LLM decouvre SIMULTANEMENT:<br>types (Bloodline, Profession...)<br>+ patterns regex (skill_acquired...)"| B2
+    B2 -->|"Patterns valides injectes<br>dans l'ontologie + RegexExtractor"| C
     C -->|"Si serie: charge entites<br>des tomes precedents"| D
     D -->|"Exclut: Sommaire, Copyright,<br>Dedicace, TOC"| E
 
@@ -268,7 +270,7 @@ graph TD
 **Le prompt est compose de :**
 - Description de chaque type d'entite (depuis l'ontologie YAML)
 - Exemples positifs (few-shot) et negatifs ("NE PAS faire ca")
-- Indices regex de la Passe 0 ("on a detecte `[Skill Acquired: Shadow Step]` dans ce texte")
+- Indices regex induits ("on a detecte `[Skill Acquired: Shadow Step]` via le pattern auto-decouvert")
 - Contexte du registre ("Jake Thayne est un Character, NE PAS re-extraire comme Event")
 - Le texte du chapitre
 
