@@ -846,3 +846,132 @@ async def generate_state_snapshots(
         interval=snapshot_interval,
     )
     return snapshot_count
+
+
+async def run_consistency_checks(
+    driver,
+    book_id: str,
+) -> list[dict[str, Any]]:
+    """Run graph-level quality checks and return issues found.
+
+    Checks:
+    1. Orphan entities (no meaningful relations)
+    2. Cross-type duplicate names (same canonical_name, different labels)
+    3. Relation type violations (source/target types don't match constraints)
+
+    Returns:
+        List of issue dicts with type, count, and example details.
+    """
+    checks: list[dict[str, Any]] = []
+
+    async with driver.session() as session:
+        # 1. Orphan entities — no relations except MENTIONED_IN / structural
+        result = await session.run(
+            """
+            MATCH (e {book_id: $book_id})
+            WHERE NOT 'Chapter' IN labels(e) AND NOT 'Book' IN labels(e)
+              AND NOT 'Chunk' IN labels(e) AND NOT 'Paragraph' IN labels(e)
+              AND NOT 'Community' IN labels(e) AND NOT 'StateChange' IN labels(e)
+              AND e.canonical_name IS NOT NULL
+            OPTIONAL MATCH (e)-[r]-()
+            WHERE NOT type(r) IN [
+                'MENTIONED_IN', 'FIRST_MENTIONED_IN',
+                'BELONGS_TO_COMMUNITY', 'HAS_PARAGRAPH',
+                'HAS_CHUNK', 'CONTAINS', 'IN_BOOK', 'NEXT'
+            ]
+            WITH e, count(r) AS rel_count
+            WHERE rel_count = 0
+            RETURN e.canonical_name AS name, labels(e)[0] AS label
+            ORDER BY label, name
+            LIMIT 50
+            """,
+            {"book_id": book_id},
+        )
+        orphans = [{"name": r["name"], "label": r["label"]} async for r in result]
+        if orphans:
+            checks.append({
+                "type": "orphan_entities",
+                "severity": "warning",
+                "count": len(orphans),
+                "message": f"{len(orphans)} entities have no meaningful relations",
+                "entities": orphans,
+            })
+
+        # 2. Cross-type duplicates — same canonical_name, different labels
+        result = await session.run(
+            """
+            MATCH (e {book_id: $book_id})
+            WHERE e.canonical_name IS NOT NULL
+              AND NOT 'Chapter' IN labels(e) AND NOT 'Book' IN labels(e)
+              AND NOT 'Chunk' IN labels(e) AND NOT 'Paragraph' IN labels(e)
+              AND NOT 'Community' IN labels(e) AND NOT 'StateChange' IN labels(e)
+            WITH e.canonical_name AS name,
+                 collect(DISTINCT labels(e)[0]) AS types,
+                 count(e) AS node_count
+            WHERE size(types) > 1
+            RETURN name, types, node_count
+            ORDER BY node_count DESC
+            LIMIT 30
+            """,
+            {"book_id": book_id},
+        )
+        dupes = [
+            {"name": r["name"], "types": r["types"], "count": r["node_count"]}
+            async for r in result
+        ]
+        if dupes:
+            checks.append({
+                "type": "cross_type_duplicates",
+                "severity": "error",
+                "count": len(dupes),
+                "message": f"{len(dupes)} entity names appear with multiple types",
+                "entities": dupes,
+            })
+
+        # 3. Relation type violations (HAS_SKILL on non-character source, etc.)
+        result = await session.run(
+            """
+            MATCH (a {book_id: $book_id})-[r:HAS_SKILL]->(b)
+            WHERE NOT 'Character' IN labels(a)
+            RETURN a.canonical_name AS source, labels(a)[0] AS source_label,
+                   type(r) AS rel, b.canonical_name AS target, labels(b)[0] AS target_label
+            UNION ALL
+            MATCH (a {book_id: $book_id})-[r:HAS_CLASS]->(b)
+            WHERE NOT 'Character' IN labels(a)
+            RETURN a.canonical_name AS source, labels(a)[0] AS source_label,
+                   type(r) AS rel, b.canonical_name AS target, labels(b)[0] AS target_label
+            UNION ALL
+            MATCH (a {book_id: $book_id})-[r:LOCATED_AT]->(b)
+            WHERE NOT 'Location' IN labels(b)
+            RETURN a.canonical_name AS source, labels(a)[0] AS source_label,
+                   type(r) AS rel, b.canonical_name AS target, labels(b)[0] AS target_label
+            """,
+            {"book_id": book_id},
+        )
+        violations = [
+            {
+                "source": r["source"],
+                "source_label": r["source_label"],
+                "relation": r["rel"],
+                "target": r["target"],
+                "target_label": r["target_label"],
+            }
+            async for r in result
+        ]
+        if violations:
+            checks.append({
+                "type": "relation_type_violations",
+                "severity": "error",
+                "count": len(violations),
+                "message": f"{len(violations)} relations have invalid source/target types",
+                "examples": violations[:20],
+            })
+
+    logger.info(
+        "consistency_checks_completed",
+        book_id=book_id,
+        issues_found=len(checks),
+        total_problems=sum(c["count"] for c in checks),
+    )
+
+    return checks

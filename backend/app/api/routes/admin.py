@@ -11,11 +11,12 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter, Depends, Query
 
 from app.api.auth import require_admin
-from app.api.dependencies import get_arq_pool, get_cost_tracker, get_dlq
+from app.api.dependencies import get_arq_pool, get_cost_tracker, get_dlq, get_neo4j
 from app.core.logging import get_logger
 
 if TYPE_CHECKING:
     from arq.connections import ArqRedis
+    from neo4j import AsyncDriver
 
     from app.core.cost_tracker import CostTracker
     from app.core.dead_letter import DeadLetterQueue
@@ -184,4 +185,21 @@ async def retry_all_dlq(
         "books": list(book_ids),
         "jobs_enqueued": jobs_enqueued,
         "entries_cleared": cleared,
+    }
+
+
+@router.get("/quality-checks/{book_id}", dependencies=[Depends(require_admin)])
+async def quality_checks(
+    book_id: str,
+    driver: AsyncDriver = Depends(get_neo4j),
+) -> dict:
+    """Run graph-level quality checks for a book."""
+    from app.services.extraction.book_level import run_consistency_checks
+
+    checks = await run_consistency_checks(driver, book_id)
+    return {
+        "book_id": book_id,
+        "issues": checks,
+        "total_issues": sum(c["count"] for c in checks),
+        "has_errors": any(c["severity"] == "error" for c in checks),
     }
