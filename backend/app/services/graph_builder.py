@@ -632,7 +632,7 @@ async def _persist_extraction_result(
             result.lore.locations,
             batch_id,
         ),
-        entity_repo.upsert_items(
+        entity_repo.upsert_objects(
             book_id,
             chapter_number,
             result.lore.items,
