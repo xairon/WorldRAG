@@ -182,7 +182,7 @@ async def embed_book_relationships(
     for rel in rels:
         source = rel.get("source") or "Unknown"
         target = rel.get("target") or "Unknown"
-        rel_type = rel.get("rel_type") or "UNKNOWN"
+        rel_type = rel.get("rel_type") or "RELATED"
         context = rel.get("context") or ""
         text = f"{source} {rel_type} {target}"
         if context:

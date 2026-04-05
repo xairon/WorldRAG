@@ -79,12 +79,15 @@ async def extract_relations_node(state: dict[str, Any]) -> dict[str, Any]:
 
     # Post-coerce relation types from ontology
     allowed = set(ontology.get_relationship_type_names())
-    coerce = _make_coercer(allowed, default="UNKNOWN")
+    coerce = _make_coercer(allowed, default=None)
 
     relations_serialized = []
     for rel in result.relations:
         d = rel.model_dump()
-        d["relation_type"] = coerce(d["relation_type"])
+        coerced = coerce(d["relation_type"])
+        if coerced is not None:
+            d["relation_type"] = coerced
+        # else: keep raw LLM value, write path will sanitize
         if d.get("valid_from_chapter") is None:
             d["valid_from_chapter"] = chapter_number
         relations_serialized.append(d)

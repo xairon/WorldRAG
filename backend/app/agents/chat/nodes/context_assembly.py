@@ -104,7 +104,7 @@ async def assemble_context(
         for rc in relationship_context:
             source = rc.get("source") or "?"
             target = rc.get("target") or "?"
-            rel_type = rc.get("rel_type") or "UNKNOWN"
+            rel_type = rc.get("rel_type") or "RELATED"
             context_text = rc.get("context") or ""
             score = rc.get("score", 0.0)
             line = f"- {source} {rel_type} {target}"

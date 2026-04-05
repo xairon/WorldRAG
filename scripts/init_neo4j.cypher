@@ -66,7 +66,7 @@ CREATE CONSTRAINT character_stoff_unique IF NOT EXISTS
 FOR (cs:CharacterStoff) REQUIRE (cs.canonical_name, cs.series_id) IS UNIQUE;
 
 CREATE CONSTRAINT setting_unique IF NOT EXISTS
-FOR (s:Setting) REQUIRE (s.name, s.series_id) IS UNIQUE;
+FOR (s:Setting) REQUIRE (s.name, s.book_id) IS UNIQUE;
 
 CREATE CONSTRAINT social_rel_book_unique IF NOT EXISTS
 FOR (sr:SocialRelationship) REQUIRE (sr.name, sr.book_id) IS UNIQUE;

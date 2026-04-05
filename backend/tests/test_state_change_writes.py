@@ -272,7 +272,7 @@ class TestUpsertTitlesCreatesStateChange:
         assert mock_neo4j_session.run.call_count == 0
 
 
-# ── upsert_items ────────────────────────────────────────────────────────
+# ── upsert_objects ────────────────────────────────────────────────────────
 
 
 class TestUpsertItemsCreatesStateChange:
@@ -280,14 +280,14 @@ class TestUpsertItemsCreatesStateChange:
         items = [
             ExtractedItem(name="Nanoblade", item_type="weapon", owner="Jake Thayne"),
         ]
-        await repo.upsert_items(BOOK_ID, CHAPTER, items, BATCH_ID)
+        await repo.upsert_objects(BOOK_ID, CHAPTER, items, BATCH_ID)
         assert mock_neo4j_session.run.call_count >= 2
 
     async def test_state_change_has_correct_fields(self, repo, mock_neo4j_session):
         items = [
             ExtractedItem(name="Nanoblade", item_type="weapon", owner="Jake Thayne"),
         ]
-        await repo.upsert_items(BOOK_ID, CHAPTER, items, BATCH_ID)
+        await repo.upsert_objects(BOOK_ID, CHAPTER, items, BATCH_ID)
         state_call = mock_neo4j_session.run.call_args_list[1]
         params = state_call[0][1]
         changes = params["changes"]
@@ -300,11 +300,11 @@ class TestUpsertItemsCreatesStateChange:
         items = [
             ExtractedItem(name="Nanoblade", item_type="weapon", owner=""),
         ]
-        await repo.upsert_items(BOOK_ID, CHAPTER, items, BATCH_ID)
+        await repo.upsert_objects(BOOK_ID, CHAPTER, items, BATCH_ID)
         assert mock_neo4j_session.run.call_count == 1
 
     async def test_empty_list_no_calls(self, repo, mock_neo4j_session):
-        await repo.upsert_items(BOOK_ID, CHAPTER, [], BATCH_ID)
+        await repo.upsert_objects(BOOK_ID, CHAPTER, [], BATCH_ID)
         assert mock_neo4j_session.run.call_count == 0
 
 

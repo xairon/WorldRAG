@@ -205,8 +205,10 @@ class EntityRepository(Neo4jRepository):
             rel_type = rel["rel_type"].upper().replace(" ", "_").replace("-", "_")
             rel_type = "".join(c for c in rel_type if c.isalnum() or c == "_")
             if not rel_type:
-                rel_type = "UNKNOWN"
-                logger.warning("relation_type_fallback", source=rel["source"], target=rel["target"])
+                logger.warning(
+                    "relation_type_empty_skipped", source=rel["source"], target=rel["target"]
+                )
+                continue
             _, summary = await self.execute_write_with_summary(
                 f"""
                 WITH $rel AS r
@@ -695,14 +697,14 @@ class EntityRepository(Neo4jRepository):
 
     # ── Objects (ex-Items, GOLEM G16) ─────────────────────────────────
 
-    async def upsert_items(
+    async def upsert_objects(
         self,
         book_id: str,
         chapter_number: int,
         items: list[ExtractedItem],
         batch_id: str = "",
     ) -> int:
-        """Upsert Object nodes (ex-Item) and link to owners."""
+        """Upsert Object nodes (GOLEM G16, ex-Item) and link to owners."""
         if not items:
             return 0
 
@@ -1773,7 +1775,7 @@ class EntityRepository(Neo4jRepository):
 
     # ── Arcs ─────────────────────────────────────────────────────────────
 
-    async def upsert_arcs(
+    async def upsert_narrative_sequences(
         self,
         book_id: str,
         chapter_number: int,
@@ -2968,7 +2970,7 @@ class EntityRepository(Neo4jRepository):
             rel_ns = [_ns(r) for r in relations]
             for r in rel_ns:
                 if not hasattr(r, "rel_type"):
-                    r.rel_type = getattr(r, "relation_type", "UNKNOWN")
+                    r.rel_type = getattr(r, "relation_type", "")
                 if not hasattr(r, "subtype"):
                     r.subtype = ""
                 if not hasattr(r, "context"):
@@ -3007,7 +3009,7 @@ class EntityRepository(Neo4jRepository):
             )
         if items:
             entity_coros.append(
-                ("items", self.upsert_items(book_id, chapter_number, items, batch_id))
+                ("items", self.upsert_objects(book_id, chapter_number, items, batch_id))
             )
         if creatures:
             entity_coros.append(
@@ -3054,7 +3056,9 @@ class EntityRepository(Neo4jRepository):
                 ("churches", self.upsert_churches(book_id, chapter_number, churches, batch_id))
             )
         if arcs:
-            entity_coros.append(("arcs", self.upsert_arcs(book_id, chapter_number, arcs, batch_id)))
+            entity_coros.append(
+                ("arcs", self.upsert_narrative_sequences(book_id, chapter_number, arcs, batch_id))
+            )
         if prophecies:
             entity_coros.append(
                 (
@@ -3149,7 +3153,7 @@ class EntityRepository(Neo4jRepository):
                 self.apply_relation_end(
                     source=er.get("source", ""),
                     target=er.get("target", ""),
-                    relation_type=er.get("relation_type", "UNKNOWN"),
+                    relation_type=er.get("relation_type", ""),
                     ended_at_chapter=er.get("ended_at_chapter", chapter_number),
                     reason=er.get("reason", ""),
                     book_id=book_id,
@@ -3347,7 +3351,7 @@ class EntityRepository(Neo4jRepository):
             self.upsert_stat_changes(book_id, chapter, result.systems.stat_changes, batch_id),
             self.upsert_events(book_id, chapter, result.events.events, batch_id),
             self.upsert_locations(book_id, chapter, result.lore.locations, batch_id),
-            self.upsert_items(book_id, chapter, result.lore.items, batch_id),
+            self.upsert_objects(book_id, chapter, result.lore.items, batch_id),
             self.upsert_creatures(book_id, chapter, result.lore.creatures, batch_id),
             self.upsert_factions(book_id, chapter, result.lore.factions, batch_id),
             self.upsert_concepts(book_id, chapter, result.lore.concepts, batch_id),

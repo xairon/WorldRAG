@@ -1689,6 +1689,25 @@ async def reconcile_and_persist_v4_node(state: dict[str, Any]) -> dict[str, Any]
             description=entity_dict.get("description", ""),
         )
 
+    # 6b. Populate significance from NarrativeRole (§6quater.4)
+    _SIGNIFICANCE_ROLES = {
+        "protagonist": "protagonist",
+        "antagonist": "major",
+        "deuteragonist": "major",
+    }
+    for entity_dict in entities:
+        if entity_dict.get("entity_type") == "narrative_role":
+            role_type = entity_dict.get("role_type", "")
+            char_name = entity_dict.get("character", "").lower().strip()
+            significance = _SIGNIFICANCE_ROLES.get(role_type)
+            if significance and char_name:
+                registry.add(
+                    name=char_name,
+                    entity_type="character",
+                    significance=significance,
+                    first_seen_chapter=chapter_number,
+                )
+
     logger.info(
         "v4_reconcile_persist_done",
         chapter=chapter_number,
