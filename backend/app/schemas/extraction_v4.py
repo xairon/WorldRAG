@@ -12,11 +12,14 @@ Design choices:
 - NO `from __future__ import annotations` — LangGraph needs runtime type resolution
 """
 
+import logging
 import operator
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, BeforeValidator, Field, model_validator
 from typing_extensions import TypedDict
+
+_coercer_logger = logging.getLogger("app.schemas.extraction_v4")
 
 # ── Coercion helpers ─────────────────────────────────────────────────────
 # LLMs generate close-but-not-exact values.  Instead of rejecting with a
@@ -78,12 +81,16 @@ CoercedSignificance = Annotated[str, BeforeValidator(_coerce_significance)]
 
 class ExtractedCharacter(BaseModel):
     entity_type: Literal["character"] = "character"
+    type_rationale: str = Field(
+        default="",
+        description="One sentence: why is this entity this type and not another?",
+    )
     name: str = Field(..., description="Character name as used in text")
     canonical_name: str = ""
+    description: str = ""
     aliases: list[str] = Field(default_factory=list)
     role: CoercedRole = "minor"
     species: str = ""
-    description: str = ""
     status: CoercedStatus = "alive"
     confidence: float = Field(1.0, ge=0.0, le=1.0, description="Extraction confidence score")
     extraction_text: str = ""
@@ -96,6 +103,10 @@ class ExtractedCharacter(BaseModel):
 
 class ExtractedEvent(BaseModel):
     entity_type: Literal["event"] = "event"
+    type_rationale: str = Field(
+        default="",
+        description="One sentence: why is this entity this type and not another?",
+    )
     name: str = Field(..., description="Short name for the event")
     description: str = ""
     event_type: CoercedEventType = "action"
@@ -114,12 +125,16 @@ class ExtractedEvent(BaseModel):
 
 class ExtractedLocation(BaseModel):
     entity_type: Literal["location"] = "location"
+    type_rationale: str = Field(
+        default="",
+        description="One sentence: why is this entity this type and not another?",
+    )
     name: str = Field(..., description="Location name")
     canonical_name: str = ""
+    description: str = ""
     aliases: list[str] = Field(default_factory=list)
     location_type: str = ""
     parent_location: str = ""
-    description: str = ""
     confidence: float = Field(1.0, ge=0.0, le=1.0, description="Extraction confidence score")
     extraction_text: str = ""
     char_offset_start: int = -1
@@ -131,6 +146,10 @@ class ExtractedLocation(BaseModel):
 
 class ExtractedItem(BaseModel):
     entity_type: Literal["item"] = "item"
+    type_rationale: str = Field(
+        default="",
+        description="One sentence: why is this entity this type and not another?",
+    )
     name: str = Field(..., description="Item name")
     canonical_name: str = ""
     aliases: list[str] = Field(default_factory=list)
@@ -149,13 +168,17 @@ class ExtractedItem(BaseModel):
 
 class ExtractedCreature(BaseModel):
     entity_type: Literal["creature"] = "creature"
+    type_rationale: str = Field(
+        default="",
+        description="One sentence: why is this entity this type and not another?",
+    )
     name: str = Field(..., description="Creature name or species")
     canonical_name: str = ""
+    description: str = ""
     aliases: list[str] = Field(default_factory=list)
     species: str = ""
     threat_level: str = ""
     habitat: str = ""
-    description: str = ""
     confidence: float = Field(1.0, ge=0.0, le=1.0, description="Extraction confidence score")
     extraction_text: str = ""
     char_offset_start: int = -1
@@ -167,12 +190,16 @@ class ExtractedCreature(BaseModel):
 
 class ExtractedFaction(BaseModel):
     entity_type: Literal["faction"] = "faction"
+    type_rationale: str = Field(
+        default="",
+        description="One sentence: why is this entity this type and not another?",
+    )
     name: str = Field(..., description="Faction name")
     canonical_name: str = ""
+    description: str = ""
     aliases: list[str] = Field(default_factory=list)
     faction_type: str = ""
     alignment: str = ""
-    description: str = ""
     confidence: float = Field(1.0, ge=0.0, le=1.0, description="Extraction confidence score")
     extraction_text: str = ""
     char_offset_start: int = -1
@@ -184,11 +211,15 @@ class ExtractedFaction(BaseModel):
 
 class ExtractedConcept(BaseModel):
     entity_type: Literal["concept"] = "concept"
+    type_rationale: str = Field(
+        default="",
+        description="One sentence: why is this entity this type and not another?",
+    )
     name: str = Field(..., description="Concept name")
     canonical_name: str = ""
+    description: str = ""
     aliases: list[str] = Field(default_factory=list)
     domain: str = ""
-    description: str = ""
     confidence: float = Field(1.0, ge=0.0, le=1.0, description="Extraction confidence score")
     extraction_text: str = ""
     char_offset_start: int = -1
@@ -200,11 +231,15 @@ class ExtractedConcept(BaseModel):
 
 class ExtractedArc(BaseModel):
     entity_type: Literal["arc"] = "arc"
+    type_rationale: str = Field(
+        default="",
+        description="One sentence: why is this entity this type and not another?",
+    )
     name: str = Field(..., description="Narrative arc name")
     canonical_name: str = ""
+    description: str = ""
     arc_type: str = ""  # main_plot, subplot, character_arc, world_arc
     status: str = ""  # active, completed, abandoned
-    description: str = ""
     related_events: list[str] = Field(
         default_factory=list,
         description="Names of events that belong to this arc",
@@ -220,10 +255,14 @@ class ExtractedArc(BaseModel):
 
 class ExtractedProphecy(BaseModel):
     entity_type: Literal["prophecy"] = "prophecy"
+    type_rationale: str = Field(
+        default="",
+        description="One sentence: why is this entity this type and not another?",
+    )
     name: str = Field(..., description="Prophecy name or title")
     canonical_name: str = ""
-    status: str = ""  # unfulfilled, fulfilled, subverted
     description: str = ""
+    status: str = ""  # unfulfilled, fulfilled, subverted
     confidence: float = Field(1.0, ge=0.0, le=1.0, description="Extraction confidence score")
     extraction_text: str = ""
     char_offset_start: int = -1
@@ -235,6 +274,10 @@ class ExtractedProphecy(BaseModel):
 
 class ExtractedLevelChange(BaseModel):
     entity_type: Literal["level_change"] = "level_change"
+    type_rationale: str = Field(
+        default="",
+        description="One sentence: why is this entity this type and not another?",
+    )
     character: str = Field(..., description="Character who leveled up")
     old_level: int | None = None
     new_level: int | None = None
@@ -250,6 +293,10 @@ class ExtractedLevelChange(BaseModel):
 
 class ExtractedStatChange(BaseModel):
     entity_type: Literal["stat_change"] = "stat_change"
+    type_rationale: str = Field(
+        default="",
+        description="One sentence: why is this entity this type and not another?",
+    )
     character: str = ""
     stat_name: str = Field(..., description="Name of the stat")
     value: int = Field(..., description="Amount of change (positive or negative)")
@@ -272,6 +319,10 @@ class ExtractedGenreEntity(BaseModel):
     """
 
     entity_type: Literal["genre_entity"] = "genre_entity"
+    type_rationale: str = Field(
+        default="",
+        description="One sentence: why is this entity this type and not another?",
+    )
     sub_type: str = Field(..., description="Ontology-defined sub-type (e.g. skill, class, spell)")
     name: str = Field(..., description="Entity name as in text")
     canonical_name: str = ""
@@ -351,7 +402,12 @@ class EntityExtractionResult(BaseModel):
                     et = entity.get("entity_type", "")
                     if not et or et in _VALID_ENTITY_TYPES:
                         valid.append(entity)
-                    # else: silently drop — invalid type
+                    else:
+                        _coercer_logger.warning(
+                            "entity_dropped_invalid_type: name=%s type=%s",
+                            entity.get("name", "?"),
+                            et,
+                        )
                 else:
                     # Already a Pydantic model instance — pass through as-is
                     valid.append(entity)

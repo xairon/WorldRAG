@@ -32,6 +32,10 @@ core:
       - location: canonical_name of where it takes place
       - is_flashback: true if event is narrated as past memory
       - extraction_text: exact source passage
+      An EVENT is a significant world-level or multi-participant happening, NOT a single character's action.
+      - VALID events: battles, discoveries, system-wide announcements, arrivals, betrayals, deaths
+      - NOT events: one character using a skill, one character walking somewhere, system stat notifications
+      - Event names should be DESCRIPTIVE ("Battle of the Tutorial Arena"), not character names ("Jake")
     fr: |
       EVENT :
       - name : nom court et descriptif de l'evenement
@@ -126,6 +130,8 @@ core:
       - domain: magic | technology | philosophy | religion | politics | nature | other
       - description: brief description in chapter context
       - extraction_text: exact source passage
+      Do NOT extract game system mechanics (stamina, mana, HP, XP, free points, stat names) as Concepts.
+      Concepts are narrative abstractions: themes, philosophies, in-world theoretical ideas.
     fr: |
       CONCEPT :
       - name : nom du concept tel qu'utilise dans le texte

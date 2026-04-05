@@ -268,12 +268,29 @@ async def verify_extractions_node(state: dict[str, Any]) -> dict[str, Any]:
 
     chapter_text_lower = chapter_text.lower()
 
-    # Build known character names from entities already in this extraction
-    known_character_names = frozenset(
-        (_entity_name(e) or "").lower()
-        for e in entities
-        if e.get("entity_type") == "character" and _entity_name(e)
-    )
+    # Build known character names from BOTH current extraction AND registry
+    known_character_names_set: set[str] = set()
+
+    # From current chapter extraction
+    for e in entities:
+        if e.get("entity_type") == "character":
+            name = _entity_name(e)
+            if name:
+                known_character_names_set.add(name.lower())
+
+    # From accumulated entity registry (cross-chapter)
+    entity_registry = state.get("entity_registry", {})
+    if isinstance(entity_registry, dict):
+        for entry in entity_registry.get("entities", {}).values():
+            if entry.get("entity_type") == "character":
+                canonical = entry.get("canonical_name", "")
+                if canonical:
+                    known_character_names_set.add(canonical.lower())
+                for alias in entry.get("aliases", []):
+                    if alias:
+                        known_character_names_set.add(alias.lower().strip())
+
+    known_character_names = frozenset(known_character_names_set)
 
     verified: list[dict[str, Any]] = []
     removed_count = 0

@@ -1462,9 +1462,7 @@ async def verify_coverage_node(state: dict[str, Any]) -> dict[str, Any]:
 
     # Build anchor context from extracted entities
     entity_names = [
-        e.get("canonical_name") or e.get("name", "")
-        for e in entities
-        if isinstance(e, dict)
+        e.get("canonical_name") or e.get("name", "") for e in entities if isinstance(e, dict)
     ]
     # Deduplicate while preserving order
     seen: set[str] = set()
@@ -1539,22 +1537,28 @@ async def reconcile_and_persist_v4_node(state: dict[str, Any]) -> dict[str, Any]
     """
     from app.llm.providers import get_instructor_for_task
     from app.services.extraction.entity_registry import EntityRegistry
+    from app.services.extraction.faithfulness import batch_verify_faithfulness
     from app.services.extraction.reconciler import reconcile_flat_entities
     from app.services.graph_builder import apply_alias_map_v4
 
     chapter_number = state.get("chapter_number", 0)
     ended_relations = state.get("ended_relations", [])
 
+    # 0. Faithfulness check — filter hallucinated entities before reconciliation
+    chapter_text: str = state.get("chapter_text", "")
+    entities_pre_faith = state.get("entities", [])
+    entities_pre_faith = await batch_verify_faithfulness(entities_pre_faith, chapter_text)
+
     # 1. Reconcile (3-tier dedup)
     try:
         client, model = get_instructor_for_task("dedup")
-        alias_map = await reconcile_flat_entities(state.get("entities", []), client, model)
+        alias_map = await reconcile_flat_entities(entities_pre_faith, client, model)
     except Exception:
         logger.warning("v4_reconciliation_failed", chapter=chapter_number, exc_info=True)
         alias_map = {}
 
     # 2. Normalize names via intra-chapter dedup
-    entities = state.get("entities", [])
+    entities = entities_pre_faith
     relations = state.get("relations", [])
     apply_alias_map_v4(entities, relations, alias_map)
     apply_alias_map_v4([], ended_relations, alias_map)
@@ -1615,7 +1619,9 @@ async def reconcile_and_persist_v4_node(state: dict[str, Any]) -> dict[str, Any]
 
     entity_map: dict[str, dict] = {}
     for e in entities:
-        name = (e.get("canonical_name") or e.get("name") or e.get("character") or "").lower().strip()
+        name = (
+            (e.get("canonical_name") or e.get("name") or e.get("character") or "").lower().strip()
+        )
         if name:
             entity_map[name] = e
     relations = validate_relations(relations, entity_map)
