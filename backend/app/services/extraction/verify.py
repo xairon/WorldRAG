@@ -216,6 +216,81 @@ def _verify_single_entity(
             # Just log, don't reject
             pass
 
+    # ── GOLEM-specific checks (§6.3) ──────────────────────────────────
+
+    # Check 7: PsychologicalState/CharacterFeature/NarrativeRole must reference a character
+    if entity_type in ("psychological_state", "character_feature", "narrative_role"):
+        char_ref = entity.get("character", "").lower().strip()
+        if not char_ref:
+            return False, f"golem_missing_character_ref:{entity_type}:{name}"
+        if known_character_names and char_ref not in known_character_names:
+            if char_ref not in chapter_text_lower:
+                return False, f"golem_character_not_found:{entity_type}:{char_ref}"
+
+    # Check 8: SocialRelationship must have ≥2 participants
+    if entity_type == "social_relationship":
+        participants = entity.get("participants", [])
+        if len(participants) < 2:
+            return False, f"golem_insufficient_participants:{name}:{len(participants)}"
+
+    # Check 9: Setting should not be a physical location
+    if entity_type == "setting":
+        location_types = {
+            "city",
+            "dungeon",
+            "forest",
+            "mountain",
+            "building",
+            "region",
+            "cave",
+            "tower",
+            "village",
+            "house",
+            "room",
+            "hall",
+        }
+        if name_lower in location_types or any(
+            lt in name_lower for lt in ("floor ", "room ", "cave ")
+        ):
+            return False, f"golem_setting_is_location:{name}"
+
+    # Check 10: NarrativeRole should not be a CharacterFeature
+    if entity_type == "narrative_role":
+        trait_words = {
+            "brave",
+            "strong",
+            "smart",
+            "kind",
+            "cruel",
+            "tall",
+            "short",
+            "fast",
+            "slow",
+            "wise",
+            "cunning",
+            "loyal",
+            "stubborn",
+        }
+        role_type = entity.get("role_type", "").lower()
+        if role_type in trait_words:
+            return False, f"golem_role_is_trait:{name}:{role_type}"
+
+    # Check 11: CharacterFeature should not be a NarrativeRole
+    if entity_type == "character_feature":
+        role_types = {
+            "protagonist",
+            "antagonist",
+            "mentor",
+            "trickster",
+            "herald",
+            "guardian",
+            "shadow",
+            "shapeshifter",
+            "narrator",
+        }
+        if name_lower in role_types:
+            return False, f"golem_feature_is_role:{name}"
+
     return True, ""
 
 

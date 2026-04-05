@@ -1940,64 +1940,67 @@ class EntityRepository(Neo4jRepository):
     ) -> int:
         """Create CharacterStoff nodes for characters appearing in multiple books.
 
-        For each canonical_name, checks if the character exists in other books
-        of the same series. If so, MERGEs a CharacterStoff node and links via
-        INSTANCE_OF_STOFF. Uses MERGE to handle multi-chapter race conditions.
+        Batch query: finds all characters that exist in other books of the series,
+        MERGEs CharacterStoff nodes, and creates INSTANCE_OF_STOFF edges.
+        Uses MERGE to handle multi-chapter race conditions.
         """
         if not series_id or not characters:
             return 0
 
-        total = 0
-        for char_name in characters:
-            # Check if this character exists in other books of the series
-            results = await self.execute_read(
-                """
-                MATCH (c:Character {canonical_name: $name})
-                WHERE c.book_id <> $book_id
-                MATCH (s:Series {name: $series_id})-[:CONTAINS_WORK]->(b:Book {id: c.book_id})
-                RETURN c.book_id AS other_book_id
-                LIMIT 1
-                """,
-                {"name": char_name, "book_id": book_id, "series_id": series_id},
-            )
+        # Batch: find which characters exist in other books of this series
+        cross_book = await self.execute_read(
+            """
+            UNWIND $names AS name
+            MATCH (c:Character {canonical_name: name})
+            WHERE c.book_id <> $book_id
+            MATCH (s:Series {name: $series_id})-[:CONTAINS_WORK]->(b:Book {id: c.book_id})
+            RETURN DISTINCT name
+            """,
+            {"names": characters, "book_id": book_id, "series_id": series_id},
+        )
+        cross_book_names = [r["name"] for r in cross_book]
 
-            if results:
-                # Character exists in another book — create/merge CharacterStoff
-                await self.execute_write(
-                    """
-                    MERGE (cs:CharacterStoff {canonical_name: $name, series_id: $series_id})
-                    ON CREATE SET
-                        cs.description = '',
-                        cs.batch_id = $batch_id,
-                        cs.created_at = timestamp()
-                    WITH cs
-                    MATCH (c:Character {canonical_name: $name, book_id: $book_id})
-                    MERGE (c)-[:INSTANCE_OF_STOFF]->(cs)
-                    """,
-                    {
-                        "name": char_name,
-                        "series_id": series_id,
-                        "book_id": book_id,
-                        "batch_id": batch_id,
-                    },
-                )
+        if not cross_book_names:
+            return 0
 
-                # Also link characters from other books to the same Stoff
-                await self.execute_write(
-                    """
-                    MATCH (cs:CharacterStoff {canonical_name: $name, series_id: $series_id})
-                    MATCH (c:Character {canonical_name: $name})
-                    WHERE c.book_id <> $book_id
-                    MERGE (c)-[:INSTANCE_OF_STOFF]->(cs)
-                    """,
-                    {
-                        "name": char_name,
-                        "series_id": series_id,
-                        "book_id": book_id,
-                    },
-                )
-                total += 1
+        # Batch: create CharacterStoff + link current book's characters
+        await self.execute_write(
+            """
+            UNWIND $names AS name
+            MERGE (cs:CharacterStoff {canonical_name: name, series_id: $series_id})
+            ON CREATE SET
+                cs.description = '',
+                cs.batch_id = $batch_id,
+                cs.created_at = timestamp()
+            WITH cs, name
+            MATCH (c:Character {canonical_name: name, book_id: $book_id})
+            MERGE (c)-[:INSTANCE_OF_STOFF]->(cs)
+            """,
+            {
+                "names": cross_book_names,
+                "series_id": series_id,
+                "book_id": book_id,
+                "batch_id": batch_id,
+            },
+        )
 
+        # Batch: link characters from OTHER books to the same Stoff
+        await self.execute_write(
+            """
+            UNWIND $names AS name
+            MATCH (cs:CharacterStoff {canonical_name: name, series_id: $series_id})
+            MATCH (c:Character {canonical_name: name})
+            WHERE c.book_id <> $book_id
+            MERGE (c)-[:INSTANCE_OF_STOFF]->(cs)
+            """,
+            {
+                "names": cross_book_names,
+                "series_id": series_id,
+                "book_id": book_id,
+            },
+        )
+
+        total = len(cross_book_names)
         if total:
             logger.info(
                 "character_stoff_created",
