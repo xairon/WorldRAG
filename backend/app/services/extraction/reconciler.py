@@ -102,6 +102,63 @@ async def reconcile_flat_entities(
         except Exception:
             client, model = None, ""
 
+    # ── Cross-type dedup: same name, different types ──────────────────
+    # Group entities by normalized name
+    by_name: dict[str, list[dict]] = {}
+    for entity in entities:
+        name = (_get_name_from_flat_entity(entity) or "").lower().strip()
+        if name:
+            by_name.setdefault(name, []).append(entity)
+
+    # For names appearing as multiple types, keep highest-priority type
+    type_priority = {
+        "character": 10,
+        "location": 9,
+        "creature": 8,
+        "skill": 8,
+        "class": 8,
+        "item": 7,
+        "faction": 7,
+        "level_change": 6,
+        "stat_change": 6,
+        "event": 5,
+        "arc": 4,
+        "prophecy": 4,
+        "concept": 3,
+        "genre_entity": 2,
+    }
+
+    deduped: list[dict] = []
+    cross_type_merges = 0
+    for name, ents in by_name.items():
+        types = {e.get("entity_type") for e in ents}
+        if len(types) > 1:
+            # Same name, multiple types — keep highest priority
+            best = max(
+                ents,
+                key=lambda e: type_priority.get(e.get("entity_type", ""), 0),
+            )
+            deduped.append(best)
+            cross_type_merges += 1
+            logger.info(
+                "cross_type_dedup",
+                name=name,
+                types=list(types),
+                kept_type=best.get("entity_type"),
+            )
+        else:
+            deduped.extend(ents)
+
+    if cross_type_merges:
+        logger.info(
+            "cross_type_dedup_summary",
+            total_merges=cross_type_merges,
+            entities_before=len(entities),
+            entities_after=len(deduped),
+        )
+
+    entities = deduped
+
     # Group entity dicts by entity_type
     groups: dict[str, list[dict]] = {}
     for entity in entities:

@@ -1610,7 +1610,17 @@ async def reconcile_and_persist_v4_node(state: dict[str, Any]) -> dict[str, Any]
                         field_name = err.split(".")[1].split("=")[0]
                         entity_dict.pop(field_name, None)
 
-    # 5. Persist to Neo4j
+    # 5. Relation type constraint validation
+    from app.services.extraction.validation import validate_relations
+
+    entity_map: dict[str, dict] = {}
+    for e in entities:
+        name = (e.get("canonical_name") or e.get("name") or e.get("character") or "").lower().strip()
+        if name:
+            entity_map[name] = e
+    relations = validate_relations(relations, entity_map)
+
+    # 6. Persist to Neo4j
     # Note: actual persistence happens in the worker (tasks.py), not in the graph node.
     # The graph node prepares the data; the worker calls entity_repo.upsert_v4_entities().
     for entity_dict in entities:

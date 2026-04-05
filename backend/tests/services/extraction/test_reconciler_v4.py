@@ -311,3 +311,48 @@ class TestReconcileFlatEntities:
         assert call_count == 2
         # character group failed silently; location group succeeded
         assert result == {"Forest": "Dark Forest"}
+
+
+class TestCrossTypeDedup:
+    async def test_same_name_different_types_keeps_highest_priority(self):
+        """Same name as Character and Event → keeps Character (higher priority)."""
+        entities = [
+            {"entity_type": "character", "name": "Jake"},
+            {"entity_type": "event", "name": "Jake"},
+            {"entity_type": "concept", "name": "Jake"},
+        ]
+        mock_dedup = AsyncMock(return_value=([], {}))
+        with (
+            patch(
+                "app.services.extraction.reconciler.get_instructor_for_task",
+                return_value=(AsyncMock(), "test-model"),
+            ),
+            patch(
+                "app.services.extraction.reconciler.deduplicate_entities",
+                mock_dedup,
+            ),
+        ):
+            await reconcile_flat_entities(entities)
+        # Only character "Jake" should survive (dedup called with 1 entity → skipped)
+        assert mock_dedup.call_count == 0  # 1 character entity → < 2, skip dedup
+
+    async def test_different_names_not_affected(self):
+        """Different names should not trigger cross-type dedup."""
+        entities = [
+            {"entity_type": "character", "name": "Jake"},
+            {"entity_type": "event", "name": "Battle of Ironhold"},
+        ]
+        mock_dedup = AsyncMock(return_value=([], {}))
+        with (
+            patch(
+                "app.services.extraction.reconciler.get_instructor_for_task",
+                return_value=(AsyncMock(), "test-model"),
+            ),
+            patch(
+                "app.services.extraction.reconciler.deduplicate_entities",
+                mock_dedup,
+            ),
+        ):
+            await reconcile_flat_entities(entities)
+        # Both should survive — different names
+        assert mock_dedup.call_count == 0  # each type has only 1 entity
