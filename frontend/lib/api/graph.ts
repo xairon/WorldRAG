@@ -40,6 +40,9 @@ export interface OntologyEntityType {
   label: string
   count: number
   layer: "core" | "genre" | "induced"
+  golem_alignment?: string
+  description?: string
+  golem_category?: string
   sample_entities: string[]
   avg_confidence: number
 }

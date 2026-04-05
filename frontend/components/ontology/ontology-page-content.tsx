@@ -125,6 +125,7 @@ export function OntologyPageContent({ slug }: OntologyPageContentProps) {
         <EntityTypeTable
           entityTypes={ontology.entity_types}
           selectedType={selectedType}
+          groupByCategory
         />
         <RelationTypeTable
           relationTypes={ontology.relation_types}

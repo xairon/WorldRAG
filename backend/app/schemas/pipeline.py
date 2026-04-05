@@ -56,6 +56,9 @@ class OntologyNodeTypeInfo(BaseModel):
 
     name: str
     layer: str
+    golem_alignment: str = ""
+    description: str = ""
+    golem_category: str = ""
     properties: list[PropertyInfo] = Field(default_factory=list)
 
 

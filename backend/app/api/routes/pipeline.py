@@ -311,10 +311,28 @@ def _build_ontology() -> tuple[list[OntologyNodeTypeInfo], list[OntologyRelTypeI
     # Full ontology with all layers
     full = OntologyLoader.from_layers("litrpg", "primal_hunter")
 
+    # GOLEM category map for frontend grouping
+    _golem_categories = {
+        "G0": "Characters", "G1": "Characters", "G17": "Characters",
+        "G3": "Psychology", "G4": "Social", "G5": "Events",
+        "G7": "Narrative", "G9": "Narrative", "G10": "Narrative", "G11": "Narrative",
+        "G12": "World", "G13": "World", "G14": "Stoff", "G16": "Objects",
+        "G18": "Textual", "F1": "Bibliographic", "F2": "Bibliographic",
+    }
+
+    def _golem_cat(alignment: str) -> str:
+        for prefix, cat in _golem_categories.items():
+            if alignment.startswith(prefix):
+                return cat
+        return "Other"
+
     node_types = [
         OntologyNodeTypeInfo(
             name=nt.name,
             layer=_get_layer(nt.name),
+            golem_alignment=nt.golem_alignment,
+            description=nt.description,
+            golem_category=_golem_cat(nt.golem_alignment) if nt.golem_alignment else _get_layer(nt.name).capitalize(),
             properties=[
                 PropertyInfo(
                     name=p.name,
