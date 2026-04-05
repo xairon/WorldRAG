@@ -17,36 +17,6 @@ import structlog
 
 logger = structlog.get_logger(__name__)
 
-# ── Generic game mechanics that should not be entities ──────────────────
-_GENERIC_MECHANICS = frozenset(
-    {
-        "stamina",
-        "mana",
-        "health",
-        "hp",
-        "mp",
-        "free points",
-        "skill points",
-        "experience",
-        "xp",
-        "level",
-        "attribute",
-        "stat",
-        "stat points",
-        "agility",
-        "strength",
-        "perception",
-        "vitality",
-        "willpower",
-        "wisdom",
-        "toughness",
-        "endurance",
-        "intelligence",
-        "luck",
-        "charisma",
-        "dexterity",
-    }
-)
 
 # ── Generic role names that should not be Characters ────────────────────
 _GENERIC_ROLES = frozenset(
@@ -181,6 +151,7 @@ def _verify_single_entity(
     chapter_text_lower: str,
     chapter_text: str,
     known_character_names: frozenset[str] | None = None,
+    ontology: Any = None,
 ) -> tuple[bool, str]:
     """Verify a single entity against source text.
 
@@ -210,8 +181,11 @@ def _verify_single_entity(
             return False, f"name_not_in_text:{name}"
 
     # Check 2: Characters should not be generic role names
-    if entity_type == "character" and name_lower in _GENERIC_ROLES:
-        return False, f"generic_role_as_character:{name}"
+    # Use ontology if available, fallback to hardcoded _GENERIC_ROLES
+    if entity_type == "character":
+        char_exclusions = ontology.get_type_exclusions("character") if ontology else _GENERIC_ROLES
+        if name_lower in char_exclusions:
+            return False, f"generic_role_as_character:{name}"
 
     # Check 3: Events should not use character names
     if entity_type == "event" and known_character_names:
@@ -221,9 +195,11 @@ def _verify_single_entity(
             if name_lower.startswith(char_name + " "):
                 return False, f"event_starts_with_character:{name}"
 
-    # Check 4: Game mechanics as Concept/Item is wrong type (should be genre_entity/stat_change)
-    if entity_type in ("concept", "item") and name_lower in _GENERIC_MECHANICS:
-        return False, f"game_mechanic_wrong_type:{name}:{entity_type}"
+    # Check 4: Type exclusions from ontology (genre-conditional)
+    if ontology:
+        excluded = ontology.get_type_exclusions(entity_type)
+        if name_lower in excluded:
+            return False, f"ontology_type_exclusion:{name}:{entity_type}"
 
     # Check 5: Known characters extracted as wrong type
     if known_character_names and name_lower in known_character_names and entity_type != "character":
@@ -296,9 +272,11 @@ async def verify_extractions_node(state: dict[str, Any]) -> dict[str, Any]:
     removed_count = 0
     removal_reasons: dict[str, int] = {}
 
+    ontology = state.get("ontology")
+
     for entity in entities:
         is_valid, reason = _verify_single_entity(
-            entity, chapter_text_lower, chapter_text, known_character_names
+            entity, chapter_text_lower, chapter_text, known_character_names, ontology
         )
         if is_valid:
             verified.append(entity)

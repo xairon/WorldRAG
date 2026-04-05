@@ -1624,7 +1624,7 @@ async def reconcile_and_persist_v4_node(state: dict[str, Any]) -> dict[str, Any]
         )
         if name:
             entity_map[name] = e
-    relations = validate_relations(relations, entity_map)
+    relations = validate_relations(relations, entity_map, ontology)
 
     # 6. Persist to Neo4j
     # Note: actual persistence happens in the worker (tasks.py), not in the graph node.

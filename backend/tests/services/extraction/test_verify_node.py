@@ -1,5 +1,7 @@
 """Tests for verify_extractions_node — heuristic entity filtering + metadata."""
 
+from unittest.mock import MagicMock
+
 import pytest
 
 from app.services.extraction.verify import (
@@ -195,3 +197,53 @@ class TestVerifyExtractionsNode:
         result = await verify_extractions_node(state)
         assert len(result["entities"]) == 1
         assert result["entities"][0]["name"] == "Jake"
+
+
+class TestVerifySingleEntityWithOntology:
+    def test_ontology_type_exclusion_concept(self):
+        """Ontology type_exclusions block game stats as concept entities."""
+        mock_ontology = MagicMock()
+        mock_ontology.get_type_exclusions.side_effect = lambda et: (
+            {"stamina", "mana", "health", "hp"} if et == "concept" else set()
+        )
+
+        text = "His stamina was drained."
+        entity = {"name": "stamina", "entity_type": "concept"}
+        is_valid, reason = _verify_single_entity(entity, text.lower(), text, ontology=mock_ontology)
+        assert is_valid is False
+        assert "ontology_type_exclusion" in reason
+
+    def test_ontology_type_exclusion_item(self):
+        """Ontology type_exclusions block game stats as item entities."""
+        mock_ontology = MagicMock()
+        mock_ontology.get_type_exclusions.side_effect = lambda et: (
+            {"mana", "hp", "xp"} if et == "item" else set()
+        )
+
+        text = "He spent all his mana."
+        entity = {"name": "mana", "entity_type": "item"}
+        is_valid, reason = _verify_single_entity(entity, text.lower(), text, ontology=mock_ontology)
+        assert is_valid is False
+        assert "ontology_type_exclusion" in reason
+
+    def test_ontology_character_exclusions_used_when_provided(self):
+        """When ontology is provided, its character exclusions override hardcoded set."""
+        mock_ontology = MagicMock()
+        # Ontology only excludes "minion", not "guard"
+        mock_ontology.get_type_exclusions.side_effect = lambda et: (
+            {"minion"} if et == "character" else set()
+        )
+
+        text = "The guard stood watch."
+        entity = {"name": "guard", "entity_type": "character"}
+        # "guard" is not in the mock ontology's character exclusions → valid
+        is_valid, reason = _verify_single_entity(entity, text.lower(), text, ontology=mock_ontology)
+        assert is_valid is True
+
+    def test_no_ontology_falls_back_to_hardcoded_generic_roles(self):
+        """Without ontology, hardcoded _GENERIC_ROLES is used for character check."""
+        text = "The guard stood at the gate."
+        entity = {"name": "guard", "entity_type": "character"}
+        is_valid, reason = _verify_single_entity(entity, text.lower(), text, ontology=None)
+        assert is_valid is False
+        assert "generic_role" in reason

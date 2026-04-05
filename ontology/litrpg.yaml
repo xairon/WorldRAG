@@ -261,3 +261,73 @@ regex_patterns:
     pattern: '\[((?:[^\[\]]|\[[^\[\]]*\]){5,200})\]'
     entity_type: SystemNotification
     captures: { content: 1 }
+
+validation_rules:
+  type_exclusions:
+    concept:
+      excluded_terms:
+        - stamina
+        - mana
+        - health
+        - hp
+        - mp
+        - free points
+        - skill points
+        - experience
+        - xp
+        - level
+        - attribute
+        - stat
+        - stat points
+        - agility
+        - strength
+        - perception
+        - vitality
+        - willpower
+        - wisdom
+        - toughness
+        - endurance
+        - intelligence
+        - luck
+        - charisma
+        - dexterity
+      reason: "Game stats — use stat_change or genre_entity(sub_type=stat)"
+    item:
+      excluded_terms:
+        - stamina
+        - mana
+        - health
+        - hp
+        - mp
+        - xp
+        - free points
+        - skill points
+      reason: "Game stats — not items"
+  domain_range:
+    HAS_SKILL:
+      from: [character]
+      to: [skill, genre_entity]
+    HAS_CLASS:
+      from: [character]
+      to: [class, genre_entity]
+    HAS_TITLE:
+      from: [character]
+      to: [genre_entity]
+    HAS_PROFESSION:
+      from: [character]
+      to: [genre_entity]
+    LOCATED_AT:
+      from: [character, item, event, creature, faction]
+      to: [location]
+    MEMBER_OF:
+      from: [character]
+      to: [faction]
+    PARTICIPATES_IN:
+      from: [character, creature]
+      to: [event]
+    POSSESSES:
+      from: [character]
+      to: [item, genre_entity]
+    IS_RACE:
+      from: [character]
+      to: [genre_entity, creature]

@@ -268,3 +268,75 @@ relationship_types:
     properties:
       reliability: { type: enum, values: [narrator, character_pov, system, flashback] }
       confidence: { type: float }  # 0.0 to 1.0
+
+validation_rules:
+  type_exclusions:
+    character:
+      excluded_terms:
+        - guard
+        - guards
+        - soldier
+        - soldiers
+        - merchant
+        - merchants
+        - villager
+        - villagers
+        - innkeeper
+        - bartender
+        - shopkeeper
+        - servant
+        - servants
+        - bandit
+        - bandits
+        - thief
+        - thieves
+        - farmer
+        - farmers
+        - priest
+        - priestess
+        - healer
+        - hunter
+        - hunters
+        - traveler
+        - travelers
+        - stranger
+        - strangers
+        - warrior
+        - warriors
+        - mage
+        - mages
+        - knight
+        - knights
+        - scout
+        - scouts
+        - assassin
+        - assassins
+        - elder
+        - elders
+        - child
+        - children
+        - boy
+        - girl
+        - man
+        - woman
+        - old man
+        - old woman
+        - narrator
+        - voice
+        - crowd
+        - mob
+        - army
+      reason: "Generic roles — only extract named individuals as Characters"
+  domain_range:
+    ALLIES_WITH:
+      from: [character]
+      to: [character]
+    ENEMIES_WITH:
+      from: [character]
+      to: [character]
+    MENTORS:
+      from: [character]
+      to: [character]
+    SIBLING_OF:
+      from: [character]
+      to: [character]

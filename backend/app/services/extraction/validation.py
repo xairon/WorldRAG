@@ -6,42 +6,28 @@ detects orphan entities, and flags consistency issues.
 
 from __future__ import annotations
 
+from typing import Any
+
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
-
-# Relation type → (allowed source types, allowed target types)
-RELATION_TYPE_CONSTRAINTS: dict[str, tuple[set[str], set[str]]] = {
-    "HAS_SKILL": ({"character"}, {"genre_entity", "skill"}),
-    "HAS_CLASS": ({"character"}, {"genre_entity", "class"}),
-    "HAS_TITLE": ({"character"}, {"genre_entity", "title"}),
-    "HAS_PROFESSION": ({"character"}, {"genre_entity", "profession"}),
-    "LOCATED_AT": (
-        {"character", "item", "event", "creature", "faction"},
-        {"location"},
-    ),
-    "MEMBER_OF": ({"character"}, {"faction"}),
-    "PARTICIPATES_IN": ({"character", "creature"}, {"event"}),
-    "POSSESSES": ({"character"}, {"item", "genre_entity"}),
-    "IS_RACE": ({"character"}, {"genre_entity", "creature"}),
-    "SIBLING_OF": ({"character"}, {"character"}),
-    "ALLIES_WITH": ({"character"}, {"character"}),
-    "ENEMIES_WITH": ({"character"}, {"character"}),
-    "MENTORS": ({"character"}, {"character"}),
-}
 
 
 def validate_relations(
     relations: list[dict],
     entity_map: dict[str, dict],
+    ontology: Any = None,
 ) -> list[dict]:
-    """Validate relations against type constraints.
+    """Validate relations against type constraints from ontology.
 
     Removes relations where source/target types don't match expected constraints.
+    When no ontology is provided, all relations pass through.
 
     Args:
         relations: List of relation dicts with source, target, relation_type.
         entity_map: Map of entity name (lowercase) → entity dict with entity_type.
+        ontology: OntologyLoader instance for domain/range constraints. If None,
+                  all relations pass through (backward-compatible behaviour).
 
     Returns:
         Filtered list of valid relations.
@@ -51,7 +37,12 @@ def validate_relations(
 
     for rel in relations:
         rel_type = rel.get("relation_type", "")
-        constraints = RELATION_TYPE_CONSTRAINTS.get(rel_type)
+
+        constraints = None
+        if ontology:
+            dr = ontology.get_domain_range(rel_type)
+            if dr:
+                constraints = dr  # (from_set, to_set)
 
         if constraints is None:
             # No constraint defined — allow through

@@ -75,6 +75,10 @@ class OntologyLoader:
     regex_patterns: dict[str, dict] = field(default_factory=dict)
     few_shot_examples: dict[str, list] = field(default_factory=dict)
     layers_loaded: list[str] = field(default_factory=list)
+    # entity_type -> {excluded_terms: set[str], reason: str}
+    type_exclusions: dict[str, dict] = field(default_factory=dict)
+    # relation_type -> {from: set[str], to: set[str]}
+    domain_range: dict[str, dict] = field(default_factory=dict)
     _layer_versions: dict[str, str] = field(default_factory=dict)
     _layer_labels: dict[str, str] = field(default_factory=dict)
     _node_type_origin: dict[str, str] = field(default_factory=dict)
@@ -214,7 +218,36 @@ class OntologyLoader:
         if "few_shot_examples" in data:
             self.few_shot_examples.update(data["few_shot_examples"])
 
+        # Validation rules (type_exclusions + domain_range)
+        rules = data.get("validation_rules", {})
+        for entity_type, exclusion in (rules.get("type_exclusions") or {}).items():
+            existing = self.type_exclusions.get(
+                entity_type, {"excluded_terms": set(), "reason": ""}
+            )
+            existing["excluded_terms"] |= set(exclusion.get("excluded_terms") or [])
+            if exclusion.get("reason"):
+                existing["reason"] = exclusion["reason"]
+            self.type_exclusions[entity_type] = existing
+
+        for rel_type, constraint in (rules.get("domain_range") or {}).items():
+            self.domain_range[rel_type] = {
+                "from": {t.lower() for t in (constraint.get("from") or [])},
+                "to": {t.lower() for t in (constraint.get("to") or [])},
+            }
+
         self.layers_loaded.append(layer_name)
+
+    def get_type_exclusions(self, entity_type: str) -> set[str]:
+        """Get excluded terms for an entity type (from merged validation rules)."""
+        exclusion = self.type_exclusions.get(entity_type)
+        return exclusion["excluded_terms"] if exclusion else set()
+
+    def get_domain_range(self, relation_type: str) -> tuple[set[str], set[str]] | None:
+        """Get allowed (from_types, to_types) for a relation type."""
+        constraint = self.domain_range.get(relation_type)
+        if constraint:
+            return (constraint["from"], constraint["to"])
+        return None
 
     def _build_enum_index(self) -> None:
         """Build a fast lookup of enum constraints per node type."""
