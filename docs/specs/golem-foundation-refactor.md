@@ -1,8 +1,12 @@
 # Cahier des charges v2 : Refondation ontologique complète sur GOLEM v1.1
 
-> **Version** : 2.0 — réécriture complète  
+> **Version** : 3.0 — ontologie + implémentation opérationnelle complète  
 > **Date** : 2026-04-05  
-> **Objectif** : Refonder la couche core de WorldRAG sur GOLEM v1.1, en exploitant **100%** des classes et propriétés pertinentes, y compris le support multi-série (Stoff) et la structure narrative formelle (Narrative Sequence, Narrative Unit, Narrative Function).
+> **Objectif** : Refonder la couche core de WorldRAG sur GOLEM v1.1, en exploitant **100%** des classes et propriétés pertinentes, y compris le support multi-série (Stoff), la structure narrative formelle, et les contraintes opérationnelles concrètes (extraction, induction, registry, rétro-compatibilité, RAG).
+>
+> **Sections 1-5 + Annexes** : Mapping ontologique GOLEM (94% classes, 89% propriétés)  
+> **Sections 6-6sexies** : Implémentation opérationnelle (extraction strategy, induction, registry, backward compat, RAG)  
+> **Section 9** : Plan de migration en 6 phases avec inventaire complet des fichiers impactés
 
 ---
 
@@ -1034,6 +1038,395 @@ CREATE FULLTEXT INDEX narrative_stoff_fulltext IF NOT EXISTS
 
 ---
 
+## 6bis. Stratégie d'extraction — contraintes opérationnelles
+
+> Les sections 6.1-6.8 décrivent le **quoi** (quels types, quelles validations). Cette section décrit le **comment** : la stratégie concrète d'extraction, les choix d'architecture, et les contraintes découvertes par audit du code existant.
+
+### 6bis.1 Single-pass avec 20 types : faisabilité et limites
+
+**Architecture actuelle** : Le pipeline V4 extrait TOUS les types d'entités en un seul appel LLM via Instructor (`EntityExtractionResult` = discriminated union de 12 types). Le prompt statique (cacheable Gemini) fait ~3,500 tokens. Le chapitre moyen fait ~5,000 tokens.
+
+**Impact de +8 types** :
+- +550 tokens au prompt statique (8 descriptions × ~70 tokens)
+- Avec le cache préfixe Gemini : overhead = **0** pour les chapitres après le 1er
+- Sans cache (OpenRouter) : +1,100 tokens/chapitre × 200 chapitres = +220K tokens = **$0.057/livre** → négligeable
+
+**Limite qualitative** : La littérature et l'expérience montrent que le single-pass reste fiable jusqu'à ~15-20 types nommés avec définitions claires. Passer de 12 à 20 types est à la **limite haute**. Au-delà, risque de :
+- Confusion inter-types (PsychologicalState vs CharacterFeature vs NarrativeRole)
+- Omission de types rares (NarrativeUnit extrait 0 fois si le LLM "oublie")
+- Augmentation du taux de hallucination
+
+**Décision** : Rester en single-pass. Atténuer le risque via :
+1. Descriptions de types très distinctes avec des exemples positifs ET négatifs discriminants
+2. Le nœud `verify_coverage` existant (2e appel LLM) rattrape les omissions
+3. NarrativeUnit et TextualFeature ne sont PAS extraits par le LLM (voir ci-dessous)
+
+### 6bis.2 Stratégie par type : LLM vs programmatique
+
+Tous les nouveaux types ne nécessitent pas une extraction LLM. Stratégie hybride :
+
+| Type | Méthode d'extraction | Justification |
+|------|---------------------|---------------|
+| **PsychologicalState** | LLM (single-pass) | Sémantique, pas détectable par regex |
+| **Setting** | LLM (single-pass) | Sémantique, distinction Setting/Location nécessite compréhension |
+| **CharacterFeature** | LLM (single-pass) | Sémantique |
+| **NarrativeRole** | LLM (single-pass) | Sémantique |
+| **SocialRelationship** | LLM (relation pass) | Extrait dans `extract_relations_node`, pas `extract_entities_node` — c'est une relation réifiée |
+| **RelationshipRole** | LLM (relation pass) | Idem, découle de SocialRelationship |
+| **NarrativeUnit** | **Programmatique** (per-Event) | Chaque Event extrait génère automatiquement un NarrativeUnit. Zéro coût LLM. |
+| **TextualFeature** (structural) | **Programmatique** (verify.py) | `dialogue_ratio`, `pov_character`, `scene_count` restent heuristiques — plus précis que le LLM |
+| **TextualFeature** (enriched) | LLM (optionnel, futur) | `narrative_tension`, `prose_style` — LLM nécessaire. Phase future. |
+
+**Conséquence** : Le LLM single-pass passe de 12 à **16 types** (pas 20), ce qui reste dans la zone fiable. NarrativeUnit et TextualFeature structural sont générés sans LLM.
+
+### 6bis.3 Dépendances inter-types à l'extraction
+
+PsychologicalState, NarrativeRole, CharacterFeature, SocialRelationship référencent tous un Character par nom. Deux scénarios :
+
+**Intra-chapitre** (même appel LLM) : Le LLM produit le Character ET les types dépendants dans la même réponse JSON. La résolution est naturelle — le Character apparaît dans la liste avant les dépendants. **Aucun changement nécessaire.**
+
+**Cross-chapitre** : Le Character a été extrait dans un chapitre précédent. L'EntityRegistry injecte les noms canoniques dans le prompt. Le reconciler fait du fuzzy matching (thefuzz, seuil ≥90%). **Risque** : si le nom dans PsychologicalState.character ne matche pas exactement → référence pendante.
+
+**Mitigation** : Dans `reconcile_and_persist_v4_node`, ajouter une étape de résolution des références :
+```python
+for entity in entities:
+    if entity.get("character"):
+        resolved = registry.resolve_name(entity["character"])
+        if resolved:
+            entity["character"] = resolved.canonical_name
+```
+
+### 6bis.4 NarrativeUnit : définition opérationnelle
+
+**Décision** : Un NarrativeUnit par Event extrait (Option C de l'audit).
+
+**Implémentation** :
+- Dans `reconcile_and_persist_v4_node`, après extraction des entités, pour chaque Event : créer automatiquement un NarrativeUnit
+- `proposition` = résumé court de l'Event (déjà disponible dans `Event.description`)
+- Lier via `UNIT_REFERS_TO` (NarrativeUnit → Event)
+- Lier via `UNIT_IN_WORK` (NarrativeUnit → Book)
+- Volume : 5-15 par chapitre → 400-1,200 par livre. Acceptable.
+- **Pas dans le prompt LLM**, pas dans l'EntityRegistry, pas dans le fulltext index
+
+### 6bis.5 TextualFeature : migration depuis verify.py
+
+**Décision** : Approche hybride — les métriques structurelles restent heuristiques, formalisées comme n��uds Neo4j.
+
+**Implémentation** :
+- `verify_extractions_node` (verify.py) continue de calculer `dialogue_ratio`, `pov_character`, `scene_count` via regex
+- **Nouveau** : au lieu de stocker dans `chunk_metadata` (actuellement non persisté !), créer des nœuds TextualFeature et les persister
+- Chaque chapitre produit 3 TextualFeature : `{feature_type: "pov", name: pov_character}`, `{feature_type: "dialogue_density", value: "0.45"}`, `{feature_type: "pacing", value: scene_count}`
+- Relation `HAS_TEXTUAL_FEATURE` : Chapter → TextualFeature
+- Pas de coût LLM additionnel
+
+---
+
+## 6ter. Interaction co-évolutionnaire : induction + GOLEM
+
+> L'audit du `pattern_inducer.py` et de l'`OntologyLoader` révèle des **problèmes critiques** d'interaction entre les types GOLEM core et les types induits à runtime.
+
+### 6ter.1 Problème : collision sémantique non détectée
+
+Le filtre anti-collision actuel (`pattern_inducer.py:267-275`) est **lexical uniquement** (lowercase match). Il détecte :
+- ✅ `PsychologicalState` induit vs `PsychologicalState` core → même nom, bloqué
+- ❌ `EmotionalState` induit vs `PsychologicalState` core → noms différents, **passe entre les mailles**
+
+Résultat : le graphe contient deux types sémantiquement identiques sans lien formel.
+
+### 6ter.2 Solution : inducer GOLEM-aware
+
+**Changement 1** — Le prompt d'induction reçoit les descriptions, pas juste les noms :
+
+```python
+# AVANT (pattern_inducer.py:222)
+entity_types_str = ", ".join(existing_entity_names)
+
+# APRÈS
+entity_types_context = ontology.to_induction_context()
+# Produit: "PsychologicalState: Temporal mental state of a character (emotion, motivation, belief)"
+```
+
+Nouvelle méthode `OntologyLoader.to_induction_context()` : retourne `name: description` pour chaque type, permettant au LLM de comprendre la couverture sémantique existante.
+
+**Changement 2** — Filtre de similarité sémantique post-induction :
+
+```python
+for proposed_type in induced_types:
+    for existing_type in ontology.get_all_types():
+        similarity = cosine_similarity(
+            embed(proposed_type.name + ": " + proposed_type.description),
+            embed(existing_type.name + ": " + existing_type.description)
+        )
+        if similarity > 0.85:
+            # Map to existing type instead of creating new one
+            proposed_type.parent_type = existing_type.name
+            break
+```
+
+Utilise l'infrastructure BGE-m3 déjà disponible. Seuil 0.85 pour éviter les faux positifs.
+
+### 6ter.3 Sous-typage : induced comme spécialisation de GOLEM
+
+**Changement 3** — `InducedEntityType` gagne un champ `parent_type: str | None` :
+
+```python
+class InducedEntityType(BaseModel):
+    name: str
+    description: str
+    parent_type: str | None = None  # NOUVEAU : type GOLEM parent
+    properties: list[dict] = []
+```
+
+Le prompt d'induction instruit le LLM : *"If a discovered type is a specialization of an existing type, set parent_type to the existing type's name."*
+
+**Impact sur Neo4j** : Les entités induites avec `parent_type` portent un **double label** :
+```cypher
+CREATE (n:PsychologicalState:SkillEmotion {name: "berserker_rage", ...})
+```
+
+**Impact sur les prompts** : Dans `_build_type_descriptions()`, les types induits avec `parent_type` apparaissent **sous la section de leur parent**, pas dans `=== AUTO-DISCOVERED ENTITY TYPES ===`.
+
+### 6ter.4 Protection regex patterns
+
+**Changement 4** — Guard anti-écrasement dans `extend_with_induced()` :
+
+```python
+# AVANT (ontology_loader.py:442-447) — écrasement silencieux
+self.regex_patterns[name] = pattern_dict
+
+# APRÈS — skip si existant
+if name not in self.regex_patterns:
+    self.regex_patterns[name] = pattern_dict
+```
+
+### 6ter.5 Validation des relations induites
+
+Les relations induites (découvertes par le LLM) doivent respecter les contraintes `domain_range` GOLEM. Appliquer `validate_domain_range()` **au moment de l'induction**, pas seulement à l'extraction :
+
+```python
+for induced_rel in induced.relationship_types:
+    if not ontology.validate_domain_range(induced_rel.name, induced_rel.source_type, induced_rel.target_type):
+        induced_rel.rejected = True  # Exclure de l'ontologie étendue
+```
+
+---
+
+## 6quater. EntityRegistry — stratégie pour les types GOLEM
+
+### 6quater.1 Découverte critique : Characters déjà book-scoped
+
+L'audit révèle que les Characters sont **déjà scopés par book_id** dans Neo4j :
+```cypher
+MERGE (ch:Character {canonical_name: c.canonical_name, book_id: $book_id})
+```
+
+Le CDC v1 proposait cela comme un changement — c'est **le comportement actuel**. Le CharacterStoff est donc un **ajout pur**, pas un refactoring du scoping.
+
+### 6quater.2 Quels types mettre dans le registry
+
+| Type | Dans le registry ? | Raison |
+|------|-------------------|--------|
+| Character | ✅ Oui (déjà) | Disambiguation cross-chapitre essentielle |
+| Location | ✅ Oui (déjà) | Idem |
+| Event, Concept, etc. | ✅ Oui (déjà) | Idem |
+| **PsychologicalState** | ��� **Non** | Ce sont des attributs de Character, pas des entités indépendantes. Pollueraient le budget de 2000 mots sans améliorer la disambiguation. |
+| **NarrativeRole** | ❌ **Non** | Idem — attribut de Character |
+| **CharacterFeature** | ❌ **Non** | Idem |
+| **SocialRelationship** | ⚠️ **Oui mais limité** | Les relations nommées (ex: "Jake-Casper Alliance") méritent d'être dans le registry pour éviter les doublons cross-chapitre |
+| **Setting** | ✅ **Oui** | Entité indépendante, nécessite disambiguation ("The Tutorial" doit rester stable) |
+| **Object** (ex-Item) | ✅ Oui (déjà) | Inchangé |
+| **NarrativeSequence** (ex-Arc) | ✅ Oui (déjà) | Inchangé |
+| **NarrativeUnit** | ❌ **Non** | Généré programmatiquement, pas besoin de disambiguation |
+| **TextualFeature** | ❌ **Non** | Généré programmatiquement |
+
+**Impact budget** : Le registry est cappé à 2000 mots (~2,600 tokens). Ajouter Setting + SocialRelationship augmente le nombre d'entrées mais **ne gonfle pas le prompt** — le cap tronque les entrées les plus anciennes. Risque : les entités rares du worldbuilding (lieux mineurs, PNJ uniques) sont éjectées plus tôt.
+
+### 6quater.3 Multi-book : cross-book loading et CharacterStoff
+
+**Mécanisme existant** : `process_book_extraction_v4` (tasks.py:461-483) charge déj�� les registries des livres précédents via `EntityRegistry.merge()` **si `series_name` est fourni**. Pas de détection automatique.
+
+**Changements pour Stoff** :
+
+1. `series_name` devient **obligatoire** si un Book fait partie d'une Series (pré-rempli depuis la relation CONTAINS_WORK)
+2. Après `EntityRegistry.merge()`, ajouter une étape de création des CharacterStoff :
+```python
+for entry in merged_registry.get_cross_book_entities():
+    # entry apparaît dans 2+ books
+    if entry.entity_type == "character":
+        stoff = CharacterStoff(canonical_name=entry.canonical_name)
+        neo4j.merge_character_stoff(stoff)
+        neo4j.link_instance_of_stoff(entry.canonical_name, book_id, stoff)
+```
+3. Le V4 pipeline manque `reconcile_with_cross_book()` (V3 only). Ajouter un équivalent V4 qui résout les entités nouvellement extraites contre le registry multi-book.
+
+### 6quater.4 Fix : `significance` est dead code en V4
+
+L'audit révèle que `significance` n'est **jamais peuplé** par le pipeline V4 (seul V3 le fait). Le TYPE CONSTRAINTS block et le tri protagonist/major dans `to_prompt_context()` sont du dead code.
+
+**Fix** : Populer `significance` dans `reconcile_and_persist_v4_node` à partir du `NarrativeRole` extrait :
+```python
+if entity.entity_type == "narrative_role" and entity.role_type == "protagonist":
+    registry.update_significance(entity.character, "protagonist")
+```
+
+---
+
+## 6quinquies. Inventaire complet de rétro-compatibilité
+
+> Audit exhaustif de tous les breaking changes causés par les renommages (Item→Object, Arc→NarrativeSequence, RELATES_TO→INVOLVED_IN, event_type→event_category, OCCURS_BEFORE→PRECEDES).
+
+### Tier 1 — Hard breaks (erreurs runtime immédiates)
+
+| # | Fichier | Ligne(s) | Problème | Fix |
+|---|---------|----------|----------|-----|
+| 1 | `api/routes/graph.py` | 27-40 | `ALLOWED_LABELS` contient `"Item"`, `"Arc"` | Remplacer par `"Object"`, `"NarrativeSequence"` |
+| 2 | `api/routes/graph.py` | 123-133 | `_CORE_TYPES` contient `"Item"`, `"Arc"` | Idem |
+| 3 | `api/routes/graph.py` | 699, 757 | `ev.event_type AS type` | → `ev.event_category AS type` |
+| 4 | `api/routes/reader.py` | 226-239 | Whitelist contient `"Item"` | → `"Object"` |
+| 5 | `repositories/entity_repo.py` | 714 | `MERGE (it:Item ...)` | → `MERGE (o:Object ...)` |
+| 6 | `repositories/entity_repo.py` | 1092 | `_GROUNDING_LABEL_MAP` : `"item": ("Item", "name")` | → `"object": ("Object", "name")` |
+| 7 | `repositories/entity_repo.py` | 1519-1525 | `label_map = {"item": "Item", ...}` | → `"object": "Object"` |
+| 8 | `repositories/entity_repo.py` | 1779, 1815, 1830 | `MERGE/MATCH (n:Arc ...)` | → `(n:NarrativeSequence ...)` |
+| 9 | `repositories/character_state_repo.py` | 118 | `MATCH ... (it:Item)` | → `(o:Object)` |
+| 10 | `scripts/init_neo4j.cypher` | 71, 154-208, 243, 263, 305-337, 358-375 | 15+ contraintes/index sur `:Item`, `:Arc`, `event_type`, `RELATES_TO` | DROP + RECREATE avec nouveaux noms |
+| 11 | `scripts/init_neo4j.cypher` | 263 | `entity_fulltext` hardcodé sur 10 labels (pas Object, NarrativeSequence, ni les 8 nouveaux types) | DROP + RECREATE avec tous les labels |
+
+### Tier 2 — Corruption silencieuse (résultats faux, pas d'erreur)
+
+| # | Fichier | Ligne(s) | Problème | Fix |
+|---|---------|----------|----------|-----|
+| 12 | `repositories/entity_repo.py` | 199, 2407, 2535 | Fallback `"RELATES_TO"` pour relations invalides | → `"UNKNOWN"` ou rejet |
+| 13 | `services/extraction/relations.py` | 82 | `coerce default="RELATES_TO"` | → supprimer le fallback, rejeter |
+| 14 | `services/extraction/book_level.py` | 190, 211 | Fallback `"RELATES_TO"` | → idem |
+| 15 | `agents/chat/nodes/context_assembly.py` | 107 | `rel_type fallback "RELATES_TO"` | → `"UNKNOWN"` |
+| 16 | `services/embedding_pipeline.py` | 157, 185 | Commentaire/fallback `"RELATES_TO"` | → nettoyer |
+| 17 | `repositories/entity_repo.py` | 2231 | `ev.event_type = "action"` | → `ev.event_category` |
+
+### Tier 3 — Breaks frontend/UX
+
+| # | Fichier | Ligne(s) | Problème | Fix |
+|---|---------|----------|----------|-----|
+| 18 | `frontend/lib/constants.ts` | 1-44, 79 | `EntityType` union + `ENTITY_HEX` manquent `Object`, `NarrativeSequence` + 8 nouveaux types | Mettre à jour la union, les couleurs, et `getEntityHex()` |
+| 19 | `frontend/components/graph/graph-detail-panel.tsx` | 62, 76 | Fallback `"RELATES_TO"` | → `"INVOLVED_IN"` |
+| 20 | `frontend/components/graph/graph-container.tsx` | 93-95 | nuqs `labels` param stocke `"Item"`, `"Arc"` | Ignorer silencieusement les labels inconnus (déjà le cas via `ALLOWED_LABELS` no-op) |
+
+### Tier 4 — Tests (20+ fichiers)
+
+| Fichier | Impact |
+|---------|--------|
+| `test_extraction_schemas_v4.py` | 15+ assertions sur `ExtractedItem`, `ExtractedArc`, `event_type`, `RELATES_TO` |
+| `test_ontology_loader.py` | Assertion `event_type in schema` |
+| `test_extraction_unified.py` | Assertion `"RELATES_TO" in prompt` |
+| `test_golden_extraction.py` | `event_type="action"/"process"` |
+| `test_verify_node.py` | `entity_type: "item"` |
+| `test_validation.py` | `entity_type: "item"` |
+| `test_state_change_writes.py` | `ExtractedItem`, `category=="item"` |
+| `test_character_state_*.py` (3 files) | `ItemSnapshot`, `get_items_at_chapter`, `category="item"` |
+| `test_entity_repo_v3.py` | `source_type="item"`, `label_map["item"]` |
+| `test_relation_extraction.py` | `relation_type="RELATES_TO"` |
+| `conftest.py` | `event_type="combat"` |
+
+### Cross-layer YAML
+
+| Fichier | Problème | Fix |
+|---------|----------|-----|
+| `ontology/litrpg.yaml:192-202` | `type_exclusions` key `item` | → `object` |
+| `ontology/litrpg.yaml:216-227` | `domain_range` references `item` | → `object` |
+| `ontology/core.yaml` | Types `Item`, `Arc`, propriété `event_type`, relation `RELATES_TO`, `OCCURS_BEFORE` | Réécrire entièrement (déjà prévu §5) |
+
+---
+
+## 6sexies. Chat RAG — mises à jour nécessaires
+
+### 6sexies.1 Index fulltext : blocker critique
+
+L'index `entity_fulltext` (`init_neo4j.cypher:263`) est hardcodé sur 10 labels. **Les nouveaux types seront invisibles pour le RAG** sans DROP+RECREATE :
+
+```cypher
+-- AVANT
+CREATE FULLTEXT INDEX entity_fulltext IF NOT EXISTS
+FOR (n:Character|Skill|Class|Title|Event|Location|Item|Creature|Faction|Concept)
+ON EACH [n.name, n.description];
+
+-- APRÈS
+DROP INDEX entity_fulltext IF EXISTS;
+CREATE FULLTEXT INDEX entity_fulltext IF NOT EXISTS
+FOR (n:Character|Skill|Class|Title|Event|Location|Object|Creature|Faction|Concept
+     |Setting|SocialRelationship|NarrativeSequence|PsychologicalState|CharacterFeature
+     |NarrativeRole|CharacterStoff|NarrativeStoff)
+ON EACH [n.name, n.description];
+```
+
+### 6sexies.2 Nouvelles routes de requête
+
+Le router actuel a 7 routes mais aucune pour les questions émotionnelles/psychologiques.
+
+**Ajout** : Route `psychological_qa` dans `router.py` :
+- Trigger : "how does X feel", "what is X's emotional arc", "X's state of mind"
+- Dispatche vers une traversée dédiée PsychologicalState chains
+
+**Ajout** : Étendre `relationship_qa` pour traverser SocialRelationship nodes :
+- Actuellement : traversée 2-hop depuis Character via tous les edges
+- Après : traversée spécifique Character → INVOLVED_IN → SocialRelationship → INVOLVED_IN → Character, avec tri par valid_from_chapter
+
+### 6sexies.3 Traversées temporelles (nouvelles Cypher patterns)
+
+**PsychologicalState chains** :
+```cypher
+MATCH (c:Character {canonical_name: $name, book_id: $book_id})
+      -[:HAS_STATE]->(ps:PsychologicalState)
+OPTIONAL MATCH (ps)-[:STATE_TRIGGERED_BY]->(ev:Event)
+RETURN ps.name, ps.state_type, ps.chapter_start, ps.intensity,
+       ev.name AS trigger_event
+ORDER BY ps.chapter_start
+```
+
+**SocialRelationship evolution** :
+```cypher
+MATCH (c1:Character {canonical_name: $name1, book_id: $book_id})-[:INVOLVED_IN]->(sr:SocialRelationship)
+      <-[:INVOLVED_IN]-(c2:Character {canonical_name: $name2, book_id: $book_id})
+RETURN sr.name, sr.relationship_type, sr.valid_from_chapter, sr.valid_to_chapter, sr.description
+ORDER BY sr.valid_from_chapter
+```
+
+**Stoff comparison** :
+```cypher
+MATCH (cs:CharacterStoff {canonical_name: $name})<-[:INSTANCE_OF_STOFF]-(c:Character)
+OPTIONAL MATCH (c)-[:HAS_FEATURE]->(cf:CharacterFeature)
+OPTIONAL MATCH (c)-[:PLAYS_ROLE]->(nr:NarrativeRole)
+RETURN c.book_id, collect(DISTINCT cf.name) AS features, collect(DISTINCT nr.role_type) AS roles
+ORDER BY c.book_id
+```
+
+### 6sexies.4 Token budget dans context_assembly
+
+Actuellement, `context_assembly.py` n'a **aucun plafond de tokens**. Avec les chaînes PsychologicalState (50 états × 30 tokens = 1,500 tokens par personnage) et SocialRelationship graphs, le contexte peut exploser.
+
+**Fix** : Ajouter un budget token explicite dans context_assembly :
+```python
+MAX_CONTEXT_TOKENS = 8000  # ~6000 chars
+context = ""
+for section in [source_passages, kg_entities, community, relationship_context]:
+    if count_tokens(context + section) > MAX_CONTEXT_TOKENS:
+        break
+    context += section
+```
+
+### 6sexies.5 Embeddings : fonctionnent automatiquement
+
+L'audit confirme que `embed_book_entities` (`embedding_pipeline.py:273`) utilise une requête **label-agnostique** :
+```cypher
+MATCH (n {book_id: $book_id})
+WHERE n.embedding IS NULL AND n.canonical_name IS NOT NULL
+  AND NOT n:Book AND NOT n:Chapter AND NOT n:Chunk
+```
+
+**Aucun changement nécessaire** pour les embeddings d'entités. Les nouveaux types avec `canonical_name` + `book_id` seront embedés automatiquement.
+
+Idem pour les embeddings de relations (type-agnostique) et la traversée multi-hop (label-agnostique).
+
+---
+
 ## 7. Impact sur le frontend
 
 ### 7.1 Graph Explorer
@@ -1105,58 +1498,95 @@ CREATE FULLTEXT INDEX narrative_stoff_fulltext IF NOT EXISTS
 
 ---
 
-## 9. Plan de migration (5 phases)
+## 9. Plan de migration (6 phases)
 
-### Phase A : Préparation (sans casser l'existant) — ~3 jours
+### Phase A : Schemas + Ontologie (sans casser l'existant) — ~3 jours
 
-1. Créer le nouveau `core.yaml` GOLEM-aligned (v4.0.0)
-2. Mettre à jour `OntologyLoader` pour parser `golem_alignment` et les nouveaux types
-3. Ajouter les 8 nouveaux modèles Pydantic dans `extraction_v4.py`
-4. Renommer `ExtractedItem` → `ExtractedObject`, `ExtractedArc` → `ExtractedNarrativeSequence`
-5. Ajouter les descriptions de types dans `entity_descriptions.yaml`
-6. Ajouter les negative examples dans `few_shots.yaml`
-7. Mettre à jour les validation rules (domain_range)
-8. **Tester** : les anciens types continuent de fonctionner, les nouveaux sont reconnus par le parser
+**Objectif** : Tout le code compile, les anciens types marchent encore, les nouveaux sont déclarés.
 
-### Phase B : Migration des données existantes — ~1 jour
+1. Créer le nouveau `core.yaml` v4.0.0 GOLEM-aligned (§5)
+2. Mettre à jour `OntologyLoader` : parser `golem_alignment`, `to_induction_context()`, section `disjointness`
+3. Ajouter les 6 nouveaux modèles Pydantic LLM-extracted dans `extraction_v4.py` (PsychologicalState, Setting, CharacterFeature, NarrativeRole, SocialRelationship, RelationshipRole)
+4. Renommer `ExtractedItem` → `ExtractedObject`, `ExtractedArc` → `ExtractedNarrativeSequence` + mise à jour `EntityUnion`
+5. Mettre à jour `_VALID_ENTITY_TYPES` dans extraction_v4.py
+6. Mettre à jour `base.py:125-164` — liste des entity_type dans `[CONSTRAINTS]` block (EN + FR)
+7. Ajouter descriptions des 6 nouveaux types dans `entity_descriptions.yaml` (core section)
+8. Ajouter negative examples discriminants dans `few_shots.yaml` (PsychologicalState vs Event, Setting vs Location, CharacterFeature vs NarrativeRole)
+9. Mettre à jour `litrpg.yaml` : renommer `item` → `object` dans type_exclusions et domain_range
+10. Mettre à jour les validation rules (domain_range + disjointness) dans core.yaml
+11. **Tester** : compilation, tests existants passent (avec renommages dans fixtures)
 
-1. Script Cypher de migration RELATES_TO → SocialRelationship + INVOLVED_IN
-2. Renommer Item → Object (labels Neo4j)
-3. Renommer Arc → NarrativeSequence (labels Neo4j)
-4. Renommer OCCURS_BEFORE → PRECEDES
-5. Renommer `event_type` → `event_category` sur les Event existants
-6. Retirer `Character.role` des nœuds existants (sera dans NarrativeRole)
-7. Exécuter les nouvelles contraintes et index Neo4j
-8. **Vérifier** l'intégrité du graphe après migration
+### Phase B : Rétro-compatibilité codebase (renommages partout) — ~2 jours
 
-### Phase C : Pipeline complet — ~3 jours
+**Objectif** : Éliminer TOUTES les références aux anciens noms avant de toucher Neo4j.
 
-1. Modifier `entity_repo.py` : 8 nouveaux handlers d'upsert + renommages
-2. Modifier `verify.py` : 7 nouvelles règles de vérification
-3. Modifier `reconciler.py` : nouveau priority map + Stoff reconciliation
-4. Modifier `validation.py` : ~25 nouvelles contraintes domain/range
-5. Modifier `book_level.py` : 8 nouveaux consistency checks
-6. Modifier les prompts d'extraction pour les nouveaux types
-7. Mettre à jour `init_neo4j.cypher` avec contraintes et index
-8. **Tester** : re-extraire le Primal Hunter complet avec le nouveau schema
+1. `entity_repo.py` : renommer toutes les Cypher queries (Item→Object, Arc→NarrativeSequence, event_type→event_category) — **14 sites** identifiés
+2. `character_state_repo.py` : renommer Item→Object dans les MATCH queries
+3. `graph.py` API routes : `ALLOWED_LABELS`, `_CORE_TYPES`, `ev.event_type` → `ev.event_category`
+4. `reader.py` : whitelist label Item→Object
+5. Supprimer les 6 fallbacks `"RELATES_TO"` : `entity_repo.py` (3 sites), `relations.py` (1), `book_level.py` (2), `context_assembly.py` (1), `embedding_pipeline.py` (1)
+6. `reconciler.py` : nouveau `_TYPE_PRIORITY` avec tous les types GOLEM (§6.4)
+7. `frontend/lib/constants.ts` : `EntityType` union + `ENTITY_HEX` + `ENTITY_COLORS` pour tous les nouveaux types
+8. `frontend/components/graph/graph-detail-panel.tsx` : fallback edge label
+9. Mettre à jour **tous les tests** (20+ fichiers, inventaire §6quinquies Tier 4)
+10. **Tester** : `uv run pytest -x` — 100% vert
 
-### Phase D : Multi-série (Stoff) — ~2 jours
+### Phase C : Migration Neo4j + Pipeline extraction — ~3 jours
 
-1. Implémenter la détection automatique de CharacterStoff au Book 2+
-2. Implémenter INSTANCE_OF_STOFF dans le reconciler
-3. Implémenter NarrativeStoff pour les arcs récurrents
-4. Modifier EntityRegistry pour maintenir les Stoff cross-book
-5. **Tester** : extraire Book 2 et vérifier la création automatique des Stoff
+**Objectif** : Neo4j migré, pipeline V4 extrait les nouveaux types.
 
-### Phase E : Frontend + Chat — ~3 jours
+1. Script Cypher de migration :
+   - `SET n:Object REMOVE n:Item` (labels)
+   - `SET n:NarrativeSequence REMOVE n:Arc` + `SET n.sequence_type = n.arc_type REMOVE n.arc_type`
+   - RELATES_TO → SocialRelationship + INVOLVED_IN (��6.6)
+   - OCCURS_BEFORE → PRECEDES
+   - `SET e.event_category = e.event_type REMOVE e.event_type`
+   - `REMOVE c.role` sur Character (déplacé vers NarrativeRole)
+2. DROP + RECREATE `entity_fulltext` index avec **tous les labels** (§6sexies.1)
+3. DROP + RECREATE contraintes/index obsolètes (Item, Arc, RELATES_TO, event_type)
+4. Créer contraintes/index pour les 12 nouveaux types (§6.7)
+5. `entity_repo.py` : 8 nouveaux handlers d'upsert (§6.6)
+6. `verify.py` : 7 nouvelles règles de vérification + TextualFeature persist (§6bis.5)
+7. NarrativeUnit génération programmatique dans reconcile_and_persist (§6bis.4)
+8. Référence resolution dans reconciler (§6bis.3)
+9. `init_neo4j.cypher` : réécriture complète
+10. **Tester** : re-extraire Primal Hunter complet, comparer avant/après
 
-1. Ajouter couleurs et labels pour les ~10 nouveaux types
-2. Adapter le graph explorer pour SocialRelationship comme nœud intermédiaire
-3. Implémenter la vue Setting cluster
-4. Adapter les tables Review pour les nouveaux types
-5. Adapter l'ontology viewer avec golem_alignment
-6. Adapter le chat RAG pour les nouvelles traversées (PsychologicalState chains, Stoff comparison, etc.)
-7. **Tester** : vérification visuelle + requêtes RAG
+### Phase D : Co-evolutionary induction GOLEM-aware — ~2 jours
+
+**Objectif** : Le pattern_inducer ne crée plus de doublons avec les types GOLEM.
+
+1. `OntologyLoader.to_induction_context()` : retourne name+description (§6ter.2)
+2. `pattern_inducer.py` : filtre similarité sémantique BGE-m3 post-induction (§6ter.2)
+3. `InducedEntityType` + `OntologyNodeType` : champ `parent_type` (§6ter.3)
+4. `extend_with_induced()` : guard anti-écrasement regex (§6ter.4)
+5. Validation domain_range des relations induites à l'induction (§6ter.5)
+6. `_build_type_descriptions()` : sous-types induits sous leur parent GOLEM
+7. **Tester** : induire sur chapitres 1-3 de Primal Hunter, vérifier zéro collision
+
+### Phase E : Multi-série (Stoff) — ~2 jours
+
+**Objectif** : CharacterStoff créé automatiquement au Book 2+.
+
+1. `series_name` auto-rempli depuis CONTAINS_WORK (§6quater.3)
+2. Création CharacterStoff dans `reconcile_and_persist_v4_node` au merge registry (§6quater.3)
+3. Lien INSTANCE_OF_STOFF : Character → CharacterStoff
+4. NarrativeStoff pour les arcs récurrents (optionnel, peut être reporté)
+5. Fix `significance` dead code : populer depuis NarrativeRole (§6quater.4)
+6. **Tester** : mock Book 2 extraction, vérifier CharacterStoff + INSTANCE_OF_STOFF
+
+### Phase F : Chat RAG + Frontend polish — ~3 jours
+
+**Objectif** : Le RAG exploite les nouveaux types, le frontend les affiche.
+
+1. Route `psychological_qa` dans le router (§6sexies.2)
+2. Traversées temporelles Cypher : PsychologicalState chains, SocialRelationship evolution, Stoff comparison (§6sexies.3)
+3. Token budget dans `context_assembly.py` (§6sexies.4)
+4. Étendre `KG_QUERY_SYSTEM` prompt avec les nouveaux types de requête
+5. Graph explorer : SocialRelationship comme nœud intermédiaire, Setting clusters
+6. Ontology viewer : `golem_alignment` visible
+7. Tables Review : 8 nouveaux types + groupement par catégorie GOLEM
+8. **Tester** : requêtes RAG de bout en bout sur les 6 types de traversée
 
 ---
 
@@ -1222,14 +1652,38 @@ CREATE FULLTEXT INDEX narrative_stoff_fulltext IF NOT EXISTS
 
 | Critère | Mesure | Seuil |
 |---------|--------|-------|
+| **Ontologique** | | |
 | Aucune perte de fonctionnalité | Les 9 types actuels conservés ou enrichis. Aucune entité existante perdue. | 100% |
 | Alignement GOLEM vérifiable | Chaque type core a un `golem_alignment` dans le YAML avec ref GOLEM | 100% des types alignables |
+| Contraintes de disjonction | Toutes les paires disjointWith de GOLEM enforcées dans validation_rules | 20/20 |
+| **Extraction** | | |
 | Extraction des nouveaux types | PsychologicalState, Setting, CharacterFeature, NarrativeRole, SocialRelationship extraits sur Primal Hunter | ≥ 80% des chapitres produisent au moins 1 nouveau type |
+| Single-pass stable | Pas de dégradation de qualité par rapport à l'extraction pre-GOLEM | F1-score entity ≥ baseline |
+| NarrativeUnit programmatique | Chaque Event extrait génère un NarrativeUnit automatiquement | 1:1 ratio Event:NarrativeUnit |
+| TextualFeature persisté | dialogue_ratio, pov_character, scene_count stockés comme nœuds Neo4j | 100% chapitres |
+| **Induction** | | |
+| Zéro collision induced/core | Le pattern_inducer ne crée aucun type sémantiquement identique à un type GOLEM core | 0 doublons sur Primal Hunter |
+| Sous-typage fonctionnel | Les types induits avec parent_type portent un double label Neo4j | Vérifiable par Cypher |
+| **Relations & Registry** | | |
 | Relations réifiées | SocialRelationship remplace RELATES_TO pour Character↔Character | 0 RELATES_TO restant post-migration |
-| Multi-série fonctionnel | CharacterStoff créé automatiquement au Book 2. INSTANCE_OF_STOFF correct. | Test avec mock Book 2 |
-| Chaînes émotionnelles | PsychologicalState connectés via FOLLOWS_STATE | ≥ 3 chaînes de longueur ≥ 2 sur Primal Hunter |
+| Zéro fallback RELATES_TO | Aucun fallback `"RELATES_TO"` dans le codebase | grep returns 0 |
+| Registry strategy | PsychologicalState, NarrativeRole, CharacterFeature NON dans le registry | Vérifiable dans code |
+| **Multi-série** | | |
+| CharacterStoff automatique | Créé au Book 2 quand series_name fourni | Test avec mock Book 2 |
+| INSTANCE_OF_STOFF correct | Chaque Character book-scoped lié à son Stoff | Cypher count = 0 orphans |
+| **Qualité KG** | | |
+| Chaînes émotionnelles | PsychologicalState connectés via FOLLOWS_STATE | ≥ 3 chaînes de longueur ≥ 2 |
 | Settings distincts | "The Tutorial" est un Setting, pas une Location | 0 confusion Setting/Location |
 | Narrative structure | NarrativeSequence avec Events ordonnés (SEQUENCED_IN + order) | ≥ 3 séquences avec ≥ 3 events ordonnés |
+| **Rétro-compatibilité** | | |
+| Zéro hard break | Tous les 11 hard breaks Tier 1 fixés | 0 erreurs runtime |
+| Zéro corruption silencieuse | Tous les 6 silent corruption Tier 2 fixés | 0 fallbacks RELATES_TO |
+| entity_fulltext à jour | Index couvre tous les 18+ labels | Vérifiable par `SHOW INDEXES` |
+| **Chat RAG** | | |
+| Route psychological_qa | Le router dispatche correctement "how does Jake feel" | Test de classification |
+| Traversées temporelles | Chaînes PsychologicalState et SocialRelationship evolution fonctionnent | 3 requêtes de test |
+| Token budget | context_assembly ne dépasse jamais 8000 tokens | Max observé < seuil |
+| **Infrastructure** | | |
 | Tests verts | 1069+ tests passent après migration | 100% |
 | Documentation alignée | core.yaml documente la correspondance GOLEM pour chaque type | 100% |
 | Qualité KG globale | Comparaison avant/après sur Primal Hunter (entity count, relation count, type diversity) | Amélioration mesurable sur ≥ 3 métriques |
