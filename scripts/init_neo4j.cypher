@@ -74,21 +74,12 @@ FOR (sr:SocialRelationship) REQUIRE (sr.name, sr.book_id) IS UNIQUE;
 CREATE CONSTRAINT narrative_stoff_unique IF NOT EXISTS
 FOR (ns:NarrativeStoff) REQUIRE ns.name IS UNIQUE;
 
-// NOT NULL constraints for new types
-CREATE CONSTRAINT psych_state_name IF NOT EXISTS
-FOR (ps:PsychologicalState) REQUIRE ps.name IS NOT NULL;
-
-CREATE CONSTRAINT character_feature_name IF NOT EXISTS
-FOR (cf:CharacterFeature) REQUIRE cf.name IS NOT NULL;
-
-CREATE CONSTRAINT narrative_role_type IF NOT EXISTS
-FOR (nr:NarrativeRole) REQUIRE nr.role_type IS NOT NULL;
-
-CREATE CONSTRAINT narrative_unit_prop IF NOT EXISTS
-FOR (nu:NarrativeUnit) REQUIRE nu.proposition IS NOT NULL;
-
-CREATE CONSTRAINT textual_feature_name IF NOT EXISTS
-FOR (tf:TextualFeature) REQUIRE tf.name IS NOT NULL;
+// NOT NULL constraints for new types (Neo4j Enterprise only — skipped on Community Edition)
+// CREATE CONSTRAINT psych_state_name IF NOT EXISTS FOR (ps:PsychologicalState) REQUIRE ps.name IS NOT NULL;
+// CREATE CONSTRAINT character_feature_name IF NOT EXISTS FOR (cf:CharacterFeature) REQUIRE cf.name IS NOT NULL;
+// CREATE CONSTRAINT narrative_role_type IF NOT EXISTS FOR (nr:NarrativeRole) REQUIRE nr.role_type IS NOT NULL;
+// CREATE CONSTRAINT narrative_unit_prop IF NOT EXISTS FOR (nu:NarrativeUnit) REQUIRE nu.proposition IS NOT NULL;
+// CREATE CONSTRAINT textual_feature_name IF NOT EXISTS FOR (tf:TextualFeature) REQUIRE tf.name IS NOT NULL;
 
 // ── LitRPG genre types ──
 CREATE CONSTRAINT title_book_unique IF NOT EXISTS
