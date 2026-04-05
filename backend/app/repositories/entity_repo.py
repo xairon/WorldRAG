@@ -76,6 +76,13 @@ _HANDLED_ENTITY_TYPES: set[str] = {
     "narrative_sequence",
     "arc",  # V3 legacy alias → routes to upsert_arcs (NarrativeSequence label)
     "prophecy",
+    "psychological_state",
+    "setting",
+    "character_feature",
+    "narrative_role",
+    "social_relationship",
+    "textual_feature",
+    "narrative_unit",
 }
 
 
@@ -1098,6 +1105,13 @@ class EntityRepository(Neo4jRepository):
         "creature": ("Creature", "name"),
         "faction": ("Faction", "name"),
         "concept": ("Concept", "name"),
+        "psychological_state": ("PsychologicalState", "name"),
+        "setting": ("Setting", "name"),
+        "character_feature": ("CharacterFeature", "name"),
+        "narrative_role": ("NarrativeRole", "role_type"),
+        "social_relationship": ("SocialRelationship", "name"),
+        "narrative_unit": ("NarrativeUnit", "proposition"),
+        "textual_feature": ("TextualFeature", "name"),
     }
 
     async def store_mentions(
@@ -1913,6 +1927,429 @@ class EntityRepository(Neo4jRepository):
         )
         return len(prophecies)
 
+    # ── GOLEM: PsychologicalState (G3) ────────────────────────────────
+
+    async def upsert_psychological_states(
+        self,
+        book_id: str,
+        chapter_number: int,
+        states: list,
+        batch_id: str = "",
+    ) -> int:
+        """Upsert PsychologicalState nodes + HAS_STATE/STATE_TRIGGERED_BY edges."""
+        if not states:
+            return 0
+
+        data = [
+            {
+                "name": s.name,
+                "state_type": getattr(s, "state_type", "emotion"),
+                "character_name": getattr(s, "character", "").lower().strip(),
+                "description": getattr(s, "description", ""),
+                "intensity": getattr(s, "intensity", 0.5),
+                "trigger_event": getattr(s, "trigger_event", ""),
+            }
+            for s in states
+        ]
+
+        await self.execute_write(
+            """
+            UNWIND $states AS s
+            MERGE (ps:PsychologicalState {
+                name: s.name,
+                character_name: s.character_name,
+                chapter_start: $chapter,
+                book_id: $book_id
+            })
+            ON CREATE SET
+                ps.state_type = s.state_type,
+                ps.description = s.description,
+                ps.intensity = s.intensity,
+                ps.batch_id = $batch_id,
+                ps.created_at = timestamp()
+            WITH ps, s
+            MATCH (ch:Character {canonical_name: s.character_name, book_id: $book_id})
+            MERGE (ch)-[:HAS_STATE]->(ps)
+            WITH ps, s
+            WHERE s.trigger_event <> ''
+            MATCH (ev:Event {book_id: $book_id})
+            WHERE toLower(ev.name) = toLower(s.trigger_event)
+            WITH ps, ev LIMIT 1
+            MERGE (ps)-[:STATE_TRIGGERED_BY]->(ev)
+            """,
+            {
+                "states": data,
+                "book_id": book_id,
+                "chapter": chapter_number,
+                "batch_id": batch_id,
+            },
+        )
+
+        logger.info(
+            "psychological_states_upserted",
+            book_id=book_id,
+            chapter=chapter_number,
+            count=len(states),
+        )
+        return len(states)
+
+    # ── GOLEM: Setting (G12) ────────────────────────────────────────────
+
+    async def upsert_settings(
+        self,
+        book_id: str,
+        chapter_number: int,
+        settings: list,
+        batch_id: str = "",
+    ) -> int:
+        """Upsert Setting nodes."""
+        if not settings:
+            return 0
+
+        data = [
+            {
+                "name": s.name.lower().strip(),
+                "description": getattr(s, "description", ""),
+                "setting_type": getattr(s, "setting_type", "world"),
+            }
+            for s in settings
+        ]
+
+        await self.execute_write(
+            """
+            UNWIND $settings AS s
+            MERGE (st:Setting {name: s.name, book_id: $book_id})
+            ON CREATE SET
+                st.description = s.description,
+                st.setting_type = s.setting_type,
+                st.chapter_start = $chapter,
+                st.batch_id = $batch_id,
+                st.created_at = timestamp()
+            ON MATCH SET
+                st.description = CASE
+                    WHEN size(s.description) > size(coalesce(st.description, ''))
+                    THEN s.description ELSE st.description END,
+                st.batch_id = $batch_id
+            WITH st
+            MATCH (chap:Chapter {book_id: $book_id, number: $chapter})
+            MERGE (st)-[:MENTIONED_IN]->(chap)
+            """,
+            {
+                "settings": data,
+                "book_id": book_id,
+                "chapter": chapter_number,
+                "batch_id": batch_id,
+            },
+        )
+
+        logger.info(
+            "settings_upserted", book_id=book_id, chapter=chapter_number, count=len(settings)
+        )
+        return len(settings)
+
+    # ── GOLEM: CharacterFeature (G17) ───────────────────────────────────
+
+    async def upsert_character_features(
+        self,
+        book_id: str,
+        chapter_number: int,
+        features: list,
+        batch_id: str = "",
+    ) -> int:
+        """Upsert CharacterFeature nodes + HAS_FEATURE edges."""
+        if not features:
+            return 0
+
+        data = [
+            {
+                "name": f.name,
+                "feature_type": getattr(f, "feature_type", "biographical"),
+                "character_name": getattr(f, "character", "").lower().strip(),
+                "description": getattr(f, "description", ""),
+            }
+            for f in features
+        ]
+
+        await self.execute_write(
+            """
+            UNWIND $features AS f
+            MERGE (cf:CharacterFeature {name: f.name, character_name: f.character_name, book_id: $book_id})
+            ON CREATE SET
+                cf.feature_type = f.feature_type,
+                cf.description = f.description,
+                cf.valid_from_chapter = $chapter,
+                cf.batch_id = $batch_id,
+                cf.created_at = timestamp()
+            WITH cf, f
+            MATCH (ch:Character {canonical_name: f.character_name, book_id: $book_id})
+            MERGE (ch)-[:HAS_FEATURE]->(cf)
+            """,
+            {
+                "features": data,
+                "book_id": book_id,
+                "chapter": chapter_number,
+                "batch_id": batch_id,
+            },
+        )
+
+        logger.info(
+            "character_features_upserted",
+            book_id=book_id,
+            chapter=chapter_number,
+            count=len(features),
+        )
+        return len(features)
+
+    # ── GOLEM: NarrativeRole (G11) ──────────────────────────────────────
+
+    async def upsert_narrative_roles(
+        self,
+        book_id: str,
+        chapter_number: int,
+        roles: list,
+        batch_id: str = "",
+    ) -> int:
+        """Upsert NarrativeRole nodes + PLAYS_ROLE edges."""
+        if not roles:
+            return 0
+
+        data = [
+            {
+                "role_type": getattr(r, "role_type", "protagonist"),
+                "character_name": getattr(r, "character", "").lower().strip(),
+                "context": getattr(r, "context", ""),
+            }
+            for r in roles
+        ]
+
+        await self.execute_write(
+            """
+            UNWIND $roles AS r
+            MERGE (nr:NarrativeRole {
+                role_type: r.role_type,
+                character_name: r.character_name,
+                book_id: $book_id
+            })
+            ON CREATE SET
+                nr.context = r.context,
+                nr.valid_from_chapter = $chapter,
+                nr.batch_id = $batch_id,
+                nr.created_at = timestamp()
+            WITH nr, r
+            MATCH (ch:Character {canonical_name: r.character_name, book_id: $book_id})
+            MERGE (ch)-[:PLAYS_ROLE]->(nr)
+            """,
+            {
+                "roles": data,
+                "book_id": book_id,
+                "chapter": chapter_number,
+                "batch_id": batch_id,
+            },
+        )
+
+        logger.info(
+            "narrative_roles_upserted", book_id=book_id, chapter=chapter_number, count=len(roles)
+        )
+        return len(roles)
+
+    # ── GOLEM: SocialRelationship (G4) ──────────────────────────────────
+
+    async def upsert_social_relationships(
+        self,
+        book_id: str,
+        chapter_number: int,
+        relationships: list,
+        batch_id: str = "",
+    ) -> int:
+        """Upsert SocialRelationship nodes + INVOLVED_IN edges (with role property)."""
+        if not relationships:
+            return 0
+
+        total = 0
+        for rel in relationships:
+            participants = getattr(rel, "participants", [])
+            if len(participants) < 2:
+                continue
+
+            name = getattr(rel, "name", "") or " — ".join(
+                p.lower().strip() for p in participants[:2]
+            )
+            rel_type = getattr(rel, "relationship_type", "professional")
+            description = getattr(rel, "description", "")
+            trigger = getattr(rel, "trigger_event", "")
+
+            # Create the SocialRelationship node
+            await self.execute_write(
+                """
+                MERGE (sr:SocialRelationship {name: $name, book_id: $book_id})
+                ON CREATE SET
+                    sr.relationship_type = $rel_type,
+                    sr.description = $description,
+                    sr.valid_from_chapter = $chapter,
+                    sr.batch_id = $batch_id,
+                    sr.created_at = timestamp()
+                ON MATCH SET
+                    sr.description = CASE
+                        WHEN size($description) > size(coalesce(sr.description, ''))
+                        THEN $description ELSE sr.description END,
+                    sr.batch_id = $batch_id
+                """,
+                {
+                    "name": name.lower().strip(),
+                    "book_id": book_id,
+                    "rel_type": rel_type,
+                    "description": description,
+                    "chapter": chapter_number,
+                    "batch_id": batch_id,
+                },
+            )
+
+            # Create INVOLVED_IN edges for each participant
+            for participant in participants:
+                await self.execute_write(
+                    """
+                    MATCH (ch:Character {canonical_name: $char_name, book_id: $book_id})
+                    MATCH (sr:SocialRelationship {name: $sr_name, book_id: $book_id})
+                    MERGE (ch)-[r:INVOLVED_IN]->(sr)
+                    ON CREATE SET
+                        r.role = 'participant',
+                        r.valid_from_chapter = $chapter,
+                        r.batch_id = $batch_id
+                    """,
+                    {
+                        "char_name": participant.lower().strip(),
+                        "book_id": book_id,
+                        "sr_name": name.lower().strip(),
+                        "chapter": chapter_number,
+                        "batch_id": batch_id,
+                    },
+                )
+
+            # Link to trigger event if specified
+            if trigger:
+                await self.execute_write(
+                    """
+                    MATCH (sr:SocialRelationship {name: $sr_name, book_id: $book_id})
+                    MATCH (ev:Event {book_id: $book_id})
+                    WHERE toLower(ev.name) = toLower($trigger)
+                    WITH sr, ev LIMIT 1
+                    MERGE (sr)-[:RELATIONSHIP_CAUSED_BY]->(ev)
+                    """,
+                    {
+                        "sr_name": name.lower().strip(),
+                        "book_id": book_id,
+                        "trigger": trigger,
+                    },
+                )
+
+            total += 1
+
+        logger.info(
+            "social_relationships_upserted", book_id=book_id, chapter=chapter_number, count=total
+        )
+        return total
+
+    # ── GOLEM: TextualFeature (G18) ─────────────────────────────────────
+
+    async def upsert_textual_features(
+        self,
+        book_id: str,
+        chapter_number: int,
+        features: list,
+        batch_id: str = "",
+    ) -> int:
+        """Upsert TextualFeature nodes + HAS_TEXTUAL_FEATURE edge to chapter."""
+        if not features:
+            return 0
+
+        data = [
+            {
+                "name": getattr(f, "name", ""),
+                "feature_type": getattr(f, "feature_type", ""),
+                "value": getattr(f, "value", ""),
+            }
+            for f in features
+        ]
+
+        await self.execute_write(
+            """
+            UNWIND $features AS f
+            MERGE (tf:TextualFeature {name: f.name, feature_type: f.feature_type, chapter: $chapter, book_id: $book_id})
+            ON CREATE SET
+                tf.value = f.value,
+                tf.batch_id = $batch_id,
+                tf.created_at = timestamp()
+            WITH tf
+            MATCH (chap:Chapter {book_id: $book_id, number: $chapter})
+            MERGE (chap)-[:HAS_TEXTUAL_FEATURE]->(tf)
+            """,
+            {
+                "features": data,
+                "book_id": book_id,
+                "chapter": chapter_number,
+                "batch_id": batch_id,
+            },
+        )
+
+        logger.info(
+            "textual_features_upserted",
+            book_id=book_id,
+            chapter=chapter_number,
+            count=len(features),
+        )
+        return len(features)
+
+    # ── GOLEM: NarrativeUnit (G9, programmatic) ──────────────────────
+
+    async def upsert_narrative_units(
+        self,
+        book_id: str,
+        chapter_number: int,
+        units: list,
+        batch_id: str = "",
+    ) -> int:
+        """Upsert NarrativeUnit nodes + UNIT_REFERS_TO/UNIT_IN_WORK edges."""
+        if not units:
+            return 0
+
+        data = [
+            {
+                "proposition": getattr(u, "proposition", "") or getattr(u, "name", ""),
+                "event_reference": getattr(u, "event_reference", ""),
+            }
+            for u in units
+        ]
+
+        await self.execute_write(
+            """
+            UNWIND $units AS u
+            MERGE (nu:NarrativeUnit {proposition: u.proposition, chapter: $chapter, book_id: $book_id})
+            ON CREATE SET
+                nu.batch_id = $batch_id,
+                nu.created_at = timestamp()
+            WITH nu, u
+            MATCH (b:Book {id: $book_id})
+            MERGE (nu)-[:UNIT_IN_WORK]->(b)
+            WITH nu, u
+            WHERE u.event_reference <> ''
+            MATCH (ev:Event {book_id: $book_id})
+            WHERE toLower(ev.name) = toLower(u.event_reference)
+            WITH nu, ev LIMIT 1
+            MERGE (nu)-[:UNIT_REFERS_TO]->(ev)
+            """,
+            {
+                "units": data,
+                "book_id": book_id,
+                "chapter": chapter_number,
+                "batch_id": batch_id,
+            },
+        )
+
+        logger.info(
+            "narrative_units_upserted", book_id=book_id, chapter=chapter_number, count=len(units)
+        )
+        return len(units)
+
     # ── Generic genre entity upsert (fallback for unmapped sub_types) ───
 
     async def upsert_genre_entities(
@@ -2412,6 +2849,41 @@ class EntityRepository(Neo4jRepository):
                 if not hasattr(p, "canonical_name") or not p.canonical_name:
                     p.canonical_name = p.name
 
+        # GOLEM: PsychologicalStates
+        psych_states = []
+        if "psychological_state" in by_type:
+            psych_states = [_ns(e) for e in by_type["psychological_state"]]
+
+        # GOLEM: Settings
+        settings = []
+        if "setting" in by_type:
+            settings = [_ns(e) for e in by_type["setting"]]
+
+        # GOLEM: CharacterFeatures
+        char_features = []
+        if "character_feature" in by_type:
+            char_features = [_ns(e) for e in by_type["character_feature"]]
+
+        # GOLEM: NarrativeRoles
+        narrative_roles = []
+        if "narrative_role" in by_type:
+            narrative_roles = [_ns(e) for e in by_type["narrative_role"]]
+
+        # GOLEM: SocialRelationships
+        social_rels = []
+        if "social_relationship" in by_type:
+            social_rels = [_ns(e) for e in by_type["social_relationship"]]
+
+        # GOLEM: TextualFeatures
+        textual_features = []
+        if "textual_feature" in by_type:
+            textual_features = [_ns(e) for e in by_type["textual_feature"]]
+
+        # GOLEM: NarrativeUnits (programmatic, generated by reconciler)
+        narrative_units = []
+        if "narrative_unit" in by_type:
+            narrative_units = [_ns(e) for e in by_type["narrative_unit"]]
+
         # Relations
         rel_ns = []
         if relations:
@@ -2510,6 +2982,61 @@ class EntityRepository(Neo4jRepository):
                 (
                     "prophecies",
                     self.upsert_prophecies(book_id, chapter_number, prophecies, batch_id),
+                )
+            )
+        if psych_states:
+            entity_coros.append(
+                (
+                    "psychological_states",
+                    self.upsert_psychological_states(
+                        book_id, chapter_number, psych_states, batch_id
+                    ),
+                )
+            )
+        if settings:
+            entity_coros.append(
+                ("settings", self.upsert_settings(book_id, chapter_number, settings, batch_id))
+            )
+        if char_features:
+            entity_coros.append(
+                (
+                    "character_features",
+                    self.upsert_character_features(
+                        book_id, chapter_number, char_features, batch_id
+                    ),
+                )
+            )
+        if narrative_roles:
+            entity_coros.append(
+                (
+                    "narrative_roles",
+                    self.upsert_narrative_roles(book_id, chapter_number, narrative_roles, batch_id),
+                )
+            )
+        if social_rels:
+            entity_coros.append(
+                (
+                    "social_relationships",
+                    self.upsert_social_relationships(
+                        book_id, chapter_number, social_rels, batch_id
+                    ),
+                )
+            )
+        if textual_features:
+            entity_coros.append(
+                (
+                    "textual_features",
+                    self.upsert_textual_features(
+                        book_id, chapter_number, textual_features, batch_id
+                    ),
+                )
+            )
+
+        if narrative_units:
+            entity_coros.append(
+                (
+                    "narrative_units",
+                    self.upsert_narrative_units(book_id, chapter_number, narrative_units, batch_id),
                 )
             )
 

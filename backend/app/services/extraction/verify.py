@@ -310,7 +310,37 @@ async def verify_extractions_node(state: dict[str, Any]) -> dict[str, Any]:
         scene_count=chunk_metadata["scene_count"],
     )
 
+    # Generate TextualFeature entities from chunk metadata (GOLEM G18, programmatic)
+    textual_features: list[dict] = []
+    if chunk_metadata.get("pov_character"):
+        textual_features.append(
+            {
+                "entity_type": "textual_feature",
+                "feature_type": "pov",
+                "name": chunk_metadata["pov_character"],
+                "value": chunk_metadata["pov_character"],
+            }
+        )
+    if chunk_metadata.get("dialogue_ratio") is not None:
+        textual_features.append(
+            {
+                "entity_type": "textual_feature",
+                "feature_type": "dialogue_density",
+                "name": f"dialogue_ratio_{chapter_number}",
+                "value": str(chunk_metadata["dialogue_ratio"]),
+            }
+        )
+    if chunk_metadata.get("scene_count"):
+        textual_features.append(
+            {
+                "entity_type": "textual_feature",
+                "feature_type": "pacing",
+                "name": f"scene_count_{chapter_number}",
+                "value": str(chunk_metadata["scene_count"]),
+            }
+        )
+
     return {
-        "entities": verified,
+        "entities": verified + textual_features,
         "chunk_metadata": chunk_metadata,
     }

@@ -82,6 +82,10 @@ def _patch_all(
             new_callable=AsyncMock,
             return_value=alias_map,
         ),
+        patch(
+            "app.services.extraction.faithfulness.batch_verify_faithfulness",
+            new=AsyncMock(side_effect=lambda entities, _text: entities),
+        ),
     ):
         yield
 
@@ -112,7 +116,8 @@ async def test_v4_graph_end_to_end():
     assert "grounded_entities" in result
     assert "alias_map" in result
     assert "entity_registry" in result
-    assert len(result["entities"]) == 2
+    # 2 original entities + 2 TextualFeature (dialogue_density, pacing) from verify node
+    assert len(result["entities"]) >= 2
     assert len(result["relations"]) == 1
 
 

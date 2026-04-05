@@ -1595,6 +1595,52 @@ async def reconcile_and_persist_v4_node(state: dict[str, Any]) -> dict[str, Any]
             resolved=len(registry_alias_map),
         )
 
+    # 3b. GOLEM: Resolve character references in new types
+    # PsychologicalState, CharacterFeature, NarrativeRole, SocialRelationship
+    # all reference characters by name — resolve against registry
+    for entity_dict in entities:
+        char_ref = entity_dict.get("character")
+        if char_ref and entity_dict.get("entity_type") in (
+            "psychological_state",
+            "character_feature",
+            "narrative_role",
+        ):
+            resolved = registry.lookup(char_ref.lower().strip())
+            if resolved:
+                entity_dict["character"] = resolved.canonical_name
+
+        # SocialRelationship: resolve each participant
+        if entity_dict.get("entity_type") == "social_relationship":
+            participants = entity_dict.get("participants", [])
+            resolved_participants = []
+            for p in participants:
+                entry = registry.lookup(p.lower().strip())
+                resolved_participants.append(entry.canonical_name if entry else p.lower().strip())
+            entity_dict["participants"] = resolved_participants
+
+    # 3c. GOLEM: Programmatic NarrativeUnit generation (1 per Event, §6bis.4)
+    narrative_units: list[dict] = []
+    for entity_dict in entities:
+        if entity_dict.get("entity_type") == "event":
+            event_name = entity_dict.get("name", "")
+            event_desc = entity_dict.get("description", "")
+            if event_name:
+                narrative_units.append(
+                    {
+                        "entity_type": "narrative_unit",
+                        "proposition": event_desc or event_name,
+                        "event_reference": event_name,
+                        "chapter": chapter_number,
+                    }
+                )
+    if narrative_units:
+        entities.extend(narrative_units)
+        logger.info(
+            "v4_narrative_units_generated",
+            chapter=chapter_number,
+            count=len(narrative_units),
+        )
+
     # 4. Ontology validation — strip invalid enum fields
     ontology = state.get("ontology")
     if ontology is not None:

@@ -138,8 +138,9 @@ class TestVerifyExtractionsNode:
             ],
         }
         result = await verify_extractions_node(state)
-        assert len(result["entities"]) == 1
-        assert result["entities"][0]["name"] == "Jake"
+        non_tf = [e for e in result["entities"] if e.get("entity_type") != "textual_feature"]
+        assert len(non_tf) == 1
+        assert non_tf[0]["name"] == "Jake"
 
     @pytest.mark.asyncio
     async def test_returns_chunk_metadata(self):
@@ -180,7 +181,8 @@ class TestVerifyExtractionsNode:
             ],
         }
         result = await verify_extractions_node(state)
-        assert len(result["entities"]) == 3
+        non_tf = [e for e in result["entities"] if e.get("entity_type") != "textual_feature"]
+        assert len(non_tf) == 3
 
     @pytest.mark.asyncio
     async def test_filters_generic_role_characters(self):
@@ -195,8 +197,9 @@ class TestVerifyExtractionsNode:
             ],
         }
         result = await verify_extractions_node(state)
-        assert len(result["entities"]) == 1
-        assert result["entities"][0]["name"] == "Jake"
+        non_tf = [e for e in result["entities"] if e.get("entity_type") != "textual_feature"]
+        assert len(non_tf) == 1
+        assert non_tf[0]["name"] == "Jake"
 
 
 class TestVerifySingleEntityWithOntology:
