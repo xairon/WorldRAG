@@ -741,6 +741,18 @@ class BookRepository(Neo4jRepository):
         )
         return [r["book_id"] for r in results]
 
+    async def get_series_name_for_book(self, book_id: str) -> str | None:
+        """Get the series name that contains this book, or None if standalone."""
+        results = await self.execute_read(
+            """
+            MATCH (s:Series)-[:CONTAINS_WORK]->(b:Book {id: $book_id})
+            RETURN s.name AS series_name
+            LIMIT 1
+            """,
+            {"book_id": book_id},
+        )
+        return results[0]["series_name"] if results else None
+
     # --- Stats ---
 
     async def get_book_stats(self, book_id: str) -> dict[str, Any]:

@@ -1927,6 +1927,84 @@ class EntityRepository(Neo4jRepository):
         )
         return len(prophecies)
 
+    # ── GOLEM: CharacterStoff (G0) — cross-work archetypes ────────────
+
+    async def upsert_character_stoff(
+        self,
+        book_id: str,
+        series_id: str,
+        characters: list[str],
+        batch_id: str = "",
+    ) -> int:
+        """Create CharacterStoff nodes for characters appearing in multiple books.
+
+        For each canonical_name, checks if the character exists in other books
+        of the same series. If so, MERGEs a CharacterStoff node and links via
+        INSTANCE_OF_STOFF. Uses MERGE to handle multi-chapter race conditions.
+        """
+        if not series_id or not characters:
+            return 0
+
+        total = 0
+        for char_name in characters:
+            # Check if this character exists in other books of the series
+            results = await self.execute_read(
+                """
+                MATCH (c:Character {canonical_name: $name})
+                WHERE c.book_id <> $book_id
+                MATCH (s:Series {name: $series_id})-[:CONTAINS_WORK]->(b:Book {id: c.book_id})
+                RETURN c.book_id AS other_book_id
+                LIMIT 1
+                """,
+                {"name": char_name, "book_id": book_id, "series_id": series_id},
+            )
+
+            if results:
+                # Character exists in another book — create/merge CharacterStoff
+                await self.execute_write(
+                    """
+                    MERGE (cs:CharacterStoff {canonical_name: $name, series_id: $series_id})
+                    ON CREATE SET
+                        cs.description = '',
+                        cs.batch_id = $batch_id,
+                        cs.created_at = timestamp()
+                    WITH cs
+                    MATCH (c:Character {canonical_name: $name, book_id: $book_id})
+                    MERGE (c)-[:INSTANCE_OF_STOFF]->(cs)
+                    """,
+                    {
+                        "name": char_name,
+                        "series_id": series_id,
+                        "book_id": book_id,
+                        "batch_id": batch_id,
+                    },
+                )
+
+                # Also link characters from other books to the same Stoff
+                await self.execute_write(
+                    """
+                    MATCH (cs:CharacterStoff {canonical_name: $name, series_id: $series_id})
+                    MATCH (c:Character {canonical_name: $name})
+                    WHERE c.book_id <> $book_id
+                    MERGE (c)-[:INSTANCE_OF_STOFF]->(cs)
+                    """,
+                    {
+                        "name": char_name,
+                        "series_id": series_id,
+                        "book_id": book_id,
+                    },
+                )
+                total += 1
+
+        if total:
+            logger.info(
+                "character_stoff_created",
+                book_id=book_id,
+                series_id=series_id,
+                count=total,
+            )
+        return total
+
     # ── GOLEM: PsychologicalState (G3) ────────────────────────────────
 
     async def upsert_psychological_states(

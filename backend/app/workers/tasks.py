@@ -752,6 +752,27 @@ async def process_book_extraction_v4(
     except Exception:
         logger.warning("v4_community_cluster_failed", book_id=book_id, exc_info=True)
 
+    # Book-level 5: CharacterStoff creation (GOLEM G0, Phase E)
+    try:
+        book_repo_stoff = BookRepository(driver)
+        series_name = await book_repo_stoff.get_series_name_for_book(book_id)
+        if series_name:
+            char_results = await entity_repo.execute_read(
+                "MATCH (c:Character {book_id: $book_id}) RETURN c.canonical_name AS name",
+                {"book_id": book_id},
+            )
+            char_names = [r["name"] for r in char_results if r.get("name")]
+            if char_names:
+                stoff_count = await entity_repo.upsert_character_stoff(
+                    book_id=book_id,
+                    series_id=series_name,
+                    characters=char_names,
+                    batch_id=book_batch_id,
+                )
+                logger.info("v4_character_stoff_done", count=stoff_count, series=series_name)
+    except Exception:
+        logger.warning("v4_character_stoff_failed", book_id=book_id, exc_info=True)
+
     # Auto-enqueue embedding job after extraction
     await ctx["redis"].enqueue_job(
         "process_book_embeddings",
