@@ -190,7 +190,8 @@ litrpg:
 
       8. Text: "+5 Free Points, +3 Perception"
          WRONG: {"entity_type": "concept", "name": "free points"}
-         WHY: Game mechanics (stamina, mana, HP, free points, XP, stat names) are system attributes, NOT standalone entities. Do not extract them as Concepts, Items, or GenreEntities.
+         RIGHT: {"entity_type": "stat_change", "character": "jake", "stat_name": "Free Points", "value": 5} or {"entity_type": "genre_entity", "sub_type": "stat", "name": "Perception"}
+         WHY: Game stats and mechanics are part of the progression system. Extract them as stat_change, level_change, or genre_entity (sub_type="stat"/"system") — NOT as Concepts or Items.
 
       9. Text: "Jake walked through the Dark Forest."
          WRONG: {"entity_type": "concept", "name": "jake"} or {"entity_type": "arc", "name": "jake"}
@@ -228,7 +229,8 @@ litrpg:
 
       8. Texte : "+5 Points Libres, +3 Perception"
          FAUX : {"entity_type": "concept", "name": "points libres"}
-         POURQUOI : Les mecaniques de jeu (stamina, mana, PV, points libres, XP, noms de stats) sont des attributs systeme, PAS des entites independantes.
+         CORRECT : {"entity_type": "stat_change", "character": "jake", "stat_name": "Points Libres", "value": 5} ou {"entity_type": "genre_entity", "sub_type": "stat", "name": "Perception"}
+         POURQUOI : Les stats et mecaniques font partie du systeme de progression. Extraire comme stat_change, level_change, ou genre_entity (sub_type="stat"/"system") — PAS comme Concepts ou Items.
 
       9. Texte : "Jake traversa la Foret Sombre."
          FAUX : {"entity_type": "concept", "name": "jake"} ou {"entity_type": "arc", "name": "jake"}

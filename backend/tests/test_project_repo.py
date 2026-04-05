@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
 
-
 from app.repositories.project_repo import ProjectRepository
 
 PROJECT_SLUG = "the-primal-hunter"

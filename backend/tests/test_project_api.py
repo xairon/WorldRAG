@@ -5,7 +5,7 @@ Uses TestClient with mock ProjectService. No real database connections.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import FastAPI
@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 # Helpers
 # ---------------------------------------------------------------------------
 
-NOW = datetime(2026, 3, 14, 12, 0, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 3, 14, 12, 0, 0, tzinfo=UTC)
 
 PROJECT_ROW = {
     "id": "aaaaaaaa-0000-0000-0000-000000000001",
@@ -63,8 +63,8 @@ def _make_service(
 
 def _build_app(mock_service: AsyncMock) -> FastAPI:
     """Build a minimal FastAPI app with the projects router, using a patched ProjectService."""
-    from app.api.routes import projects
     from app.api.auth import require_auth
+    from app.api.routes import projects
 
     app = FastAPI()
     # Provide state so _get_service can read it (values are not used since

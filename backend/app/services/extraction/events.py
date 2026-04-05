@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from app.config import settings
+from app.core.exceptions import QuotaExhaustedError
 from app.core.logging import get_logger
 from app.prompts.extraction_events import FEW_SHOT_EXAMPLES, PROMPT_DESCRIPTION
 from app.schemas.extraction import (
@@ -16,7 +17,6 @@ from app.schemas.extraction import (
     ExtractedEvent,
     GroundedEntity,
 )
-from app.core.exceptions import QuotaExhaustedError
 from app.services.extraction.alignment import alignment_label, check_alignment
 from app.services.extraction.retry import extract_with_retry
 

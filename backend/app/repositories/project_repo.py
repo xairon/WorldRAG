@@ -115,7 +115,7 @@ class ProjectRepository:
             params.append(val)
             idx += 1
 
-        set_clauses.append(f"updated_at = NOW()")
+        set_clauses.append("updated_at = NOW()")
         # slug is the WHERE param — add last
         params.append(slug)
 

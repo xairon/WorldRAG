@@ -130,7 +130,7 @@ core:
       - domain: magic | technology | philosophy | religion | politics | nature | other
       - description: brief description in chapter context
       - extraction_text: exact source passage
-      Do NOT extract game system mechanics (stamina, mana, HP, XP, free points, stat names) as Concepts.
+      Game mechanics (stats, mana, XP) should use stat_change or genre_entity (sub_type="stat"), NOT Concept.
       Concepts are narrative abstractions: themes, philosophies, in-world theoretical ideas.
     fr: |
       CONCEPT :

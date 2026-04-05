@@ -272,10 +272,11 @@ async def upload_book(
 
     # ── Run ingestion pipeline (parse → chunk → regex → Neo4j) ──────
     from pathlib import Path as _Path
-    from app.services.ingestion import extract_epub_metadata, ingest_file
+
+    from app.schemas.book import ProcessingStatus
     from app.services.chunking import chunk_chapter
     from app.services.extraction.regex_extractor import RegexExtractor
-    from app.schemas.book import ProcessingStatus
+    from app.services.ingestion import extract_epub_metadata, ingest_file
 
     file_path = _Path(file_row["file_path"])
     neo4j_driver = request.app.state.neo4j_driver

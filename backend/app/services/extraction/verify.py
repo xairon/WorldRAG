@@ -221,9 +221,9 @@ def _verify_single_entity(
             if name_lower.startswith(char_name + " "):
                 return False, f"event_starts_with_character:{name}"
 
-    # Check 4: Generic game mechanics should not be entities
-    if entity_type in ("concept", "genre_entity", "item") and name_lower in _GENERIC_MECHANICS:
-        return False, f"generic_mechanic_as_entity:{name}"
+    # Check 4: Game mechanics as Concept/Item is wrong type (should be genre_entity/stat_change)
+    if entity_type in ("concept", "item") and name_lower in _GENERIC_MECHANICS:
+        return False, f"game_mechanic_wrong_type:{name}:{entity_type}"
 
     # Check 5: Known characters extracted as wrong type
     if known_character_names and name_lower in known_character_names and entity_type != "character":
