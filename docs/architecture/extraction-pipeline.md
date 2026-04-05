@@ -109,14 +109,99 @@ graph TD
 
 ### Qu'est-ce que le Chunking narratif ?
 
-Le texte n'est pas decoupe betement tous les 1000 tokens. L'algorithme detecte les **frontieres de scene** :
+Le probleme : pour le RAG et l'extraction, les chapitres doivent etre decoupes en morceaux de ~1000 tokens. Mais couper betement tous les 1000 tokens coupe au milieu des scenes, des dialogues, des actions — le LLM perd le contexte.
 
-- Marqueurs explicites : `***`, `---`, lignes vides
-- Sauts temporels : "Le lendemain", "Trois jours plus tard"
-- Changements de lieu : "Ils arriverent a", "De retour au"
-- Changements de point de vue : detection de changement de nom propre dominant
+**L'idee** : couper aux frontieres naturelles du recit plutot qu'a un compteur fixe.
 
-Le chunk coupe en priorite a une frontiere de scene, meme si ca fait un chunk plus court.
+#### Detection des frontieres de scene
+
+4 heuristiques independantes scannent le texte pour trouver ou les scenes changent :
+
+```mermaid
+graph TD
+    TEXT[Texte du chapitre] --> H1["1. Diviseurs explicites<br>***, ---, ===, ~~~<br>(inseres par l'auteur)"]
+    TEXT --> H2["2. Sauts temporels<br>'The next morning'<br>'Three days later'<br>'Dawn broke'"]
+    TEXT --> H3["3. Changements de lieu<br>'Back at the camp'<br>'They entered the dungeon'<br>'In the forest'"]
+    TEXT --> H4["4. Changements de POV<br>Algorithme: fenetre glissante<br>sur les noms propres dominants"]
+
+    H1 --> MERGE["Fusion + tri<br>des frontieres"]
+    H2 --> MERGE
+    H3 --> MERGE
+    H4 --> MERGE
+
+    MERGE --> BOUNDS["Liste de frontieres<br>(offsets de caracteres)"]
+
+    style H1 fill:#10b981,stroke:#10b981,color:#fff
+    style H2 fill:#3b82f6,stroke:#3b82f6,color:#fff
+    style H3 fill:#8b5cf6,stroke:#8b5cf6,color:#fff
+    style H4 fill:#f59e0b,stroke:#f59e0b,color:#fff
+```
+
+**Le detecteur de POV** est le plus interessant. Il fonctionne ainsi :
+
+1. Extraire les noms propres en position sujet de chaque paragraphe (mots capitalises en debut de phrase, en excluant "The", "When", "They", etc.)
+2. Pour chaque paragraphe, identifier le nom dominant (premier nom propre)
+3. Comparer avec les noms des 3 paragraphes precedents (fenetre glissante)
+4. Si le nom dominant n'a jamais ete mentionne dans la fenetre → changement de POV
+
+```
+Paragraphe 1: "Jake drew his bow..."           → dominant: Jake
+Paragraphe 2: "Jake fired the arrow..."        → dominant: Jake (connu)
+Paragraphe 3: "The arrow hit true..."          → pas de nom dominant
+Paragraphe 4: "Jake walked to the corpse..."   → dominant: Jake (connu)
+Paragraphe 5: "William looked at his forge..." → dominant: William (NOUVEAU!) → FRONTIERE
+```
+
+#### Algorithme de chunking
+
+Une fois les frontieres detectees, l'algorithme parcourt les paragraphes :
+
+```mermaid
+graph TD
+    START[Pour chaque paragraphe] --> Q1{Paragraphe geant ?<br>plus de 1000 tokens}
+    Q1 -->|Oui| SPLIT_SENT["Couper en phrases<br>(regex sur . ! ?)"]
+    Q1 -->|Non| Q2{Budget depasse ?<br>tokens actuels + para > 1000}
+    Q2 -->|Oui| CUT["COUPER ICI<br>Emettre le chunk"]
+    Q2 -->|Non| Q3{Frontiere de scene ?<br>ET assez de contenu >= 100 tokens}
+    Q3 -->|Oui| CUT_PROACTIVE["COUPER PROACTIVEMENT<br>Meme si chunk plus petit<br>pour respecter le recit"]
+    Q3 -->|Non| ADD["Ajouter au chunk<br>en cours, continuer"]
+
+    CUT --> OVERLAP["Garder derniers paragraphes<br>comme overlap (100 tokens)"]
+    CUT_PROACTIVE --> OVERLAP
+    OVERLAP --> START
+
+    style CUT fill:#ef4444,stroke:#ef4444,color:#fff
+    style CUT_PROACTIVE fill:#f59e0b,stroke:#f59e0b,color:#fff
+    style ADD fill:#10b981,stroke:#10b981,color:#fff
+```
+
+**La decision cle** : quand un paragraphe tombe sur une frontiere de scene ET que le chunk actuel a au moins 100 tokens, on coupe MEME SI on n'a pas atteint les 1000 tokens. On prefere des chunks plus courts mais narrativement coherents.
+
+#### Overlap entre chunks
+
+Apres chaque coupure, les derniers paragraphes du chunk precedent sont conserves comme **overlap** (~100 tokens). Le chunk suivant commence avec ces paragraphes pour garder le contexte de transition :
+
+```
+Chunk 1: [paragraphe 1] [paragraphe 2] [paragraphe 3] [paragraphe 4] [paragraphe 5]
+                                                                       ↕ overlap
+Chunk 2:                                                [paragraphe 5] [paragraphe 6] [paragraphe 7]
+```
+
+#### Gestion du reste
+
+Le dernier fragment :
+- Si >= 200 tokens → nouveau chunk
+- Si < 200 tokens → fusionne avec le chunk precedent (pas de micro-fragments)
+
+#### Parametres
+
+| Parametre | Valeur | Role |
+|-----------|--------|------|
+| `chunk_size` | 1000 tokens | Taille cible par chunk |
+| `overlap` | 100 tokens | Chevauchement entre chunks consecutifs |
+| `MIN_CHUNK_SIZE` | 200 tokens | Minimum pour creer un chunk autonome |
+| Scene boundary split | >= 100 tokens | Minimum pour couper a une frontiere de scene |
+| Token counter | tiktoken (gpt-4o) | Comptage precis des tokens |
 
 ### Qu'est-ce que la Passe 0 (Regex) ?
 
@@ -219,14 +304,76 @@ graph TD
     style C4 fill:#f59e0b,stroke:#f59e0b,color:#fff
 ```
 
-- **Couche 1 (Core)** : Types universels, valides pour tout genre de fiction. Definis dans `core.yaml`.
-- **Couche 2 (Genre)** : Types specifiques au LitRPG (stats, skills, classes). Definis dans `litrpg.yaml`.
-- **Couche 3 (Induit)** : Types decouverts automatiquement par le LLM a la lecture des 3 premiers chapitres. Pas dans un YAML — generes au runtime.
+### Comment les couches fonctionnent concretement
 
-L'ontologie sert a 3 choses :
-1. **Guider le prompt** : "Voici les types d'entites a extraire"
-2. **Valider l'extraction** : "HAS_SKILL doit relier un Character a un Skill"
-3. **Fournir des exemples** : positifs et negatifs, par genre et par langue
+Les couches ne sont pas toutes obligatoires. Le systeme s'adapte a ce que tu lui donnes :
+
+**Scenario 1 : Genre et serie connus** (cas normal)
+```
+OntologyLoader.from_layers(genre="litrpg", series="primal_hunter")
+→ Charge core.yaml          9 types universels (Character, Event, Location...)
+→ Merge litrpg.yaml        +6 types genre (Skill, Class, Title, System...)
+→ Merge primal_hunter.yaml +types serie (si le fichier existe)
+= ~24 types, ~30 relations AVANT induction
+
+Puis: induce_patterns_and_ontology() decouvre ~4 types supplementaires
+= ~28 types + patterns regex induits
+```
+
+**Scenario 2 : Genre connu, pas de serie**
+```
+OntologyLoader.from_layers(genre="litrpg", series="")
+→ Charge core.yaml          9 types
+→ Merge litrpg.yaml        +6 types
+= ~15 types AVANT induction
+
+Puis: induction decouvre Bloodline, Profession, etc.
+= ~20 types + patterns
+```
+
+**Scenario 3 : Aucune connaissance prealable** (from scratch)
+```
+OntologyLoader.from_layers(genre="", series="")
+→ Charge SEULEMENT core.yaml   9 types universels
+= 9 types AVANT induction
+
+Puis: induction decouvre TOUT (Skill, Class, Level, Bloodline...)
+= ~20+ types + patterns
+
+Le systeme fonctionne quand meme, juste moins bien guide au depart.
+```
+
+**Le point cle** : plus tu donnes de couches YAML, mieux le systeme est guide des le depart. Mais il peut toujours combler les trous via l'induction. C'est un **spectre** entre "tout pre-defini" et "tout decouvert".
+
+```mermaid
+graph LR
+    subgraph "Ce que tu fournis (YAML)"
+        Y1["Core seul<br>(9 types)"] --> Y2["+ Genre<br>(+6 types)"] --> Y3["+ Serie<br>(+N types)"]
+    end
+
+    subgraph "Ce que le LLM decouvre"
+        I1["Beaucoup<br>(~15 types)"] --> I2["Complement<br>(~4 types)"] --> I3["Peu/rien<br>(~0-2 types)"]
+    end
+
+    Y1 -.-> I1
+    Y2 -.-> I2
+    Y3 -.-> I3
+
+    style Y1 fill:#3b82f6,stroke:#3b82f6,color:#fff
+    style Y2 fill:#8b5cf6,stroke:#8b5cf6,color:#fff
+    style Y3 fill:#f59e0b,stroke:#f59e0b,color:#fff
+    style I1 fill:#ef4444,stroke:#ef4444,color:#fff
+    style I2 fill:#f59e0b,stroke:#f59e0b,color:#fff
+    style I3 fill:#10b981,stroke:#10b981,color:#fff
+```
+
+### Les 3 roles de l'ontologie
+
+L'ontologie (toutes couches fusionnees + types induits) sert a **3 choses** :
+
+1. **Guider le prompt** : "Voici les types d'entites a extraire" — injecte dans le system prompt du LLM
+2. **Valider l'extraction** : "HAS_SKILL doit relier un Character a un Skill" — rules de validation depuis le YAML
+3. **Fournir les patterns** : les regex induites par le LLM pour la Passe 0 sont stockees dans l'ontologie
 
 ---
 
