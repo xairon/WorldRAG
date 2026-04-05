@@ -109,11 +109,12 @@ def _build_type_descriptions(ontology: OntologyLoader, language: str) -> str:
 
     # Induced types (auto-discovered by ontology inducer, not in YAML)
     rendered_lower = {
-        k.lower()
-        for section in [core_descs, genre_descs, series_descs]
-        for k in section
+        k.lower() for section in [core_descs, genre_descs, series_descs] for k in section
     }
-    induced_lines: list[str] = []
+    parent_map = getattr(ontology, "_induced_parent_types", {})
+    induced_standalone: list[str] = []
+    induced_subtypes: dict[str, list[str]] = {}  # parent -> list of subtype lines
+
     for type_name, node_type in ontology.node_types.items():
         if type_name.lower() in rendered_lower:
             continue
@@ -121,16 +122,31 @@ def _build_type_descriptions(ontology: OntologyLoader, language: str) -> str:
         if origin != "induced":
             continue
         desc = node_type.description or type_name
-        induced_lines.append(f"- {type_name}: {desc} (auto-discovered)")
+        parent = parent_map.get(type_name)
+        if parent:
+            # Render under parent section (§6ter.3)
+            induced_subtypes.setdefault(parent, []).append(
+                f"  - {type_name} (specialization of {parent}): {desc}"
+            )
+        else:
+            induced_standalone.append(f"- {type_name}: {desc} (auto-discovered)")
 
-    if induced_lines:
+    # Append subtypes under their parent's section in the existing output
+    if induced_subtypes:
+        subtype_section = []
+        for parent_name, lines in induced_subtypes.items():
+            subtype_section.append(f"Subtypes of {parent_name}:")
+            subtype_section.extend(lines)
+        sections.append("\n".join(subtype_section))
+
+    if induced_standalone:
         header = (
             "=== AUTO-DISCOVERED ENTITY TYPES ==="
             if language == "en"
             else "=== TYPES D'ENTITÉS AUTO-DÉCOUVERTS ==="
         )
         sections.append(header)
-        sections.extend(induced_lines)
+        sections.extend(induced_standalone)
 
     return "\n\n".join(sections)
 

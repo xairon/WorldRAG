@@ -64,6 +64,10 @@ class InducedEntityType(BaseModel):
 
     name: str = Field(description="PascalCase entity type name")
     description: str = Field(default="", description="What this type represents")
+    parent_type: str | None = Field(
+        default=None,
+        description="If this type is a specialization of an existing type, the parent type name",
+    )
     example_instances: list[str] = Field(default_factory=list)
     properties: list[str] = Field(default_factory=list)
 
@@ -121,7 +125,7 @@ Rules for regex:
 
 ## Existing ontology types (DO NOT rediscover these)
 
-### Entity types already defined:
+### Entity types already defined (with descriptions):
 {existing_entity_types}
 
 ### Relationship types already defined:
@@ -132,6 +136,8 @@ Rules for regex:
 2. Group similar captures and generate ONE regex per group
 3. Also identify entity and relation types not covered by the existing ontology
 4. Be conservative — only propose types and patterns that appear multiple times
+5. If a discovered type is a SPECIALIZATION of an existing type, set parent_type to the \
+existing type's name (e.g. a "SkillEmotion" is a specialization of "PsychologicalState")
 """
 
 
@@ -177,6 +183,57 @@ def naive_structural_capture(text: str) -> list[dict[str, Any]]:
     return captures
 
 
+_SEMANTIC_SIMILARITY_THRESHOLD = 0.85
+
+
+def _filter_semantic_duplicates(
+    proposed: list[InducedEntityType],
+    existing_context: list[dict[str, str]],
+) -> list[InducedEntityType]:
+    """Filter proposed types that are semantically too similar to existing GOLEM types.
+
+    Uses sentence-transformers cosine similarity with BGE-m3. Falls back to
+    keeping all types if embeddings are unavailable.
+    """
+    try:
+        from sentence_transformers import SentenceTransformer, util as st_util
+
+        model = SentenceTransformer("BAAI/bge-m3")
+    except Exception:
+        logger.warning("semantic_filter_unavailable", reason="sentence-transformers not loaded")
+        return proposed
+
+    # Build text representations
+    existing_texts = [f"{entry['name']}: {entry['description']}" for entry in existing_context]
+    existing_embeddings = model.encode(existing_texts, convert_to_tensor=True)
+
+    filtered: list[InducedEntityType] = []
+    for et in proposed:
+        proposed_text = f"{et.name}: {et.description}"
+        proposed_embedding = model.encode(proposed_text, convert_to_tensor=True)
+        similarities = st_util.cos_sim(proposed_embedding, existing_embeddings)[0]
+        max_sim = float(similarities.max())
+        best_match_idx = int(similarities.argmax())
+
+        if max_sim >= _SEMANTIC_SIMILARITY_THRESHOLD:
+            # Map to existing type as parent instead of creating duplicate
+            parent_name = existing_context[best_match_idx]["name"]
+            if et.parent_type is None:
+                et.parent_type = parent_name
+            logger.info(
+                "semantic_duplicate_detected",
+                proposed=et.name,
+                existing=parent_name,
+                similarity=round(max_sim, 3),
+                action="set_parent_type",
+            )
+            filtered.append(et)
+        else:
+            filtered.append(et)
+
+    return filtered
+
+
 async def induce_patterns_and_ontology(
     chapters_text: list[str],
     existing_ontology: Any,  # OntologyLoader
@@ -216,11 +273,18 @@ async def induce_patterns_and_ontology(
         logger.info("no_structural_captures_found", chapters=len(sample_chapters))
         # Fall through — LLM can still induce entity/relation types from text
 
-    # 3. Build existing ontology context
+    # 3. Build existing ontology context (with descriptions for GOLEM-awareness)
     existing_entity_names = sorted(existing_ontology.get_node_type_names())
     existing_relation_names = sorted(existing_ontology.get_relationship_type_names())
 
-    entity_types_str = ", ".join(existing_entity_names) if existing_entity_names else "(none)"
+    # Use descriptions so the LLM understands semantic coverage (§6ter.2)
+    induction_context = existing_ontology.to_induction_context()
+    if induction_context:
+        entity_types_str = "\n".join(
+            f"- {entry['name']}: {entry['description']}" for entry in induction_context
+        )
+    else:
+        entity_types_str = ", ".join(existing_entity_names) if existing_entity_names else "(none)"
     relation_types_str = ", ".join(existing_relation_names) if existing_relation_names else "(none)"
     system_prompt = _SYSTEM_PROMPT.format(
         existing_entity_types=entity_types_str,
@@ -263,7 +327,7 @@ async def induce_patterns_and_ontology(
         max_retries=2,
     )
 
-    # 6. Filter out rediscovered types
+    # 6. Filter out rediscovered types (lexical)
     existing_entity_set = {n.lower() for n in existing_entity_names}
     existing_relation_set = {n.lower() for n in existing_relation_names}
 
@@ -273,6 +337,11 @@ async def induce_patterns_and_ontology(
     new_relation_types = [
         rt for rt in result.relation_types if rt.name.lower() not in existing_relation_set
     ]
+
+    # 6b. Semantic similarity filter (§6ter.2) — catch semantic duplicates
+    # like "EmotionalState" vs "PsychologicalState" that lexical filter misses
+    if new_entity_types and induction_context:
+        new_entity_types = _filter_semantic_duplicates(new_entity_types, induction_context)
 
     # 7. Validate induced regex patterns
     validated_patterns = _validate_induced_patterns(result.regex_patterns)
@@ -295,6 +364,7 @@ async def induce_patterns_and_ontology(
             {
                 "name": et.name,
                 "description": et.description,
+                "parent_type": et.parent_type,
                 "example_instances": et.example_instances,
                 "properties": et.properties,
             }

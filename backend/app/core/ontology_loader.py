@@ -86,6 +86,7 @@ class OntologyLoader:
     _layer_labels: dict[str, str] = field(default_factory=dict)
     _node_type_origin: dict[str, str] = field(default_factory=dict)
     _regex_origin: dict[str, str] = field(default_factory=dict)
+    _induced_parent_types: dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def from_layers(
@@ -448,12 +449,17 @@ class OntologyLoader:
                 if prop_name not in props:
                     props[prop_name] = OntologyProperty(name=prop_name, type="string")
 
+            parent_type = nt.get("parent_type")
             self.node_types[name] = OntologyNodeType(
                 name=name,
                 description=nt.get("description", ""),
+                golem_alignment=f"induced::{parent_type}" if parent_type else "",
                 properties=props,
             )
             self._node_type_origin[name] = "induced"
+            # Track parent_type for prompt rendering
+            if parent_type:
+                self._induced_parent_types[name] = parent_type
             added_nodes += 1
 
         added_rels = 0
@@ -462,18 +468,44 @@ class OntologyLoader:
             if name in self.relationship_types:
                 continue
 
+            # Validate domain_range against existing types (§6ter.5)
+            source = rt.get("source_type", "")
+            target = rt.get("target_type", "")
+            if (
+                source
+                and source not in self.node_types
+                and source.lower() not in {n.lower() for n in self.node_types}
+            ):
+                logger.warning(
+                    "induced_relation_rejected",
+                    name=name,
+                    reason=f"source_type '{source}' not in ontology",
+                )
+                continue
+            if (
+                target
+                and target not in self.node_types
+                and target.lower() not in {n.lower() for n in self.node_types}
+            ):
+                logger.warning(
+                    "induced_relation_rejected",
+                    name=name,
+                    reason=f"target_type '{target}' not in ontology",
+                )
+                continue
+
             self.relationship_types[name] = OntologyRelationType(
                 name=name,
-                from_type=rt.get("source_type", ""),
-                to_type=rt.get("target_type", ""),
+                from_type=source,
+                to_type=target,
             )
             added_rels += 1
 
-        # Store induced regex patterns
+        # Store induced regex patterns (guard: don't overwrite existing, §6ter.4)
         added_patterns = 0
         for pattern_dict in induced.get("regex_patterns", []):
             name = pattern_dict.get("name", "")
-            if name:
+            if name and name not in self.regex_patterns:
                 self.regex_patterns[name] = pattern_dict
                 self._regex_origin[name] = "induced"
                 added_patterns += 1
