@@ -626,6 +626,12 @@ node_types:
       description: { type: string }
       species: { type: string }
       threat_level: { type: string }
+
+  # === PROGRESSION (pas GOLEM — V4 pipeline types, conservés tels quels) ===
+  # Note: LevelChange et StatChange sont des types d'extraction V4 qui n'ont pas
+  # d'équivalent GOLEM. Ils sont conservés dans le discriminated union EntityUnion
+  # et le _TYPE_PRIORITY map mais ne sont pas des node_types ontologiques — ils
+  # sont persistés comme propriétés temporelles sur Character (AT_LEVEL, stat props).
 ```
 
 ---
@@ -634,7 +640,7 @@ node_types:
 
 ### 6.1 Schemas Pydantic (`extraction_v4.py`)
 
-**Nouveaux modèles Instructor** (8 modèles) :
+**Nouveaux modèles Pydantic** (8 modèles : 6 LLM-extracted dans entity/relation pass + 2 programmatiques) :
 
 ```python
 class ExtractedCharacterStoff(BaseModel):
@@ -775,7 +781,7 @@ _TYPE_PRIORITY = {
 2. Pour chaque Character extrait dont le `canonical_name` matche un Stoff existant → créer le lien INSTANCE_OF_STOFF
 3. Si aucun Stoff n'existe pour ce `canonical_name` et que le personnage apparaît dans 2+ livres → créer le CharacterStoff
 
-### 6.5 Validation des relations (`validation.py`)
+### 6.5 Validation des relations (`validation.py` — **nouveau fichier à créer**)
 
 **Nouvelles contraintes domain/range** :
 
@@ -870,6 +876,10 @@ validation_rules:
     FOLLOWS:
       from: [Event]
       to: [Event]
+    # Epistemic
+    PERCEIVED_BY:
+      from: [Event]
+      to: [Character]
     # Existing (conserved)
     PARTICIPATES_IN:
       from: [Character, Creature]
@@ -908,6 +918,18 @@ validation_rules:
 | `_upsert_social_relationships()` | `(name + book_id)` | + INVOLVED_IN edges |
 | `_upsert_narrative_units()` | `(proposition + chapter + book_id)` | Lié à Event + Chunk |
 | `_upsert_textual_features()` | `(feature_type + chapter + book_id)` | |
+
+**Mise à jour `_GROUNDING_LABEL_MAP`** (entity_repo.py:1092) : Ajouter les entrées pour les 8 nouveaux types afin qu'ils aient des liens GROUNDED_IN vers leurs chunks source :
+```python
+"psychological_state": ("PsychologicalState", "name"),
+"setting": ("Setting", "name"),
+"character_feature": ("CharacterFeature", "name"),
+"narrative_role": ("NarrativeRole", "role_type"),
+"social_relationship": ("SocialRelationship", "name"),
+"relationship_role": ("RelationshipRole", "role_type"),
+"narrative_unit": ("NarrativeUnit", "proposition"),
+"textual_feature": ("TextualFeature", "name"),
+```
 
 **Renommages dans les handlers existants** :
 - `_upsert_items()` → `_upsert_objects()` (label `Object` au lieu de `Item`)
@@ -1291,6 +1313,13 @@ if entity.entity_type == "narrative_role" and entity.role_type == "protagonist":
 | 10 | `scripts/init_neo4j.cypher` | 71, 154-208, 243, 263, 305-337, 358-375 | 15+ contraintes/index sur `:Item`, `:Arc`, `event_type`, `RELATES_TO` | DROP + RECREATE avec nouveaux noms |
 | 11 | `scripts/init_neo4j.cypher` | 263 | `entity_fulltext` hardcodé sur 10 labels (pas Object, NarrativeSequence, ni les 8 nouveaux types) | DROP + RECREATE avec tous les labels |
 
+### Tier 1b — Hard breaks supplémentaires (V3 + prompts)
+
+| # | Fichier | Ligne(s) | Problème | Fix |
+|---|---------|----------|----------|-----|
+| 11b | `prompts/extraction_characters.py` | 4-5, 43 | Prompt V3 hardcode `RELATES_TO` | Renommer (même si V3 legacy, le grep "0 RELATES_TO" échouerait) |
+| 11c | `prompts/templates/few_shots.yaml` | 115, 146 | Exemples few-shot contiennent `RELATES_TO` | Renommer en `INVOLVED_IN` ou `HAS_STATE` selon le contexte |
+
 ### Tier 2 — Corruption silencieuse (résultats faux, pas d'erreur)
 
 | # | Fichier | Ligne(s) | Problème | Fix |
@@ -1333,6 +1362,25 @@ if entity.entity_type == "narrative_role" and entity.role_type == "protagonist":
 | `ontology/litrpg.yaml:192-202` | `type_exclusions` key `item` | → `object` |
 | `ontology/litrpg.yaml:216-227` | `domain_range` references `item` | → `object` |
 | `ontology/core.yaml` | Types `Item`, `Arc`, propriété `event_type`, relation `RELATES_TO`, `OCCURS_BEFORE` | Réécrire entièrement (déjà prévu §5) |
+
+### Documentation markdown à mettre à jour
+
+| Fichier | Références obsolètes |
+|---------|---------------------|
+| `docs/architecture/extraction-pipeline.md` | RELATES_TO, Item, Arc, event_type |
+| `docs/ontology.md` | RELATES_TO, OCCURS_BEFORE |
+| `CLAUDE.md` | "4-node linear pipeline" (c'est 6 nœuds), mentions de Item/Arc |
+
+### Fichiers supplémentaires impactés
+
+| Fichier | Problème | Fix |
+|---------|----------|-----|
+| `services/extraction/ontology_inducer.py` | Fichier legacy séparé de `pattern_inducer.py`. Peut être invoqué indépendamment. | Auditer pour les mêmes problèmes de collision que `pattern_inducer.py` |
+| `prompts/base.py:125-164` | `[CONSTRAINTS]` block liste `item`, `arc` comme entity_type valides | Renommer en `object`, `narrative_sequence` |
+
+### Note : NarrativeFunction et l'extraction V4
+
+`NarrativeFunction` existe dans `core.yaml` mais n'est **pas** dans `_VALID_ENTITY_TYPES` du pipeline V4 actuel — il n'est pas extrait automatiquement. Le CDC ajoute `NarrativeFunction` au schéma GOLEM enrichi mais ne l'ajoute **pas** au discriminated union EntityUnion. Décision : NarrativeFunction reste un type **structurel** (créé manuellement ou par book-level post-processing), pas un type extrait par le LLM chapter-level.
 
 ---
 
@@ -1506,8 +1554,8 @@ Idem pour les embeddings de relations (type-agnostique) et la traversée multi-h
 
 1. Créer le nouveau `core.yaml` v4.0.0 GOLEM-aligned (§5)
 2. Mettre à jour `OntologyLoader` : parser `golem_alignment`, `to_induction_context()`, section `disjointness`
-3. Ajouter les 6 nouveaux modèles Pydantic LLM-extracted dans `extraction_v4.py` (PsychologicalState, Setting, CharacterFeature, NarrativeRole, SocialRelationship, RelationshipRole)
-4. Renommer `ExtractedItem` → `ExtractedObject`, `ExtractedArc` → `ExtractedNarrativeSequence` + mise à jour `EntityUnion`
+3. Ajouter les 6 nouveaux modèles Pydantic LLM-extracted dans `extraction_v4.py` (PsychologicalState, Setting, CharacterFeature, NarrativeRole, SocialRelationship, RelationshipRole) + 2 modèles programmatiques (NarrativeUnit, TextualFeature) = **8 modèles total**
+4. Renommer `ExtractedItem` → `ExtractedObject`, `ExtractedArc` → `ExtractedNarrativeSequence` + mise à jour `EntityUnion` (6 LLM-extracted ajoutés au union, 2 programmatiques utilisés uniquement en interne)
 5. Mettre à jour `_VALID_ENTITY_TYPES` dans extraction_v4.py
 6. Mettre à jour `base.py:125-164` — liste des entity_type dans `[CONSTRAINTS]` block (EN + FR)
 7. Ajouter descriptions des 6 nouveaux types dans `entity_descriptions.yaml` (core section)
@@ -1596,13 +1644,13 @@ Idem pour les embeddings de relations (type-agnostique) et la traversée multi-h
 |-----------|--------|
 | **Couche 2 (genre) — `litrpg.yaml`** | GOLEM ne couvre pas les game mechanics. Skill, Class, Level, Stat restent tels quels. |
 | **Couche 3 (série) — `primal_hunter.yaml`** | Bloodline, Profession sont série-spécifiques. |
-| **Induction ontologique** | Le pattern_inducer continue de découvrir des types supplémentaires. |
+| **Induction ontologique** | Le mécanisme de co-construction reste le même. Les changements §6ter (GOLEM-awareness, similarité sémantique, sous-typage) **améliorent** l'inducteur sans changer son architecture. |
 | **Regex Passe 0** | Les captures naïves sont indépendantes de l'ontologie. |
 | **Chunking narratif** | Indépendant du schema ontologique. |
 | **Déduplication 5-tier** | Les mécanismes de dedup sont type-agnostiques. |
-| **EntityRegistry** | Structure inchangée (canonical_name, entity_type, aliases). Supporte les nouveaux types nativement. |
+| **EntityRegistry** | Structure de données inchangée (RegistryEntry: canonical_name, entity_type, aliases). Les ajouts §6quater (Setting/SocialRelationship dans le registry, Stoff creation, fix significance) sont des **enrichissements comportementaux**, pas des changements structurels. |
 | **Embedding pipeline** | Indépendant du schema (vectorise des textes, pas des types). |
-| **Architecture LangGraph** | 6 nœuds identiques, contenu différent dans les prompts. |
+| **Architecture LangGraph** | 6 nœuds linéaires (extract_entities → verify_coverage → extract_relations → verify_extractions → mention_detect → reconcile_persist). La topologie ne change pas, seul le contenu des prompts et les handlers de persistance changent. |
 | **Providers LLM** | Aucun changement. |
 | **arq workers** | Aucun changement structurel. |
 
@@ -1701,7 +1749,7 @@ graph TD
     end
 
     subgraph "CHARACTERS (GOLEM G0, G1, G17)"
-        CS[CharacterStoff] --> |INSTANCE_OF_STOFF| Character
+        Character --> |INSTANCE_OF_STOFF| CS[CharacterStoff]
         Character --> |CHARACTER_IN_WORK| Book
         Character --> |HAS_FEATURE| CF[CharacterFeature]
     end
@@ -1736,7 +1784,7 @@ graph TD
         NU --> |UNIT_PLAYS_FUNCTION| NF
         Character --> |PLAYS_ROLE| NR[NarrativeRole]
         NR --> |ROLE_IN_SEQUENCE| NS2
-        NStoff[NarrativeStoff] --> |SEQUENCE_INSTANCE_OF| NS2
+        NS2 --> |SEQUENCE_INSTANCE_OF| NStoff[NarrativeStoff]
     end
 
     subgraph "WORLD (GOLEM G12, G13, G16)"
@@ -1808,7 +1856,7 @@ graph TD
 | F2 Expression | ⏳ Différé | Chapter/Chunk implicite |
 | E13 Attribute Assignment | ⏳ Différé | Provenance implicite |
 
-**Couverture classes** : **16/18** classes GOLEM natives implémentées comme nœuds Neo4j (89%).
+**Couverture classes** : **17/18** classes GOLEM couvertes (94%) — 16 comme nœuds Neo4j + G2 Feature couvert via ses sous-classes G17+G18. Seul G15 Fandom est intentionnellement différé.
 
 ---
 
@@ -1976,30 +2024,55 @@ GOLEM définit des axiomes `owl:disjointWith` entre classes. Ces contraintes emp
 ```yaml
 validation_rules:
   disjointness:
-    # Pairs of types that cannot be assigned to the same entity
+    # Complete pairs from GOLEM TTL owl:disjointWith axioms
+    # G10 NarrativeFunction disjoint with:
     - [narrative_function, setting]
     - [narrative_function, location]
     - [narrative_function, character]
     - [narrative_function, social_relationship]
     - [narrative_function, narrative_sequence]
     - [narrative_function, narrative_unit]
+    - [narrative_function, narrative_stoff]
+    # G11 NarrativeRole disjoint with:
     - [narrative_role, setting]
     - [narrative_role, location]
     - [narrative_role, character]
     - [narrative_role, social_relationship]
     - [narrative_role, narrative_sequence]
     - [narrative_role, narrative_unit]
+    - [narrative_role, narrative_stoff]
+    # G1 Character disjoint with:
+    - [character, social_relationship]
+    - [character, relationship_role]
+    - [character, narrative_sequence]
+    - [character, narrative_unit]
+    # G4 SocialRelationship disjoint with:
     - [social_relationship, relationship_role]
     - [social_relationship, narrative_sequence]
+    # G6 RelationshipRole disjoint with:
     - [relationship_role, narrative_sequence]
     - [relationship_role, narrative_unit]
+    # G14 NarrativeStoff disjoint with:
     - [narrative_stoff, character]
     - [narrative_stoff, relationship_role]
     - [narrative_stoff, narrative_sequence]
+    # G12 Setting disjoint with (via DOLCE situation hierarchy):
     - [setting, location]
+    - [setting, social_relationship]
+    - [setting, relationship_role]
+    - [setting, narrative_sequence]
+    - [setting, narrative_unit]
+    - [setting, narrative_stoff]
+    # G13 Location disjoint with:
+    - [location, narrative_stoff]
+    - [location, social_relationship]
+    - [location, narrative_sequence]
+    - [location, narrative_unit]
+    # G7 NarrativeSequence disjoint with:
+    - [narrative_sequence, narrative_unit]
 ```
 
-Le cross-type dedup du reconciler utilise ces paires pour résoudre les conflits : si le LLM extrait "The Tutorial" comme Location ET comme Setting, la contrainte de disjonction force le choix (Setting prioritaire d'après le priority map).
+**37 paires de disjonction** extraites du TTL GOLEM v1.1. Le cross-type dedup du reconciler utilise ces paires pour résoudre les conflits : si le LLM extrait "The Tutorial" comme Location ET comme Setting, la contrainte de disjonction force le choix (Setting prioritaire d'après le priority map).
 
 ---
 
@@ -2057,4 +2130,4 @@ SETTING_OF_WORK:
 
 ### Contraintes OWL
 
-**Couverture contraintes de disjonction : 20/20 = 100%** (toutes les paires disjointWith de GOLEM sont dans les validation_rules)
+**Couverture contraintes de disjonction : 37/37 = 100%** (toutes les paires owl:disjointWith extraites du TTL GOLEM v1.1 sont dans les validation_rules)
