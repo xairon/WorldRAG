@@ -1,7 +1,9 @@
 export type EntityType =
   | "Character" | "Skill" | "Class" | "Event" | "Location"
-  | "Item" | "System" | "Title" | "Level" | "Faction"
-  | "Arc" | "Creature" | "Concept" | "Race" | "Prophecy"
+  | "Object" | "System" | "Title" | "Level" | "Faction"
+  | "NarrativeSequence" | "Creature" | "Concept" | "Race" | "Prophecy"
+  | "Setting" | "PsychologicalState" | "SocialRelationship"
+  | "CharacterFeature" | "NarrativeRole" | "CharacterStoff" | "NarrativeStoff"
 
 export type UIStatus = "pending" | "parsing" | "ready" | "extracting" | "embedding" | "done" | "error" | "error_quota"
 
@@ -12,16 +14,23 @@ export const ENTITY_COLORS: Record<string, string> = {
   Class: "amber-500",
   Event: "rose-500",
   Location: "emerald-500",
-  Item: "orange-500",
+  Object: "orange-500",
   System: "cyan-500",
   Title: "fuchsia-500",
   Level: "lime-500",
   Faction: "teal-500",
-  Arc: "slate-400",
+  NarrativeSequence: "slate-400",
   Creature: "red-500",
   Concept: "indigo-500",
   Race: "pink-500",
   Prophecy: "purple-500",
+  Setting: "sky-500",
+  PsychologicalState: "yellow-500",
+  SocialRelationship: "emerald-400",
+  CharacterFeature: "blue-300",
+  NarrativeRole: "violet-400",
+  CharacterStoff: "blue-700",
+  NarrativeStoff: "slate-600",
 } as const
 
 /** Hex colors for Sigma.js and recharts (not Tailwind classes) */
@@ -31,16 +40,23 @@ export const ENTITY_HEX: Record<string, string> = {
   Class: "#f59e0b",
   Event: "#f43f5e",
   Location: "#10b981",
-  Item: "#f97316",
+  Object: "#f97316",
   System: "#06b6d4",
   Title: "#d946ef",
   Level: "#84cc16",
   Faction: "#14b8a6",
-  Arc: "#94a3b8",
+  NarrativeSequence: "#94a3b8",
   Creature: "#ef4444",
   Concept: "#6366f1",
   Race: "#ec4899",
   Prophecy: "#a855f7",
+  Setting: "#0ea5e9",
+  PsychologicalState: "#eab308",
+  SocialRelationship: "#34d399",
+  CharacterFeature: "#93c5fd",
+  NarrativeRole: "#a78bfa",
+  CharacterStoff: "#1d4ed8",
+  NarrativeStoff: "#475569",
 } as const
 
 export const ENTITY_HEX_FALLBACK = "#9ca3af" // gray-400

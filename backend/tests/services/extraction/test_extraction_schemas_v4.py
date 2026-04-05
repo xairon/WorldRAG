@@ -1,48 +1,54 @@
-"""Tests for v4 extraction schemas (12-type discriminated union)."""
+"""Tests for v4 extraction schemas (18-type discriminated union, GOLEM v1.1)."""
 
 import pytest
 from pydantic import ValidationError
 
 from app.schemas.extraction_v4 import (
     EntityExtractionResult,
-    ExtractedArc,
     ExtractedCharacter,
+    ExtractedCharacterFeature,
     ExtractedConcept,
     ExtractedCreature,
     ExtractedEvent,
     ExtractedFaction,
     ExtractedGenreEntity,
-    ExtractedItem,
     ExtractedLevelChange,
     ExtractedLocation,
+    ExtractedNarrativeRole,
+    ExtractedNarrativeSequence,
+    ExtractedObject,
     ExtractedProphecy,
+    ExtractedPsychologicalState,
     ExtractedRelation,
+    ExtractedSetting,
+    ExtractedSocialRelationship,
     ExtractedStatChange,
+    ExtractedTextualFeature,
     RelationEnd,
     RelationExtractionResult,
 )
 
-# ── 1. ExtractedArc roundtrip ────────────────────────────────────────────
+# ── 1. ExtractedNarrativeSequence roundtrip ─────────────────────────────
 
 
-def test_arc_roundtrip():
-    arc = ExtractedArc(
+def test_narrative_sequence_roundtrip():
+    seq = ExtractedNarrativeSequence(
         name="The Tutorial",
         canonical_name="The Tutorial",
-        arc_type="main_plot",
+        sequence_type="main_plot",
         status="completed",
         description="The initial tutorial arc.",
         extraction_text="The tutorial began.",
         char_offset_start=0,
         char_offset_end=20,
     )
-    dumped = arc.model_dump()
-    assert dumped["entity_type"] == "arc"
+    dumped = seq.model_dump()
+    assert dumped["entity_type"] == "narrative_sequence"
     assert dumped["name"] == "The Tutorial"
-    assert dumped["arc_type"] == "main_plot"
+    assert dumped["sequence_type"] == "main_plot"
 
-    reloaded = ExtractedArc.model_validate(dumped)
-    assert reloaded.name == arc.name
+    reloaded = ExtractedNarrativeSequence.model_validate(dumped)
+    assert reloaded.name == seq.name
     assert reloaded.status == "completed"
 
 
@@ -114,58 +120,70 @@ def test_genre_entity_spell():
     assert ge.properties["element"] == "arcane"
 
 
-# ── 4. Discriminated union resolves all 12 types ────────────────────────
+# ── 4. Discriminated union resolves all 18 types ────────────────────────
 
 
-def test_all_12_entity_types():
+def test_all_18_entity_types():
     entities = [
         ExtractedCharacter(name="A", extraction_text="A"),
         ExtractedEvent(name="B", extraction_text="B"),
         ExtractedLocation(name="C", extraction_text="C"),
-        ExtractedItem(name="D", extraction_text="D"),
+        ExtractedObject(name="D", extraction_text="D"),
         ExtractedCreature(name="E", extraction_text="E"),
         ExtractedFaction(name="F", extraction_text="F"),
         ExtractedConcept(name="G", extraction_text="G"),
-        ExtractedArc(name="H"),
+        ExtractedNarrativeSequence(name="H"),
         ExtractedProphecy(name="I"),
         ExtractedLevelChange(character="J", extraction_text="J"),
         ExtractedStatChange(character="K", stat_name="Str", value=5, extraction_text="K"),
-        ExtractedGenreEntity(sub_type="skill", name="L"),
+        ExtractedPsychologicalState(character="L", name="fear", extraction_text="L"),
+        ExtractedSetting(name="M", extraction_text="M"),
+        ExtractedCharacterFeature(character="N", name="green eyes", extraction_text="N"),
+        ExtractedNarrativeRole(character="O", extraction_text="O"),
+        ExtractedSocialRelationship(participants=["P", "Q"], extraction_text="P-Q"),
+        ExtractedTextualFeature(name="first_person"),
+        ExtractedGenreEntity(sub_type="skill", name="R"),
     ]
 
     expected_types = [
         "character",
         "event",
         "location",
-        "item",
+        "object",
         "creature",
         "faction",
         "concept",
-        "arc",
+        "narrative_sequence",
         "prophecy",
         "level_change",
         "stat_change",
+        "psychological_state",
+        "setting",
+        "character_feature",
+        "narrative_role",
+        "social_relationship",
+        "textual_feature",
         "genre_entity",
     ]
 
-    assert len(entities) == 12
+    assert len(entities) == 18
     for entity, expected_type in zip(entities, expected_types, strict=False):
         assert entity.entity_type == expected_type, (
             f"Expected {expected_type}, got {entity.entity_type}"
         )
 
 
-def test_discriminated_union_deserialization_all_12():
-    """All 12 types deserialize correctly via EntityExtractionResult."""
+def test_discriminated_union_deserialization_all_types():
+    """All 18 types deserialize correctly via EntityExtractionResult."""
     raw_entities = [
         {"entity_type": "character", "name": "Alice", "extraction_text": "Alice ran."},
         {"entity_type": "event", "name": "Battle", "extraction_text": "A battle."},
         {"entity_type": "location", "name": "Forest", "extraction_text": "The forest."},
-        {"entity_type": "item", "name": "Sword", "extraction_text": "A sword."},
+        {"entity_type": "object", "name": "Sword", "extraction_text": "A sword."},
         {"entity_type": "creature", "name": "Wolf", "extraction_text": "A wolf."},
         {"entity_type": "faction", "name": "Guild", "extraction_text": "The guild."},
         {"entity_type": "concept", "name": "Mana", "extraction_text": "Mana flows."},
-        {"entity_type": "arc", "name": "Tutorial Arc"},
+        {"entity_type": "narrative_sequence", "name": "Tutorial Arc"},
         {"entity_type": "prophecy", "name": "Dark Prophecy"},
         {"entity_type": "level_change", "character": "Jake", "extraction_text": "Level up."},
         {
@@ -175,15 +193,45 @@ def test_discriminated_union_deserialization_all_12():
             "value": 3,
             "extraction_text": "STR+3.",
         },
+        {
+            "entity_type": "psychological_state",
+            "character": "Jake",
+            "name": "determination",
+            "extraction_text": "Jake felt determined.",
+        },
+        {
+            "entity_type": "setting",
+            "name": "The Tutorial",
+            "extraction_text": "Welcome to the Tutorial.",
+        },
+        {
+            "entity_type": "character_feature",
+            "character": "Jake",
+            "name": "green eyes",
+            "extraction_text": "Jake's green eyes.",
+        },
+        {
+            "entity_type": "narrative_role",
+            "character": "Jake",
+            "extraction_text": "Jake as protagonist.",
+        },
+        {
+            "entity_type": "social_relationship",
+            "participants": ["Jake", "Casper"],
+            "extraction_text": "Friendship.",
+        },
+        {"entity_type": "textual_feature", "name": "first_person_pov"},
         {"entity_type": "genre_entity", "sub_type": "class", "name": "Sword Saint"},
     ]
 
     result = EntityExtractionResult(entities=raw_entities, chapter_number=1)
-    assert len(result.entities) == 12
+    assert len(result.entities) == 18
     assert isinstance(result.entities[0], ExtractedCharacter)
-    assert isinstance(result.entities[7], ExtractedArc)
+    assert isinstance(result.entities[7], ExtractedNarrativeSequence)
     assert isinstance(result.entities[8], ExtractedProphecy)
-    assert isinstance(result.entities[11], ExtractedGenreEntity)
+    assert isinstance(result.entities[11], ExtractedPsychologicalState)
+    assert isinstance(result.entities[12], ExtractedSetting)
+    assert isinstance(result.entities[17], ExtractedGenreEntity)
 
 
 # ── 5. relation_type is plain str (no coercion) ─────────────────────────
@@ -209,30 +257,30 @@ def test_mixed_type_entity_extraction_result():
         {
             "entity_type": "character",
             "name": "Jake",
-            "role": "protagonist",
+            "agency": "active",
             "extraction_text": "Jake.",
         },
         {"entity_type": "genre_entity", "sub_type": "skill", "name": "Fireball"},
-        {"entity_type": "arc", "name": "The Hunt"},
+        {"entity_type": "narrative_sequence", "name": "The Hunt"},
         {"entity_type": "location", "name": "Dark Forest", "extraction_text": "Forest."},
     ]
     result = EntityExtractionResult(entities=raw, chapter_number=5)
     assert len(result.entities) == 4
     assert isinstance(result.entities[0], ExtractedCharacter)
     assert isinstance(result.entities[1], ExtractedGenreEntity)
-    assert isinstance(result.entities[2], ExtractedArc)
+    assert isinstance(result.entities[2], ExtractedNarrativeSequence)
     assert isinstance(result.entities[3], ExtractedLocation)
 
 
 # ── 7. Core enum coercion still works ───────────────────────────────────
 
 
-def test_role_coercion():
-    char = ExtractedCharacter(name="Test", role="PROTAGONIST", extraction_text="Test.")
-    assert char.role == "protagonist"
+def test_agency_coercion():
+    char = ExtractedCharacter(name="Test", agency="ACTIVE", extraction_text="Test.")
+    assert char.agency == "active"
 
-    char2 = ExtractedCharacter(name="Test", role="unknown_role", extraction_text="Test.")
-    assert char2.role == "minor"  # default fallback
+    char2 = ExtractedCharacter(name="Test", agency="unknown_agency", extraction_text="Test.")
+    assert char2.agency == "active"  # default fallback
 
 
 def test_status_coercion():
@@ -240,12 +288,12 @@ def test_status_coercion():
     assert char.status == "dead"
 
 
-def test_event_type_coercion():
-    event = ExtractedEvent(name="Battle", event_type="COMBAT", extraction_text="Battle.")
-    assert event.event_type == "combat"
+def test_event_category_coercion():
+    event = ExtractedEvent(name="Battle", event_category="COMBAT", extraction_text="Battle.")
+    assert event.event_category == "combat"
 
-    event2 = ExtractedEvent(name="Battle", event_type="nonsense", extraction_text="Battle.")
-    assert event2.event_type == "action"  # default fallback
+    event2 = ExtractedEvent(name="Battle", event_category="nonsense", extraction_text="Battle.")
+    assert event2.event_category == "action"  # default fallback
 
 
 # ── 8. Character roundtrip (kept from original) ─────────────────────────
@@ -256,7 +304,7 @@ def test_character_roundtrip():
         name="Jake Thayne",
         canonical_name="Jake Thayne",
         aliases=["Jake", "The Primal Hunter"],
-        role="protagonist",
+        agency="active",
         species="Human",
         description="A hunter awakened in the tutorial.",
         status="alive",
@@ -335,9 +383,9 @@ def test_relation_result_with_ended():
 
 
 def test_default_offsets():
-    arc = ExtractedArc(name="Test Arc")
-    assert arc.char_offset_start == -1
-    assert arc.char_offset_end == -1
+    seq = ExtractedNarrativeSequence(name="Test Arc")
+    assert seq.char_offset_start == -1
+    assert seq.char_offset_end == -1
 
     prophecy = ExtractedProphecy(name="Test Prophecy")
     assert prophecy.char_offset_start == -1
@@ -346,3 +394,154 @@ def test_default_offsets():
     ge = ExtractedGenreEntity(sub_type="skill", name="Test")
     assert ge.char_offset_start == -1
     assert ge.char_offset_end == -1
+
+
+# ── 12. New GOLEM types roundtrip ──────────────────────────────────────
+
+
+def test_psychological_state_roundtrip():
+    state = ExtractedPsychologicalState(
+        character="jake",
+        state_type="emotion",
+        name="determination",
+        description="Jake felt a surge of determination.",
+        trigger_event="Battle of the Clearing",
+        intensity=0.9,
+        extraction_text="Jake felt a surge of determination.",
+    )
+    dumped = state.model_dump()
+    assert dumped["entity_type"] == "psychological_state"
+    assert dumped["intensity"] == 0.9
+    reloaded = ExtractedPsychologicalState.model_validate(dumped)
+    assert reloaded.character == "jake"
+
+
+def test_setting_roundtrip():
+    setting = ExtractedSetting(
+        name="The Tutorial",
+        setting_type="instance",
+        description="A deadly trial for newcomers.",
+        extraction_text="Welcome to the Tutorial.",
+    )
+    dumped = setting.model_dump()
+    assert dumped["entity_type"] == "setting"
+    assert dumped["setting_type"] == "instance"
+    reloaded = ExtractedSetting.model_validate(dumped)
+    assert reloaded.name == "The Tutorial"
+
+
+def test_character_feature_roundtrip():
+    feature = ExtractedCharacterFeature(
+        character="jake",
+        feature_type="physical",
+        name="green eyes",
+        description="Jake has striking green eyes.",
+        extraction_text="his green eyes",
+    )
+    dumped = feature.model_dump()
+    assert dumped["entity_type"] == "character_feature"
+    reloaded = ExtractedCharacterFeature.model_validate(dumped)
+    assert reloaded.feature_type == "physical"
+
+
+def test_narrative_role_roundtrip():
+    role = ExtractedNarrativeRole(
+        character="jake",
+        role_type="protagonist",
+        context="Main arc",
+        extraction_text="Jake, the protagonist.",
+    )
+    dumped = role.model_dump()
+    assert dumped["entity_type"] == "narrative_role"
+    assert dumped["role_type"] == "protagonist"
+    reloaded = ExtractedNarrativeRole.model_validate(dumped)
+    assert reloaded.character == "jake"
+
+
+def test_social_relationship_roundtrip():
+    rel = ExtractedSocialRelationship(
+        participants=["jake", "casper"],
+        relationship_type="friendship",
+        name="Jake-Casper bond",
+        description="A deep friendship forged in the Tutorial.",
+        trigger_event="Battle of the Clearing",
+        extraction_text="The friendship between Jake and Casper deepened.",
+    )
+    dumped = rel.model_dump()
+    assert dumped["entity_type"] == "social_relationship"
+    assert len(dumped["participants"]) == 2
+    reloaded = ExtractedSocialRelationship.model_validate(dumped)
+    assert reloaded.relationship_type == "friendship"
+
+
+def test_textual_feature_roundtrip():
+    feat = ExtractedTextualFeature(
+        feature_type="pov",
+        name="third_person_limited",
+        value="Jake",
+    )
+    dumped = feat.model_dump()
+    assert dumped["entity_type"] == "textual_feature"
+    reloaded = ExtractedTextualFeature.model_validate(dumped)
+    assert reloaded.feature_type == "pov"
+
+
+# ── 13. GOLEM type coercion ────────────────────────────────────────────
+
+
+def test_state_type_coercion():
+    state = ExtractedPsychologicalState(
+        character="jake", name="fear", state_type="EMOTION", extraction_text="fear."
+    )
+    assert state.state_type == "emotion"
+
+    state2 = ExtractedPsychologicalState(
+        character="jake", name="fear", state_type="nonsense", extraction_text="fear."
+    )
+    assert state2.state_type == "emotion"  # default fallback
+
+
+def test_setting_type_coercion():
+    setting = ExtractedSetting(
+        name="Tutorial", setting_type="WORLD", extraction_text="Tutorial."
+    )
+    assert setting.setting_type == "world"
+
+
+def test_role_type_coercion():
+    role = ExtractedNarrativeRole(
+        character="jake", role_type="PROTAGONIST", extraction_text="jake."
+    )
+    assert role.role_type == "protagonist"
+
+
+def test_relationship_type_coercion():
+    rel = ExtractedSocialRelationship(
+        participants=["a", "b"],
+        relationship_type="FRIENDSHIP",
+        extraction_text="friends.",
+    )
+    assert rel.relationship_type == "friendship"
+
+
+def test_social_relationship_requires_two_participants():
+    with pytest.raises(ValidationError):
+        ExtractedSocialRelationship(
+            participants=["jake"],
+            extraction_text="alone.",
+        )
+
+
+# ── 14. Unknown entity types are dropped ─────────────────────────────
+
+
+def test_unknown_entity_type_dropped():
+    raw = [
+        {"entity_type": "character", "name": "Jake", "extraction_text": "Jake."},
+        {"entity_type": "invented_type", "name": "Foo"},
+        {"entity_type": "event", "name": "Battle", "extraction_text": "Battle."},
+    ]
+    result = EntityExtractionResult(entities=raw, chapter_number=1)
+    assert len(result.entities) == 2
+    assert result.entities[0].entity_type == "character"
+    assert result.entities[1].entity_type == "event"

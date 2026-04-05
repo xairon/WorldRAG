@@ -22,7 +22,7 @@ if TYPE_CHECKING:
         ExtractedCreature,
         ExtractedEvent,
         ExtractedFaction,
-        ExtractedItem,
+        ExtractedItem,  # V3 legacy name — maps to Object in Neo4j
         ExtractedLevelChange,
         ExtractedLocation,
         ExtractedRelationship,
@@ -63,7 +63,8 @@ _HANDLED_ENTITY_TYPES: set[str] = {
     "title",
     "event",
     "location",
-    "item",
+    "object",
+    "item",  # V3 legacy alias → routes to upsert_items (Object label)
     "creature",
     "faction",
     "concept",
@@ -72,7 +73,8 @@ _HANDLED_ENTITY_TYPES: set[str] = {
     "bloodline",
     "profession",
     "church",
-    "arc",
+    "narrative_sequence",
+    "arc",  # V3 legacy alias → routes to upsert_arcs (NarrativeSequence label)
     "prophecy",
 }
 
@@ -100,7 +102,7 @@ class EntityRepository(Neo4jRepository):
                 "canonical_name": (c.canonical_name or c.name).lower().strip(),
                 "aliases": c.aliases,
                 "description": c.description,
-                "role": c.role,
+                "agency": getattr(c, "agency", "") or getattr(c, "role", ""),
                 "species": c.species,
                 "first_chapter": c.first_appearance_chapter or chapter_number,
                 "confidence": getattr(c, "confidence", 1.0),
@@ -120,7 +122,7 @@ class EntityRepository(Neo4jRepository):
                 ch.name = c.name,
                 ch.aliases = c.aliases,
                 ch.description = c.description,
-                ch.role = c.role,
+                ch.agency = c.agency,
                 ch.species = c.species,
                 ch.first_appearance_chapter = c.first_chapter,
                 ch.confidence = c.confidence,
@@ -196,7 +198,8 @@ class EntityRepository(Neo4jRepository):
             rel_type = rel["rel_type"].upper().replace(" ", "_").replace("-", "_")
             rel_type = "".join(c for c in rel_type if c.isalnum() or c == "_")
             if not rel_type:
-                rel_type = "RELATES_TO"
+                rel_type = "UNKNOWN"
+                logger.warning("relation_type_fallback", source=rel["source"], target=rel["target"])
             _, summary = await self.execute_write_with_summary(
                 f"""
                 WITH $rel AS r
@@ -521,7 +524,8 @@ class EntityRepository(Neo4jRepository):
             {
                 "name": e.name.lower().strip(),
                 "description": e.description,
-                "event_type": e.event_type,
+                "event_category": getattr(e, "event_category", None)
+                or getattr(e, "event_type", "action"),
                 "significance": e.significance,
                 "participants": e.participants,
                 "location": e.location,
@@ -543,7 +547,7 @@ class EntityRepository(Neo4jRepository):
             MERGE (ev:Event {{name: e.name, chapter_start: e.chapter, book_id: $book_id}})
             ON CREATE SET
                 ev.description = e.description,
-                ev.event_type = e.event_type,
+                ev.event_category = e.event_category,
                 ev.significance = e.significance,
                 ev.is_flashback = e.is_flashback,
                 ev.confidence = e.confidence,
@@ -682,7 +686,7 @@ class EntityRepository(Neo4jRepository):
 
         return len(locations)
 
-    # ── Items ───────────────────────────────────────────────────────────
+    # ── Objects (ex-Items, GOLEM G16) ─────────────────────────────────
 
     async def upsert_items(
         self,
@@ -691,7 +695,7 @@ class EntityRepository(Neo4jRepository):
         items: list[ExtractedItem],
         batch_id: str = "",
     ) -> int:
-        """Upsert item nodes and link to owners."""
+        """Upsert Object nodes (ex-Item) and link to owners."""
         if not items:
             return 0
 
@@ -700,7 +704,7 @@ class EntityRepository(Neo4jRepository):
                 "name": i.name.lower().strip(),
                 "canonical_name": (getattr(i, "canonical_name", "") or i.name).lower().strip(),
                 "description": getattr(i, "description", ""),
-                "item_type": i.item_type,
+                "object_type": getattr(i, "object_type", None) or getattr(i, "item_type", ""),
                 "rarity": i.rarity,
                 "owner": i.owner,
                 "confidence": getattr(i, "confidence", 1.0),
@@ -711,11 +715,11 @@ class EntityRepository(Neo4jRepository):
         await self.execute_write(
             """
             UNWIND $items AS i
-            MERGE (it:Item {name: i.name, book_id: $book_id})
+            MERGE (it:Object {name: i.name, book_id: $book_id})
             ON CREATE SET
                 it.canonical_name = i.canonical_name,
                 it.description = i.description,
-                it.item_type = i.item_type,
+                it.object_type = i.object_type,
                 it.rarity = i.rarity,
                 it.confidence = i.confidence,
                 it.batch_id = $batch_id,
@@ -942,7 +946,7 @@ class EntityRepository(Neo4jRepository):
                 book_id: $book_id
             })
             ON CREATE SET
-                ev.event_type = 'level_change',
+                ev.event_category = 'level_change',
                 ev.significance = 'moderate',
                 ev.description = ch.canonical_name + ' leveled from ' +
                     coalesce(toString(lc.old_level), '?') + ' to ' +
@@ -1089,7 +1093,8 @@ class EntityRepository(Neo4jRepository):
         "title": ("Title", "name"),
         "event": ("Event", "name"),
         "location": ("Location", "name"),
-        "item": ("Item", "name"),
+        "object": ("Object", "name"),
+        "item": ("Object", "name"),  # V3 legacy alias
         "creature": ("Creature", "name"),
         "faction": ("Faction", "name"),
         "concept": ("Concept", "name"),
@@ -1240,7 +1245,9 @@ class EntityRepository(Neo4jRepository):
                entity.canonical_name AS canonical_name,
                [l IN labels WHERE l IN [
                    'Character','Skill','Class','Title','Event',
-                   'Location','Item','Creature','Faction','Concept'
+                   'Location','Object','Creature','Faction','Concept',
+                   'Setting','NarrativeSequence','PsychologicalState',
+                   'SocialRelationship','CharacterFeature','NarrativeRole','Prophecy'
                ]] AS entity_types,
                entity.aliases AS aliases,
                entity.description AS description
@@ -1516,13 +1523,18 @@ class EntityRepository(Neo4jRepository):
             p
             for p in provenances
             if p.confidence >= 0.7
-            and p.source_type in ("item", "class", "bloodline")
+            and p.source_type in ("item", "object", "class", "bloodline")
             and p.source_name
         ]
         if not valid:
             return 0
 
-        label_map = {"item": "Item", "class": "Class", "bloodline": "Bloodline"}
+        label_map = {
+            "item": "Object",
+            "object": "Object",
+            "class": "Class",
+            "bloodline": "Bloodline",
+        }
 
         created = 0
         for source_type, label in label_map.items():
@@ -1754,18 +1766,16 @@ class EntityRepository(Neo4jRepository):
         arcs: list,
         batch_id: str = "",
     ) -> int:
-        """Upsert Arc nodes and create MENTIONED_IN edge to the chapter."""
+        """Upsert NarrativeSequence (ex-Arc) nodes and create MENTIONED_IN edge to the chapter."""
         if not arcs:
             return 0
 
         data = [
             {
                 "name": a.name,
-                "canonical_name": (
-                    getattr(a, "canonical_name", None) or a.name
-                ).lower().strip(),
+                "canonical_name": (getattr(a, "canonical_name", None) or a.name).lower().strip(),
                 "description": getattr(a, "description", ""),
-                "arc_type": getattr(a, "arc_type", ""),
+                "sequence_type": getattr(a, "sequence_type", None) or getattr(a, "arc_type", ""),
                 "related_events": [
                     e.lower().strip() for e in getattr(a, "related_events", []) or []
                 ],
@@ -1776,11 +1786,11 @@ class EntityRepository(Neo4jRepository):
         await self.execute_write(
             """
             UNWIND $arcs AS a
-            MERGE (n:Arc {canonical_name: a.canonical_name, book_id: $book_id})
+            MERGE (n:NarrativeSequence {canonical_name: a.canonical_name, book_id: $book_id})
             ON CREATE SET
                 n.name = a.name,
                 n.description = a.description,
-                n.arc_type = a.arc_type,
+                n.sequence_type = a.sequence_type,
                 n.batch_id = $batch_id,
                 n.valid_from_chapter = $chapter,
                 n.created_at = timestamp()
@@ -1801,7 +1811,7 @@ class EntityRepository(Neo4jRepository):
             },
         )
 
-        # Link arcs to their related events via PART_OF_ARC edges
+        # Link sequences to their related events via SEQUENCED_IN edges
         for arc_data in data:
             if arc_data["related_events"]:
                 await self.execute_write(
@@ -1812,8 +1822,8 @@ class EntityRepository(Neo4jRepository):
                        OR e.canonical_name = event_name
                     WITH e, event_name
                     LIMIT 1
-                    MATCH (arc:Arc {canonical_name: $arc_name, book_id: $book_id})
-                    MERGE (e)-[:PART_OF_ARC]->(arc)
+                    MATCH (seq:NarrativeSequence {canonical_name: $arc_name, book_id: $book_id})
+                    MERGE (e)-[:SEQUENCED_IN]->(seq)
                     """,
                     {
                         "event_names": arc_data["related_events"],
@@ -1822,13 +1832,13 @@ class EntityRepository(Neo4jRepository):
                     },
                 )
 
-        # Add PRECEDES edges between consecutive events within each arc (by chapter order)
+        # Add PRECEDES edges between consecutive events within each sequence (by chapter order)
         for arc_data in data:
             if len(arc_data["related_events"]) >= 2:
                 await self.execute_write(
                     """
-                    MATCH (arc:Arc {canonical_name: $arc_name, book_id: $book_id})
-                    MATCH (e:Event)-[:PART_OF_ARC]->(arc)
+                    MATCH (seq:NarrativeSequence {canonical_name: $arc_name, book_id: $book_id})
+                    MATCH (e:Event)-[:SEQUENCED_IN]->(seq)
                     WITH e ORDER BY e.valid_from_chapter ASC, e.name ASC
                     WITH collect(e) AS events
                     UNWIND range(0, size(events) - 2) AS i
@@ -1841,9 +1851,7 @@ class EntityRepository(Neo4jRepository):
                     },
                 )
 
-        logger.info(
-            "arcs_upserted", book_id=book_id, chapter=chapter_number, count=len(arcs)
-        )
+        logger.info("arcs_upserted", book_id=book_id, chapter=chapter_number, count=len(arcs))
         return len(arcs)
 
     # ── Prophecies ───────────────────────────────────────────────────────
@@ -1862,9 +1870,7 @@ class EntityRepository(Neo4jRepository):
         data = [
             {
                 "name": p.name,
-                "canonical_name": (
-                    getattr(p, "canonical_name", None) or p.name
-                ).lower().strip(),
+                "canonical_name": (getattr(p, "canonical_name", None) or p.name).lower().strip(),
                 "description": getattr(p, "description", ""),
                 "status": getattr(p, "status", ""),
             }
@@ -1931,12 +1937,14 @@ class EntityRepository(Neo4jRepository):
 
         data = [
             {
-                "name": (
-                    getattr(e, "name", e.get("name", "")) if isinstance(e, dict) else e.name
-                ).lower().strip(),
+                "name": (getattr(e, "name", e.get("name", "")) if isinstance(e, dict) else e.name)
+                .lower()
+                .strip(),
                 "canonical_name": (
                     getattr(e, "name", e.get("name", "")) if isinstance(e, dict) else e.name
-                ).lower().strip(),
+                )
+                .lower()
+                .strip(),
                 "description": (
                     getattr(e, "description", e.get("description", ""))
                     if isinstance(e, dict)
@@ -2170,8 +2178,8 @@ class EntityRepository(Neo4jRepository):
                     c.canonical_name = c.name
                 if not hasattr(c, "description"):
                     c.description = ""
-                if not hasattr(c, "role"):
-                    c.role = ""
+                if not hasattr(c, "agency"):
+                    c.agency = getattr(c, "role", "")
                 if not hasattr(c, "species"):
                     c.species = ""
                 if not hasattr(c, "first_appearance_chapter"):
@@ -2228,8 +2236,8 @@ class EntityRepository(Neo4jRepository):
             for ev in events:
                 if not hasattr(ev, "description"):
                     ev.description = ""
-                if not hasattr(ev, "event_type"):
-                    ev.event_type = "action"
+                if not hasattr(ev, "event_category"):
+                    ev.event_category = getattr(ev, "event_type", "action")
                 if not hasattr(ev, "significance"):
                     ev.significance = "moderate"
                 if not hasattr(ev, "participants"):
@@ -2253,19 +2261,22 @@ class EntityRepository(Neo4jRepository):
                 if not hasattr(loc, "parent_location"):
                     loc.parent_location = ""
 
-        # Items
+        # Objects (ex-Items)
         items = []
-        if "item" in by_type:
-            items = [_ns(e) for e in by_type["item"]]
-            for it in items:
-                if not hasattr(it, "description"):
-                    it.description = ""
-                if not hasattr(it, "item_type"):
-                    it.item_type = ""
-                if not hasattr(it, "rarity"):
-                    it.rarity = ""
-                if not hasattr(it, "owner"):
-                    it.owner = ""
+        for item_key in ("object", "item"):
+            if item_key in by_type:
+                items.extend(_ns(e) for e in by_type[item_key])
+        for it in items:
+            if not hasattr(it, "description"):
+                it.description = ""
+            if not hasattr(it, "object_type"):
+                it.object_type = getattr(it, "item_type", "")
+            if not hasattr(it, "item_type"):
+                it.item_type = getattr(it, "object_type", "")
+            if not hasattr(it, "rarity"):
+                it.rarity = ""
+            if not hasattr(it, "owner"):
+                it.owner = ""
 
         # Creatures
         creatures = []
@@ -2372,19 +2383,22 @@ class EntityRepository(Neo4jRepository):
                 if not hasattr(ch, "valid_from_chapter"):
                     ch.valid_from_chapter = chapter_number
 
-        # Arcs
+        # NarrativeSequences (ex-Arcs)
         arcs = []
-        if "arc" in by_type:
-            arcs = [_ns(e) for e in by_type["arc"]]
-            for a in arcs:
-                if not hasattr(a, "description"):
-                    a.description = ""
-                if not hasattr(a, "arc_type"):
-                    a.arc_type = ""
-                if not hasattr(a, "canonical_name") or not a.canonical_name:
-                    a.canonical_name = a.name
-                if not hasattr(a, "related_events"):
-                    a.related_events = []
+        for arc_key in ("narrative_sequence", "arc"):
+            if arc_key in by_type:
+                arcs.extend(_ns(e) for e in by_type[arc_key])
+        for a in arcs:
+            if not hasattr(a, "description"):
+                a.description = ""
+            if not hasattr(a, "sequence_type"):
+                a.sequence_type = getattr(a, "arc_type", "")
+            if not hasattr(a, "arc_type"):
+                a.arc_type = getattr(a, "sequence_type", "")
+            if not hasattr(a, "canonical_name") or not a.canonical_name:
+                a.canonical_name = a.name
+            if not hasattr(a, "related_events"):
+                a.related_events = []
 
         # Prophecies
         prophecies = []
@@ -2404,7 +2418,7 @@ class EntityRepository(Neo4jRepository):
             rel_ns = [_ns(r) for r in relations]
             for r in rel_ns:
                 if not hasattr(r, "rel_type"):
-                    r.rel_type = getattr(r, "relation_type", "RELATES_TO")
+                    r.rel_type = getattr(r, "relation_type", "UNKNOWN")
                 if not hasattr(r, "subtype"):
                     r.subtype = ""
                 if not hasattr(r, "context"):
@@ -2490,9 +2504,7 @@ class EntityRepository(Neo4jRepository):
                 ("churches", self.upsert_churches(book_id, chapter_number, churches, batch_id))
             )
         if arcs:
-            entity_coros.append(
-                ("arcs", self.upsert_arcs(book_id, chapter_number, arcs, batch_id))
-            )
+            entity_coros.append(("arcs", self.upsert_arcs(book_id, chapter_number, arcs, batch_id)))
         if prophecies:
             entity_coros.append(
                 (
@@ -2532,7 +2544,7 @@ class EntityRepository(Neo4jRepository):
                 self.apply_relation_end(
                     source=er.get("source", ""),
                     target=er.get("target", ""),
-                    relation_type=er.get("relation_type", "RELATES_TO"),
+                    relation_type=er.get("relation_type", "UNKNOWN"),
                     ended_at_chapter=er.get("ended_at_chapter", chapter_number),
                     reason=er.get("reason", ""),
                     book_id=book_id,

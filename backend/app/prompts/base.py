@@ -121,8 +121,9 @@ def build_extraction_prompt(
             "- Extraire UNIQUEMENT les types d'entit\u00e9s list\u00e9s dans l'ontologie cible"
         )
         sections.append(
-            "- Les types entity_type de base sont : character, event, location, item, "
-            "creature, faction, concept, arc, prophecy, level_change, stat_change. "
+            "- Les types entity_type de base sont : character, event, location, object, "
+            "creature, faction, concept, narrative_sequence, prophecy, level_change, stat_change, "
+            "psychological_state, setting, character_feature, narrative_role, social_relationship. "
             "Pour tout type spécialisé (skill, class, title, system, bloodline, profession, "
             "achievement, race, quest, ou tout type découvert par l'ontologie), "
             "utiliser entity_type='genre_entity' avec le type spécifique dans sub_type."
@@ -156,8 +157,9 @@ def build_extraction_prompt(
         )
         sections.append("- Extract ONLY entity types listed in the target ontology")
         sections.append(
-            "- Base entity_type values: character, event, location, item, "
-            "creature, faction, concept, arc, prophecy, level_change, stat_change. "
+            "- Base entity_type values: character, event, location, object, "
+            "creature, faction, concept, narrative_sequence, prophecy, level_change, stat_change, "
+            "psychological_state, setting, character_feature, narrative_role, social_relationship. "
             "For any specialized type (skill, class, title, system, bloodline, profession, "
             "achievement, race, quest, or any ontology-discovered type), "
             "use entity_type='genre_entity' with the specific type in sub_type."

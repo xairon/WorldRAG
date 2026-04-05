@@ -1,23 +1,27 @@
 # WorldRAG Ontology — Layer 1: Core Narrative (universal, all genres)
 #
-# Academic foundations:
-#   - CIDOC-CRM (ISO 21127): Event-temporal model
-#   - SEM (VU Amsterdam): Simple Event Model (Event → Actor → Place → Time)
-#   - DOLCE: Temporal taxonomy (state_change | action | process | achievement)
-#   - OntoMedia (Southampton): Narrative entities, fabula/sjuzhet distinction
-#   - FRBRoo/LRMoo: Bibliographic hierarchy (Series → Book → Chapter)
-#   - Wikidata: Temporal qualifiers (valid_from/valid_to)
-#   - Bamman et al. (CMU): Computational character model (roles, agency, sentiment)
-#   - GOLEM (MDPI 2025): Formal fiction ontology (validation reference)
+# GOLEM v1.1 aligned (General Ontology for Literary and Narrative Entities and Metadata)
+#   Source: https://w3id.org/golem/ontology#
+#   Ref: Pianzola et al. (2024), DOI: 10.5281/zenodo.14911392
+#
+# Foundation ontologies (imported by GOLEM):
+#   - DOLCE (upper ontology): endurant/perdurant, agentive/non-agentive, state/process
+#   - CIDOC-CRM (ISO 21127): Event-temporal model, attribute assignment, provenance
+#   - LRMoo (IFLA/CIDOC): Bibliographic hierarchy Work/Expression
+#   - ExtendedDnS: Roles, situations, social relationships
+#   - SEM (VU Amsterdam): Simple Event Model (Actor -> Event -> Place -> Time)
+#   - Bamman et al. (CMU): Computational character model
 #
 # Temporal model: Chapter-based integers (not datetime)
 #   All temporal relations use valid_from_chapter / valid_to_chapter
 
-version: "3.0.0"
+version: "4.0.0"
 layer: core
+golem_version: "1.1"
+golem_source: "https://w3id.org/golem/ontology#"
 
 node_types:
-  # === BIBLIOGRAPHIC (FRBRoo/LRMoo) ===
+  # === BIBLIOGRAPHIC (LRMoo F1/F2) ===
   Series:
     properties:
       name: { type: string, required: true, unique: true }
@@ -26,6 +30,8 @@ node_types:
       description: { type: string }
 
   Book:
+    golem_alignment: "F1_Work"
+    description: "A literary work (novel, volume). Aligned with LRMoo F1 Work."
     properties:
       title: { type: string, required: true }
       order_in_series: { type: integer, required: true }
@@ -35,6 +41,8 @@ node_types:
       - unique: [title, order_in_series]
 
   Chapter:
+    golem_alignment: "F2_Expression"
+    description: "A chapter within a book. Aligned with LRMoo F2 Expression (component)."
     properties:
       number: { type: integer, required: true }
       title: { type: string }
@@ -52,87 +60,219 @@ node_types:
       token_count: { type: integer }
       embedding: { type: vector, dimension: 1024 }
 
-  # === CHARACTERS (OntoMedia + Wikidata + Bamman) ===
+  # === CHARACTERS (GOLEM G0, G1, G17) ===
+  CharacterStoff:
+    golem_alignment: "G0_Character-Stoff"
+    description: "Cross-work character archetype. The persistent identity of a character across all books in a series."
+    properties:
+      canonical_name: { type: string, required: true }
+      description: { type: string }
+      series_id: { type: string }
+    constraints:
+      - unique: [canonical_name, series_id]
+
   Character:
+    golem_alignment: "G1_Character"
+    description: "A character in a specific work. Instance of a CharacterStoff in a particular book."
     properties:
       name: { type: string, required: true }
-      canonical_name: { type: string, required: true, unique: true }
+      canonical_name: { type: string, required: true }
       aliases: { type: string_array }
       description: { type: string }
-      role: { type: enum, values: [protagonist, antagonist, mentor, sidekick, ally, minor, neutral] }
+      agency: { type: enum, values: [active, passive, ambiguous] }
+      fictional_status: { type: enum, values: [fictional, semi_fictional, historical] }
       species: { type: string }
       gender: { type: string }
       first_appearance_chapter: { type: integer }
+      book_id: { type: string, required: true }
+    constraints:
+      - unique: [canonical_name, book_id]
     indexes:
       - fulltext: [name, canonical_name, aliases, description]
 
+  CharacterFeature:
+    golem_alignment: "G17_Character_Feature"
+    description: "A temporal trait of a character: biographical, physical, or psychological attribute."
+    properties:
+      name: { type: string, required: true }
+      feature_type: { type: enum, values: [biographical, physical, psychological] }
+      description: { type: string }
+      character_name: { type: string, required: true }
+      valid_from_chapter: { type: integer, required: true }
+      valid_to_chapter: { type: integer }
+
+  # === PSYCHOLOGICAL (GOLEM G3) ===
+  PsychologicalState:
+    golem_alignment: "G3_Psychological_State"
+    description: "A temporal mental state of a character: emotion, motivation, belief, goal, or fear."
+    properties:
+      name: { type: string, required: true }
+      state_type: { type: enum, values: [emotion, motivation, belief, goal, fear] }
+      character_name: { type: string, required: true }
+      description: { type: string }
+      intensity: { type: float }
+      chapter_start: { type: integer, required: true }
+      chapter_end: { type: integer }
+
+  # === SOCIAL RELATIONSHIPS (GOLEM G4) ===
+  SocialRelationship:
+    golem_alignment: "G4_Social_Relationship"
+    description: "A reified social relationship between characters, with its own history and causality."
+    properties:
+      name: { type: string, required: true }
+      relationship_type: { type: enum, values: [friendship, rivalry, romance, family, mentorship, patron, alliance, enmity, professional, worship] }
+      description: { type: string }
+      valid_from_chapter: { type: integer, required: true }
+      valid_to_chapter: { type: integer }
+      book_id: { type: string, required: true }
+    indexes:
+      - fulltext: [name, description]
+
+  # === EVENTS (GOLEM G5 / DOLCE perdurant) ===
+  Event:
+    golem_alignment: "G5_Narrative_Event"
+    description: "A narrative event. Aligned with DOLCE perdurant taxonomy."
+    properties:
+      name: { type: string, required: true }
+      description: { type: string }
+      event_category: { type: enum, values: [action, state_change, process, achievement, dialogue, encounter, discovery, revelation, transition, combat] }
+      significance: { type: enum, values: [minor, moderate, major, critical, arc_defining] }
+      chapter_start: { type: integer, required: true }
+      chapter_end: { type: integer }
+      fabula_order: { type: integer }
+      is_flashback: { type: boolean, default: false }
+    indexes:
+      - fulltext: [name, description]
+
+  # === NARRATIVE STRUCTURE (GOLEM G7, G9, G10, G11) ===
+  NarrativeSequence:
+    golem_alignment: "G7_Narrative_Sequence"
+    description: "An ordered sequence of narrative events forming a plot arc."
+    properties:
+      name: { type: string, required: true }
+      description: { type: string }
+      sequence_type: { type: enum, values: [main_plot, subplot, character_arc, world_arc] }
+      chapter_start: { type: integer }
+      chapter_end: { type: integer }
+      status: { type: enum, values: [active, completed, abandoned] }
+      sequence_order: { type: integer }
+
+  NarrativeUnit:
+    golem_alignment: "G9_Narrative_Unit"
+    description: "A minimal narrative proposition (hyleme). Programmatically generated from Events."
+    properties:
+      proposition: { type: string, required: true }
+      chapter: { type: integer, required: true }
+      chunk_position: { type: integer }
+
+  NarrativeFunction:
+    golem_alignment: "G10_Narrative_Function"
+    description: "A functional role of a narrative unit (Propp functions, story grammar)."
+    properties:
+      name: { type: string, required: true }
+      propp_code: { type: string }
+      description: { type: string }
+      scope: { type: enum, values: [work, sequence, unit] }
+
+  NarrativeRole:
+    golem_alignment: "G11_Narrative_Role"
+    description: "A temporal functional role of a character in the narrative (replaces static Character.role)."
+    properties:
+      role_type: { type: enum, values: [protagonist, antagonist, mentor, trickster, herald, guardian, shadow, shapeshifter, narrator, deuteragonist, foil] }
+      character_name: { type: string, required: true }
+      context: { type: string }
+      valid_from_chapter: { type: integer, required: true }
+      valid_to_chapter: { type: integer }
+
+  # === WORLD (GOLEM G12, G13) ===
+  Setting:
+    golem_alignment: "G12_Setting"
+    description: "A narrative world or context container. NOT a physical location — contains locations, characters, events."
+    properties:
+      name: { type: string, required: true }
+      description: { type: string }
+      setting_type: { type: enum, values: [world, era, dimension, realm, zone, instance] }
+      series_id: { type: string }
+      chapter_start: { type: integer }
+      chapter_end: { type: integer }
+    constraints:
+      - unique: [name, series_id]
+    indexes:
+      - fulltext: [name, description]
+
+  Location:
+    golem_alignment: "G13_Narrative_Location"
+    description: "A physical narrative location within a Setting."
+    properties:
+      name: { type: string, required: true, unique: true }
+      description: { type: string }
+      location_type: { type: enum, values: [city, dungeon, realm, continent, pocket_dimension, planet, forest, mountain, building, region] }
+      fictional_status: { type: enum, values: [fictional, real, semi_fictional] }
+      parent_location_name: { type: string }
+      setting_name: { type: string }
+    indexes:
+      - fulltext: [name, description]
+
+  # === OBJECTS (GOLEM G16) ===
+  Object:
+    golem_alignment: "G16_Object"
+    description: "A persistent item in the story. Renamed from Item to align with GOLEM G16."
+    properties:
+      name: { type: string, required: true }
+      description: { type: string }
+      object_type: { type: enum, values: [weapon, armor, consumable, artifact, key_item, tool, material] }
+      rarity: { type: enum, values: [common, uncommon, rare, epic, legendary, unique] }
+
+  # === STOFF — CROSS-WORK ARCHETYPES (GOLEM G0, G14) ===
+  NarrativeStoff:
+    golem_alignment: "G14_Narrative-Stoff"
+    description: "Cross-work narrative archetype. A recurring narrative pattern across works."
+    properties:
+      name: { type: string, required: true, unique: true }
+      description: { type: string }
+      pattern_type: { type: enum, values: [hero_journey, training_arc, tournament, dungeon_crawl, political_intrigue, romance, revenge, redemption] }
+
+  # === TEXTUAL FEATURES (GOLEM G18) ===
+  TextualFeature:
+    golem_alignment: "G18_Textual_Feature"
+    description: "A textual or stylistic feature of a text (POV, narrative voice, pacing). Programmatically extracted."
+    properties:
+      name: { type: string, required: true }
+      feature_type: { type: enum, values: [pov, narrative_voice, dialogue_density, pacing, tone] }
+      value: { type: string }
+      chapter: { type: integer }
+      book_id: { type: string, required: true }
+
+  # === CONCEPTS & LORE (WorldRAG, no GOLEM equivalent) ===
+  Concept:
+    description: "An abstract concept of the fictional world (magic systems, politics, cosmology)."
+    properties:
+      name: { type: string, required: true, unique: true }
+      description: { type: string }
+      domain: { type: string }
+
+  Prophecy:
+    description: "A narrative prophecy or prediction."
+    properties:
+      name: { type: string, required: true }
+      description: { type: string }
+      status: { type: enum, values: [unfulfilled, fulfilled, subverted] }
+
   Faction:
+    description: "An organized group or institution."
     properties:
       name: { type: string, required: true, unique: true }
       description: { type: string }
       type: { type: string }
       alignment: { type: string }
 
-  # === EVENTS (SEM + DOLCE + LODE) ===
-  Event:
+  Creature:
+    description: "A non-character creature, monster, or beast."
     properties:
       name: { type: string, required: true }
       description: { type: string }
-      event_type: { type: enum, values: [action, state_change, achievement, process, dialogue] }
-      significance: { type: enum, values: [minor, moderate, major, critical, arc_defining] }
-      chapter_start: { type: integer, required: true }
-      chapter_end: { type: integer }  # null for punctual events
-      fabula_order: { type: integer }  # in-universe chronological order (OntoMedia)
-      is_flashback: { type: boolean, default: false }
-    indexes:
-      - fulltext: [name, description]
-
-  # === NARRATIVE STRUCTURE (Propp + Narratology) ===
-  Arc:
-    properties:
-      name: { type: string, required: true }
-      description: { type: string }
-      arc_type: { type: enum, values: [main_plot, subplot, character_arc, world_arc] }
-      chapter_start: { type: integer }
-      chapter_end: { type: integer }
-      status: { type: enum, values: [active, completed, abandoned] }
-
-  NarrativeFunction:
-    properties:
-      name: { type: string, required: true }
-      propp_code: { type: string }  # optional Propp function code
-      description: { type: string }
-
-  # === WORLD (CIDOC-CRM places) ===
-  Location:
-    properties:
-      name: { type: string, required: true, unique: true }
-      description: { type: string }
-      location_type: { type: enum, values: [city, dungeon, realm, continent, pocket_dimension, planet, forest, mountain, building, region] }
-      parent_location_name: { type: string }
-    indexes:
-      - fulltext: [name, description]
-
-  # === ITEMS & OBJECTS ===
-  Item:
-    properties:
-      name: { type: string, required: true }
-      description: { type: string }
-      item_type: { type: enum, values: [weapon, armor, consumable, artifact, key_item, tool, material] }
-      rarity: { type: enum, values: [common, uncommon, rare, epic, legendary, unique] }
-
-  # === CONCEPTS & LORE ===
-  Concept:
-    properties:
-      name: { type: string, required: true, unique: true }
-      description: { type: string }
-      domain: { type: string }  # e.g., "magic", "politics", "cosmology"
-
-  Prophecy:
-    properties:
-      name: { type: string, required: true }
-      description: { type: string }
-      status: { type: enum, values: [unfulfilled, fulfilled, subverted] }
+      species: { type: string }
+      threat_level: { type: string }
 
 relationship_types:
   # === BIBLIOGRAPHIC ===
@@ -154,17 +294,30 @@ relationship_types:
     properties:
       position: { type: integer }
 
-  # === CHARACTER RELATIONS ===
+  # === CHARACTER RELATIONS (GOLEM G4 — reified) ===
   RELATES_TO:
     from: Character
     to: Character
+    deprecated: true
+    migration: "Phase C — convert to SocialRelationship + INVOLVED_IN"
     properties:
       type: { type: enum, values: [ally, enemy, mentor, family, romantic, rival, patron, subordinate] }
-      subtype: { type: string }  # father, mother, sibling, spouse
-      sentiment: { type: float }  # -1.0 to 1.0
+      subtype: { type: string }
+      sentiment: { type: float }
       valid_from_chapter: { type: integer, required: true }
       valid_to_chapter: { type: integer }
       context: { type: string }
+
+  INVOLVED_IN:
+    from: Character
+    to: SocialRelationship
+    properties:
+      role: { type: string }
+      valid_from_chapter: { type: integer }
+
+  RELATIONSHIP_CAUSED_BY:
+    from: SocialRelationship
+    to: Event
 
   MEMBER_OF:
     from: Character
@@ -174,7 +327,7 @@ relationship_types:
       valid_from_chapter: { type: integer, required: true }
       valid_to_chapter: { type: integer }
 
-  # === EVENTS ===
+  # === EVENTS (GOLEM G5 / DOLCE) ===
   PARTICIPATES_IN:
     from: Character
     to: Event
@@ -193,17 +346,115 @@ relationship_types:
     from: Event
     to: Event
 
-  OCCURS_BEFORE:
+  PRECEDES:
     from: Event
     to: Event
 
-  PART_OF:
+  FOLLOWS:
     from: Event
-    to: Arc
+    to: Event
 
-  # === GROUNDING (LangExtract source offsets) ===
+  USED_IN:
+    from: Object
+    to: Event
+
+  # === PSYCHOLOGICAL (GOLEM G3) ===
+  HAS_STATE:
+    from: Character
+    to: PsychologicalState
+
+  STATE_TRIGGERED_BY:
+    from: PsychologicalState
+    to: Event
+
+  TRIGGERS_EVENT:
+    from: PsychologicalState
+    to: Event
+
+  FOLLOWS_STATE:
+    from: PsychologicalState
+    to: PsychologicalState
+
+  STATE_INCLUDES:
+    from: PsychologicalState
+    to: PsychologicalState
+
+  # === SETTINGS (GOLEM G12) ===
+  IN_SETTING:
+    from: "*"
+    to: Setting
+
+  SETTING_CONTAINS:
+    from: Setting
+    to: Location
+
+  SETTING_OF_WORK:
+    from: Setting
+    to: Book
+
+  # === FEATURES (GOLEM G17, G18) ===
+  HAS_FEATURE:
+    from: Character
+    to: CharacterFeature
+
+  HAS_TEXTUAL_FEATURE:
+    from: "*"
+    to: TextualFeature
+
+  # === NARRATIVE ROLES (GOLEM G11) ===
+  PLAYS_ROLE:
+    from: Character
+    to: NarrativeRole
+
+  ROLE_IN_SEQUENCE:
+    from: NarrativeRole
+    to: NarrativeSequence
+
+  # === NARRATIVE STRUCTURE (GOLEM G7, G9, G10) ===
+  SEQUENCED_IN:
+    from: Event
+    to: NarrativeSequence
+    properties:
+      order: { type: integer }
+
+  STRUCTURED_BY:
+    from: NarrativeSequence
+    to: NarrativeFunction
+    properties:
+      order: { type: integer }
+
+  FULFILLS:
+    from: Event
+    to: NarrativeFunction
+
+  UNIT_REFERS_TO:
+    from: NarrativeUnit
+    to: Event
+
+  UNIT_PLAYS_FUNCTION:
+    from: NarrativeUnit
+    to: NarrativeFunction
+
+  UNIT_IN_WORK:
+    from: NarrativeUnit
+    to: Book
+
+  # === STOFF (GOLEM G0, G14) ===
+  INSTANCE_OF_STOFF:
+    from: Character
+    to: CharacterStoff
+
+  SEQUENCE_INSTANCE_OF:
+    from: NarrativeSequence
+    to: NarrativeStoff
+
+  CHARACTER_IN_WORK:
+    from: Character
+    to: Book
+
+  # === GROUNDING (source offsets) ===
   GROUNDED_IN:
-    from: "*"  # any entity
+    from: "*"
     to: Chunk
     properties:
       char_offset_start: { type: integer, required: true }
@@ -215,17 +466,6 @@ relationship_types:
     properties:
       char_offset_start: { type: integer }
       char_offset_end: { type: integer }
-
-  # === NARRATIVE STRUCTURE ===
-  STRUCTURED_BY:
-    from: Arc
-    to: NarrativeFunction
-    properties:
-      order: { type: integer }
-
-  FULFILLS:
-    from: Event
-    to: NarrativeFunction
 
   # === WORLD ===
   LOCATION_PART_OF:
@@ -239,24 +479,24 @@ relationship_types:
       method: { type: string }
 
   LOCATED_AT:
-    from: Character
+    from: "*"
     to: Location
     properties:
       valid_from_chapter: { type: integer, required: true }
       valid_to_chapter: { type: integer }
 
-  # === ITEMS ===
+  # === OBJECTS (GOLEM G16) ===
   POSSESSES:
     from: Character
-    to: Item
+    to: Object
     properties:
       valid_from_chapter: { type: integer, required: true }
       valid_to_chapter: { type: integer }
       acquisition_method: { type: enum, values: [loot, craft, gift, purchase, quest_reward, found] }
 
-  # === COHERENCE (retcons, epistemic status) ===
+  # === COHERENCE ===
   RETCONNED_BY:
-    from: "*"  # any fact node
+    from: "*"
     to: "*"
     properties:
       retcon_chapter: { type: integer }
@@ -267,7 +507,7 @@ relationship_types:
     to: Character
     properties:
       reliability: { type: enum, values: [narrator, character_pov, system, flashback] }
-      confidence: { type: float }  # 0.0 to 1.0
+      confidence: { type: float }
 
 validation_rules:
   type_exclusions:
@@ -327,16 +567,122 @@ validation_rules:
         - mob
         - army
       reason: "Generic roles — only extract named individuals as Characters"
+
   domain_range:
-    ALLIES_WITH:
+    # Psychological states (GOLEM G3)
+    HAS_STATE:
       from: [character]
-      to: [character]
-    ENEMIES_WITH:
+      to: [psychological_state]
+    STATE_TRIGGERED_BY:
+      from: [psychological_state]
+      to: [event]
+    TRIGGERS_EVENT:
+      from: [psychological_state]
+      to: [event]
+    FOLLOWS_STATE:
+      from: [psychological_state]
+      to: [psychological_state]
+    STATE_INCLUDES:
+      from: [psychological_state]
+      to: [psychological_state]
+    # Settings (GOLEM G12)
+    IN_SETTING:
+      from: [character, event, location, object, creature, faction]
+      to: [setting]
+    SETTING_CONTAINS:
+      from: [setting]
+      to: [location]
+    SETTING_OF_WORK:
+      from: [setting]
+      to: [book]
+    # Features (GOLEM G17, G18)
+    HAS_FEATURE:
       from: [character]
-      to: [character]
-    MENTORS:
+      to: [character_feature]
+    HAS_TEXTUAL_FEATURE:
+      from: [book, chapter]
+      to: [textual_feature]
+    # Roles (GOLEM G11)
+    PLAYS_ROLE:
       from: [character]
-      to: [character]
-    SIBLING_OF:
+      to: [narrative_role]
+    ROLE_IN_SEQUENCE:
+      from: [narrative_role]
+      to: [narrative_sequence]
+    # Social relationships (GOLEM G4)
+    INVOLVED_IN:
       from: [character]
+      to: [social_relationship]
+    RELATIONSHIP_CAUSED_BY:
+      from: [social_relationship]
+      to: [event]
+    # Narrative structure (GOLEM G7, G9, G10)
+    SEQUENCED_IN:
+      from: [event]
+      to: [narrative_sequence]
+    UNIT_REFERS_TO:
+      from: [narrative_unit]
+      to: [event]
+    UNIT_PLAYS_FUNCTION:
+      from: [narrative_unit]
+      to: [narrative_function]
+    UNIT_IN_WORK:
+      from: [narrative_unit]
+      to: [book]
+    # Stoff (GOLEM G0, G14)
+    INSTANCE_OF_STOFF:
+      from: [character]
+      to: [character_stoff]
+    SEQUENCE_INSTANCE_OF:
+      from: [narrative_sequence]
+      to: [narrative_stoff]
+    CHARACTER_IN_WORK:
+      from: [character]
+      to: [book]
+    # Objects (GOLEM G16)
+    USED_IN:
+      from: [object]
+      to: [event]
+    POSSESSES:
+      from: [character]
+      to: [object]
+    # Temporal (GOLEM/DOLCE)
+    PRECEDES:
+      from: [event]
+      to: [event]
+    FOLLOWS:
+      from: [event]
+      to: [event]
+    # Existing (conserved)
+    PARTICIPATES_IN:
+      from: [character, creature]
+      to: [event]
+    OCCURS_AT:
+      from: [event]
+      to: [location]
+    CAUSES:
+      from: [event]
+      to: [event]
+    ENABLES:
+      from: [event]
+      to: [event]
+    LOCATED_AT:
+      from: [character, object, event, creature, faction]
+      to: [location]
+    MEMBER_OF:
+      from: [character]
+      to: [faction]
+    PERCEIVED_BY:
+      from: [event]
       to: [character]
+
+  disjointness:
+    # 8 operationally pertinent pairs (where LLM confusion is plausible)
+    - [character, creature]
+    - [character, faction]
+    - [event, psychological_state]
+    - [setting, location]
+    - [character_feature, narrative_role]
+    - [character_feature, psychological_state]
+    - [object, concept]
+    - [narrative_sequence, event]

@@ -230,10 +230,17 @@ async def get_chapter_entities(
                 "Title",
                 "Event",
                 "Location",
-                "Item",
+                "Object",
                 "Creature",
                 "Faction",
                 "Concept",
+                "Setting",
+                "NarrativeSequence",
+                "PsychologicalState",
+                "SocialRelationship",
+                "CharacterFeature",
+                "NarrativeRole",
+                "Prophecy",
             ):
                 entity_type = label
                 break

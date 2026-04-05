@@ -43,6 +43,7 @@ class OntologyNodeType:
 
     name: str
     description: str = ""
+    golem_alignment: str = ""
     properties: dict[str, OntologyProperty] = field(default_factory=dict)
     constraints: list[dict] = field(default_factory=list)
     indexes: list[dict] = field(default_factory=list)
@@ -79,6 +80,8 @@ class OntologyLoader:
     type_exclusions: dict[str, dict] = field(default_factory=dict)
     # relation_type -> {from: set[str], to: set[str]}
     domain_range: dict[str, dict] = field(default_factory=dict)
+    # list of disjoint entity type pairs: [(type_a, type_b), ...]
+    disjointness: list[tuple[str, str]] = field(default_factory=list)
     _layer_versions: dict[str, str] = field(default_factory=dict)
     _layer_labels: dict[str, str] = field(default_factory=dict)
     _node_type_origin: dict[str, str] = field(default_factory=dict)
@@ -171,6 +174,8 @@ class OntologyLoader:
 
             node_type = OntologyNodeType(
                 name=type_name,
+                description=type_def.get("description", ""),
+                golem_alignment=type_def.get("golem_alignment", ""),
                 properties=props,
                 constraints=type_def.get("constraints", []),
                 indexes=type_def.get("indexes", []),
@@ -181,6 +186,10 @@ class OntologyLoader:
                 self.node_types[type_name].properties.update(props)
                 self.node_types[type_name].constraints.extend(node_type.constraints)
                 self.node_types[type_name].indexes.extend(node_type.indexes)
+                if node_type.description:
+                    self.node_types[type_name].description = node_type.description
+                if node_type.golem_alignment:
+                    self.node_types[type_name].golem_alignment = node_type.golem_alignment
             else:
                 self.node_types[type_name] = node_type
                 self._node_type_origin[type_name] = layer_name
@@ -234,6 +243,11 @@ class OntologyLoader:
                 "from": {t.lower() for t in (constraint.get("from") or [])},
                 "to": {t.lower() for t in (constraint.get("to") or [])},
             }
+
+        # Disjointness pairs
+        for pair in rules.get("disjointness") or []:
+            if isinstance(pair, list) and len(pair) == 2:
+                self.disjointness.append((pair[0], pair[1]))
 
         self.layers_loaded.append(layer_name)
 
@@ -390,6 +404,23 @@ class OntologyLoader:
             if node_type.constraints:
                 schema[name]["constraints"] = node_type.constraints
         return schema
+
+    def to_induction_context(self) -> list[dict[str, str]]:
+        """Return name + description for all node types, for induction similarity filtering.
+
+        Used by the pattern_inducer to avoid creating induced types that
+        duplicate existing GOLEM core types.
+        """
+        return [
+            {"name": nt.name, "description": nt.description}
+            for nt in self.node_types.values()
+            if nt.description
+        ]
+
+    def are_disjoint(self, type_a: str, type_b: str) -> bool:
+        """Check if two entity types are declared disjoint."""
+        a, b = type_a.lower(), type_b.lower()
+        return (a, b) in self.disjointness or (b, a) in self.disjointness
 
     def extend_with_induced(self, induced: dict[str, Any]) -> None:
         """Merge auto-induced types into the loaded ontology at runtime.

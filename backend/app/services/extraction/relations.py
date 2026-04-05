@@ -79,7 +79,7 @@ async def extract_relations_node(state: dict[str, Any]) -> dict[str, Any]:
 
     # Post-coerce relation types from ontology
     allowed = set(ontology.get_relationship_type_names())
-    coerce = _make_coercer(allowed, default="RELATES_TO")
+    coerce = _make_coercer(allowed, default="UNKNOWN")
 
     relations_serialized = []
     for rel in result.relations:

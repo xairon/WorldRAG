@@ -16,7 +16,7 @@ def test_entity_prompt_en_contains_core_types():
     assert "CHARACTER" in prompt
     assert "EVENT" in prompt
     assert "LOCATION" in prompt
-    assert "ARC" in prompt
+    assert "NARRATIVE_SEQUENCE" in prompt
     assert "PROPHECY" in prompt
 
 

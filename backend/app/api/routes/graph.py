@@ -32,10 +32,17 @@ ALLOWED_LABELS = frozenset(
         "Title",
         "Event",
         "Location",
-        "Item",
+        "Object",
         "Creature",
         "Faction",
         "Concept",
+        "Setting",
+        "NarrativeSequence",
+        "PsychologicalState",
+        "SocialRelationship",
+        "CharacterFeature",
+        "NarrativeRole",
+        "Prophecy",
     }
 )
 
@@ -124,12 +131,17 @@ _CORE_TYPES = {
     "Character",
     "Event",
     "Location",
-    "Item",
+    "Object",
     "Creature",
     "Faction",
     "Concept",
-    "Arc",
+    "NarrativeSequence",
     "Prophecy",
+    "Setting",
+    "PsychologicalState",
+    "SocialRelationship",
+    "CharacterFeature",
+    "NarrativeRole",
 }
 _GENRE_TYPES = {
     "Skill",
@@ -696,7 +708,7 @@ async def get_character_profile(
             MATCH (ch:Character)-[:PARTICIPATES_IN]->(ev:Event)
             WHERE elementId(ch) = $id
             RETURN ev.name AS name, ev.description AS description,
-                   ev.event_type AS type, ev.significance AS significance,
+                   ev.event_category AS type, ev.significance AS significance,
                    ev.chapter_start AS chapter
             ORDER BY ev.chapter_start
             """,
@@ -754,7 +766,7 @@ async def get_timeline(
         OPTIONAL MATCH (ev)<-[:PARTICIPATES_IN]-(ch:Character)
         OPTIONAL MATCH (ev)-[:OCCURS_AT]->(loc:Location)
         RETURN ev.name AS name, ev.description AS description,
-               ev.event_type AS type, ev.significance AS significance,
+               ev.event_category AS type, ev.significance AS significance,
                ev.chapter_start AS chapter,
                collect(DISTINCT ch.name) AS participants,
                collect(DISTINCT loc.name) AS locations

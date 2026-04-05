@@ -21,7 +21,7 @@ litrpg:
           "entity_type": "character",
           "name": "Jake",
           "canonical_name": "jake",
-          "role": "protagonist",
+          "agency": "active",
           "extraction_text": "Jake opened his eyes."
         },
         {
@@ -66,7 +66,7 @@ litrpg:
           "entity_type": "character",
           "name": "Jake",
           "canonical_name": "jake",
-          "role": "protagonist",
+          "agency": "active",
           "extraction_text": "Jake ouvrit les yeux."
         },
         {
@@ -194,12 +194,27 @@ litrpg:
          WHY: Game stats and mechanics are part of the progression system. Extract them as stat_change, level_change, or genre_entity (sub_type="stat"/"system") — NOT as Concepts or Items.
 
       9. Text: "Jake walked through the Dark Forest."
-         WRONG: {"entity_type": "concept", "name": "jake"} or {"entity_type": "arc", "name": "jake"}
+         WRONG: {"entity_type": "concept", "name": "jake"} or {"entity_type": "narrative_sequence", "name": "jake"}
          WHY: If an entity is already known as a Character, do NOT re-extract it as any other type (Event, Concept, Arc, Item, etc.).
 
       10. Text: "The System awarded 2500 XP for the kill."
           WRONG: {"entity_type": "event", "name": "the System awarded 2500 XP"}
           WHY: System notifications are not Events. XP awards are game mechanics, not narrative events.
+
+      11. Text: "Jake felt a surge of determination as he faced the beast."
+          WRONG: {"entity_type": "event", "name": "Jake felt determination"}
+          RIGHT: {"entity_type": "psychological_state", "character": "jake", "state_type": "emotion", "name": "determination"}
+          WHY: Internal mental states are PsychologicalState, not Events. Events are world-level happenings.
+
+      12. Text: "Welcome to the Tutorial, where all new arrivals are tested."
+          WRONG: {"entity_type": "location", "name": "The Tutorial", "location_type": "dungeon"}
+          RIGHT: {"entity_type": "setting", "name": "The Tutorial", "setting_type": "instance"}
+          WHY: "The Tutorial" is a narrative world/context (Setting), not a physical location. It contains locations.
+
+      13. Text: "Jake was brave and had green eyes."
+          WRONG: {"entity_type": "narrative_role", "character": "jake", "role_type": "protagonist"}
+          RIGHT: {"entity_type": "character_feature", "character": "jake", "feature_type": "psychological", "name": "brave"}
+          WHY: "Brave" is a personality trait (CharacterFeature), not a narrative role. NarrativeRole is about story function (protagonist, mentor).
     fr: |
       Les extractions suivantes sont INCORRECTES. NE PAS faire ces erreurs :
 
@@ -233,12 +248,27 @@ litrpg:
          POURQUOI : Les stats et mecaniques font partie du systeme de progression. Extraire comme stat_change, level_change, ou genre_entity (sub_type="stat"/"system") — PAS comme Concepts ou Items.
 
       9. Texte : "Jake traversa la Foret Sombre."
-         FAUX : {"entity_type": "concept", "name": "jake"} ou {"entity_type": "arc", "name": "jake"}
+         FAUX : {"entity_type": "concept", "name": "jake"} ou {"entity_type": "narrative_sequence", "name": "jake"}
          POURQUOI : Si une entite est deja connue comme Personnage, ne PAS la re-extraire sous un autre type.
 
       10. Texte : "Le Systeme accorda 2500 XP pour le meurtre."
           FAUX : {"entity_type": "event", "name": "le Systeme accorda 2500 XP"}
           POURQUOI : Les notifications systeme ne sont pas des Evenements. Les recompenses XP sont des mecaniques de jeu, pas des evenements narratifs.
+
+      11. Texte : "Jake ressentit une vague de determination face a la bete."
+          FAUX : {"entity_type": "event", "name": "Jake ressentit de la determination"}
+          CORRECT : {"entity_type": "psychological_state", "character": "jake", "state_type": "emotion", "name": "determination"}
+          POURQUOI : Les etats mentaux internes sont des PsychologicalState, pas des Evenements.
+
+      12. Texte : "Bienvenue dans le Tutoriel, ou tous les nouveaux arrivants sont testes."
+          FAUX : {"entity_type": "location", "name": "Le Tutoriel", "location_type": "dungeon"}
+          CORRECT : {"entity_type": "setting", "name": "Le Tutoriel", "setting_type": "instance"}
+          POURQUOI : "Le Tutoriel" est un monde narratif (Setting), pas un lieu physique. Il contient des lieux.
+
+      13. Texte : "Jake etait courageux et avait les yeux verts."
+          FAUX : {"entity_type": "narrative_role", "character": "jake", "role_type": "protagonist"}
+          CORRECT : {"entity_type": "character_feature", "character": "jake", "feature_type": "psychological", "name": "courageux"}
+          POURQUOI : "Courageux" est un trait de personnalite (CharacterFeature), pas un role narratif.
 
 core:
   entities:
@@ -253,9 +283,9 @@ core:
       Example output:
       ```json
       [
-        {"entity_type": "character", "name": "Mr. Dursley", "canonical_name": "vernon dursley", "role": "minor"},
-        {"entity_type": "character", "name": "Mrs. Dursley", "canonical_name": "petunia dursley", "role": "minor"},
-        {"entity_type": "character", "name": "Dudley", "canonical_name": "dudley dursley", "role": "minor"},
+        {"entity_type": "character", "name": "Mr. Dursley", "canonical_name": "vernon dursley", "agency": "active"},
+        {"entity_type": "character", "name": "Mrs. Dursley", "canonical_name": "petunia dursley", "agency": "active"},
+        {"entity_type": "character", "name": "Dudley", "canonical_name": "dudley dursley", "agency": "active"},
         {"entity_type": "location", "name": "number four Privet Drive", "canonical_name": "privet drive", "location_type": "building"}
       ]
       ```
@@ -270,9 +300,9 @@ core:
       Exemple de sortie :
       ```json
       [
-        {"entity_type": "character", "name": "M. Dursley", "canonical_name": "vernon dursley", "role": "minor"},
-        {"entity_type": "character", "name": "Mme Dursley", "canonical_name": "petunia dursley", "role": "minor"},
-        {"entity_type": "character", "name": "Dudley", "canonical_name": "dudley dursley", "role": "minor"},
+        {"entity_type": "character", "name": "M. Dursley", "canonical_name": "vernon dursley", "agency": "active"},
+        {"entity_type": "character", "name": "Mme Dursley", "canonical_name": "petunia dursley", "agency": "active"},
+        {"entity_type": "character", "name": "Dudley", "canonical_name": "dudley dursley", "agency": "active"},
         {"entity_type": "location", "name": "numero quatre Privet Drive", "canonical_name": "privet drive", "location_type": "building"}
       ]
       ```

@@ -115,12 +115,12 @@ class CharacterStateRepository(Neo4jRepository):
         """Get items the character possesses at a chapter."""
         return await self.execute_read(
             """
-            MATCH (ch:Character {canonical_name: $name})-[r:POSSESSES]->(it:Item)
+            MATCH (ch:Character {canonical_name: $name})-[r:POSSESSES]->(it:Object)
             WHERE r.valid_from_chapter <= $chapter
               AND (r.valid_to_chapter IS NULL OR r.valid_to_chapter > $chapter)
             OPTIONAL MATCH (it)-[:GRANTS_SKILL]->(sk:Skill)
             WITH it, r, collect(sk.name) AS grants
-            RETURN it.name AS name, it.item_type AS item_type, it.rarity AS rarity,
+            RETURN it.name AS name, it.object_type AS item_type, it.rarity AS rarity,
                    it.description AS description, r.valid_from_chapter AS acquired_chapter,
                    grants
             ORDER BY r.valid_from_chapter
@@ -153,7 +153,7 @@ class CharacterStateRepository(Neo4jRepository):
             MATCH (ch:Character {canonical_name: $name})
             RETURN ch.canonical_name AS canonical_name,
                    ch.name AS name,
-                   ch.role AS role,
+                   ch.agency AS agency,
                    ch.species AS species,
                    ch.description AS description,
                    ch.aliases AS aliases

@@ -834,7 +834,7 @@ async def build_chapter_graph_v3(
     for loc in result.lore.locations:
         extracted_entities.append({"name": loc.name, "type": "Location"})
     for item in result.lore.items:
-        extracted_entities.append({"name": item.name, "type": "Item"})
+        extracted_entities.append({"name": item.name, "type": "Object"})
     for creature in result.lore.creatures:
         extracted_entities.append({"name": creature.name, "type": "Creature"})
     for faction in result.lore.factions:

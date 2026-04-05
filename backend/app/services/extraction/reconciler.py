@@ -113,17 +113,29 @@ async def reconcile_flat_entities(
     # For names appearing as multiple types, keep highest-priority type
     type_priority = {
         "character": 10,
+        "character_stoff": 10,
+        "social_relationship": 9,
         "location": 9,
+        "setting": 8,
         "creature": 8,
         "skill": 8,
         "class": 8,
-        "item": 7,
+        "object": 7,
+        "item": 7,  # V3 legacy alias
         "faction": 7,
+        "psychological_state": 6,
+        "character_feature": 6,
+        "narrative_role": 6,
         "level_change": 6,
         "stat_change": 6,
+        "narrative_sequence": 5,
+        "arc": 5,  # V3 legacy alias
         "event": 5,
-        "arc": 4,
+        "narrative_unit": 4,
+        "narrative_function": 4,
         "prophecy": 4,
+        "textual_feature": 3,
+        "narrative_stoff": 3,
         "concept": 3,
         "genre_entity": 2,
     }

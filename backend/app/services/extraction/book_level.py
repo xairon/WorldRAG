@@ -187,7 +187,7 @@ async def iterative_cluster(
                         alias_id=alias_id, canonical_id=canonical_id,
                     )
                     for rec in await out_rels.data():
-                        rt = "".join(c for c in rec["rel_type"] if c.isalnum() or c == "_") or "RELATES_TO"
+                        rt = "".join(c for c in rec["rel_type"] if c.isalnum() or c == "_") or "UNKNOWN"
                         await session.run(
                             f"""
                             MATCH (canon) WHERE id(canon) = $cid
@@ -208,7 +208,7 @@ async def iterative_cluster(
                         alias_id=alias_id, canonical_id=canonical_id,
                     )
                     for rec in await in_rels.data():
-                        rt = "".join(c for c in rec["rel_type"] if c.isalnum() or c == "_") or "RELATES_TO"
+                        rt = "".join(c for c in rec["rel_type"] if c.isalnum() or c == "_") or "UNKNOWN"
                         await session.run(
                             f"""
                             MATCH (source) WHERE id(source) = $sid

@@ -59,7 +59,7 @@ export function GraphDetailPanel({
     const groups = new Map<string, RelationGroup["relations"]>()
 
     graph.forEachOutEdge(nodeId, (edge, edgeAttrs, source, target) => {
-      const type = (edgeAttrs.relationType as string) ?? "RELATES_TO"
+      const type = (edgeAttrs.relationType as string) ?? "UNKNOWN"
       const targetAttrs = graph.getNodeAttributes(target)
       const rels = groups.get(type) ?? []
       rels.push({
@@ -73,7 +73,7 @@ export function GraphDetailPanel({
     })
 
     graph.forEachInEdge(nodeId, (edge, edgeAttrs, source) => {
-      const type = (edgeAttrs.relationType as string) ?? "RELATES_TO"
+      const type = (edgeAttrs.relationType as string) ?? "UNKNOWN"
       const sourceAttrs = graph.getNodeAttributes(source)
       const rels = groups.get(type) ?? []
       rels.push({

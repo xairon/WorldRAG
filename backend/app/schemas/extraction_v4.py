@@ -1,6 +1,6 @@
 """Pydantic schemas for the v4 extraction pipeline (KGGen-style, 2-step).
 
-Step 1: Entity extraction — 12-type discriminated union
+Step 1: Entity extraction — 18-type discriminated union (GOLEM v1.1 aligned)
 Step 2: Relation extraction — Neo4j relation types
 
 Design choices:
@@ -41,8 +41,8 @@ def _make_coercer(allowed: set[str], default: str):
     return _coerce
 
 
-_ROLES = {"protagonist", "antagonist", "mentor", "sidekick", "ally", "minor", "neutral"}
-_coerce_role = _make_coercer(_ROLES, "minor")
+_AGENCIES = {"active", "passive", "ambiguous"}
+_coerce_agency = _make_coercer(_AGENCIES, "active")
 
 _STATUSES = {"alive", "dead", "unknown", "transformed"}
 _coerce_status = _make_coercer(_STATUSES, "unknown")
@@ -62,17 +62,17 @@ _EVENT_TYPES = {
     "transition",
     "combat",
 }
-_coerce_event_type = _make_coercer(_EVENT_TYPES, "action")
+_coerce_event_category = _make_coercer(_EVENT_TYPES, "action")
 
 _SIGNIFICANCES = {"minor", "moderate", "major", "critical", "arc_defining"}
 _coerce_significance = _make_coercer(_SIGNIFICANCES, "moderate")
 
 
 # Type aliases with coercion
-CoercedRole = Annotated[str, BeforeValidator(_coerce_role)]
+CoercedAgency = Annotated[str, BeforeValidator(_coerce_agency)]
 CoercedStatus = Annotated[str, BeforeValidator(_coerce_status)]
 CoercedSkillType = Annotated[str, BeforeValidator(_coerce_skill_type)]
-CoercedEventType = Annotated[str, BeforeValidator(_coerce_event_type)]
+CoercedEventCategory = Annotated[str, BeforeValidator(_coerce_event_category)]
 CoercedSignificance = Annotated[str, BeforeValidator(_coerce_significance)]
 
 
@@ -89,7 +89,7 @@ class ExtractedCharacter(BaseModel):
     canonical_name: str = ""
     description: str = ""
     aliases: list[str] = Field(default_factory=list)
-    role: CoercedRole = "minor"
+    agency: CoercedAgency = "active"
     species: str = ""
     status: CoercedStatus = "alive"
     confidence: float = Field(1.0, ge=0.0, le=1.0, description="Extraction confidence score")
@@ -109,7 +109,7 @@ class ExtractedEvent(BaseModel):
     )
     name: str = Field(..., description="Short name for the event")
     description: str = ""
-    event_type: CoercedEventType = "action"
+    event_category: CoercedEventCategory = "action"
     significance: CoercedSignificance = "moderate"
     participants: list[str] = Field(default_factory=list)
     location: str | None = ""
@@ -141,19 +141,19 @@ class ExtractedLocation(BaseModel):
     char_offset_end: int = -1
 
 
-# ── 4. Item ──────────────────────────────────────────────────────────────
+# ── 4. Object (ex-Item, GOLEM G16) ──────────────────────────────────────
 
 
-class ExtractedItem(BaseModel):
-    entity_type: Literal["item"] = "item"
+class ExtractedObject(BaseModel):
+    entity_type: Literal["object"] = "object"
     type_rationale: str = Field(
         default="",
         description="One sentence: why is this entity this type and not another?",
     )
-    name: str = Field(..., description="Item name")
+    name: str = Field(..., description="Object name")
     canonical_name: str = ""
     aliases: list[str] = Field(default_factory=list)
-    item_type: str = ""
+    object_type: str = ""
     rarity: str = ""
     effects: list[str] = Field(default_factory=list)
     owner: str = ""
@@ -226,23 +226,24 @@ class ExtractedConcept(BaseModel):
     char_offset_end: int = -1
 
 
-# ── 8. Arc ───────────────────────────────────────────────────────────────
+# ── 8. NarrativeSequence (ex-Arc, GOLEM G7) ─────────────────────────────
 
 
-class ExtractedArc(BaseModel):
-    entity_type: Literal["arc"] = "arc"
+class ExtractedNarrativeSequence(BaseModel):
+    entity_type: Literal["narrative_sequence"] = "narrative_sequence"
     type_rationale: str = Field(
         default="",
         description="One sentence: why is this entity this type and not another?",
     )
-    name: str = Field(..., description="Narrative arc name")
+    name: str = Field(..., description="Narrative sequence/arc name")
     canonical_name: str = ""
     description: str = ""
-    arc_type: str = ""  # main_plot, subplot, character_arc, world_arc
+    sequence_type: str = ""  # main_plot, subplot, character_arc, world_arc
     status: str = ""  # active, completed, abandoned
+    sequence_order: int = 0
     related_events: list[str] = Field(
         default_factory=list,
-        description="Names of events that belong to this arc",
+        description="Names of events that belong to this sequence",
     )
     confidence: float = Field(1.0, ge=0.0, le=1.0, description="Extraction confidence score")
     extraction_text: str = ""
@@ -306,7 +307,158 @@ class ExtractedStatChange(BaseModel):
     char_offset_end: int = -1
 
 
-# ── 12. GenreEntity (catch-all) ──────────────────────────────────────────
+# ── 12. PsychologicalState (GOLEM G3) ───────────────────────────────────
+
+_STATE_TYPES = {"emotion", "motivation", "belief", "goal", "fear"}
+_coerce_state_type = _make_coercer(_STATE_TYPES, "emotion")
+CoercedStateType = Annotated[str, BeforeValidator(_coerce_state_type)]
+
+
+class ExtractedPsychologicalState(BaseModel):
+    entity_type: Literal["psychological_state"] = "psychological_state"
+    type_rationale: str = Field(
+        default="",
+        description="One sentence: why is this entity this type and not another?",
+    )
+    character: str = Field(..., description="Character experiencing this state")
+    state_type: CoercedStateType = "emotion"
+    name: str = Field(..., description="State name (e.g. 'determination', 'fear of failure')")
+    description: str = ""
+    trigger_event: str = ""
+    intensity: float = Field(0.5, ge=0.0, le=1.0)
+    confidence: float = Field(1.0, ge=0.0, le=1.0, description="Extraction confidence score")
+    extraction_text: str = ""
+    char_offset_start: int = -1
+    char_offset_end: int = -1
+
+
+# ── 13. Setting (GOLEM G12) ─────────────────────────────────────────────
+
+_SETTING_TYPES = {"world", "era", "dimension", "realm", "zone", "instance"}
+_coerce_setting_type = _make_coercer(_SETTING_TYPES, "world")
+CoercedSettingType = Annotated[str, BeforeValidator(_coerce_setting_type)]
+
+
+class ExtractedSetting(BaseModel):
+    entity_type: Literal["setting"] = "setting"
+    type_rationale: str = Field(
+        default="",
+        description="One sentence: why is this entity this type and not another?",
+    )
+    name: str = Field(..., description="Setting name (e.g. 'The Tutorial', 'Nevermore')")
+    setting_type: CoercedSettingType = "world"
+    description: str = ""
+    confidence: float = Field(1.0, ge=0.0, le=1.0, description="Extraction confidence score")
+    extraction_text: str = ""
+    char_offset_start: int = -1
+    char_offset_end: int = -1
+
+
+# ── 14. CharacterFeature (GOLEM G17) ────────────────────────────────────
+
+_FEATURE_TYPES = {"biographical", "physical", "psychological"}
+_coerce_feature_type = _make_coercer(_FEATURE_TYPES, "biographical")
+CoercedFeatureType = Annotated[str, BeforeValidator(_coerce_feature_type)]
+
+
+class ExtractedCharacterFeature(BaseModel):
+    entity_type: Literal["character_feature"] = "character_feature"
+    type_rationale: str = Field(
+        default="",
+        description="One sentence: why is this entity this type and not another?",
+    )
+    character: str = Field(..., description="Character this feature belongs to")
+    feature_type: CoercedFeatureType = "biographical"
+    name: str = Field(..., description="Feature name (e.g. 'green eyes', 'human', 'loner')")
+    description: str = ""
+    confidence: float = Field(1.0, ge=0.0, le=1.0, description="Extraction confidence score")
+    extraction_text: str = ""
+    char_offset_start: int = -1
+    char_offset_end: int = -1
+
+
+# ── 15. NarrativeRole (GOLEM G11) ───────────────────────────────────────
+
+_ROLE_TYPES = {
+    "protagonist",
+    "antagonist",
+    "mentor",
+    "trickster",
+    "herald",
+    "guardian",
+    "shadow",
+    "shapeshifter",
+    "narrator",
+    "deuteragonist",
+    "foil",
+}
+_coerce_role_type = _make_coercer(_ROLE_TYPES, "protagonist")
+CoercedRoleType = Annotated[str, BeforeValidator(_coerce_role_type)]
+
+
+class ExtractedNarrativeRole(BaseModel):
+    entity_type: Literal["narrative_role"] = "narrative_role"
+    type_rationale: str = Field(
+        default="",
+        description="One sentence: why is this entity this type and not another?",
+    )
+    character: str = Field(..., description="Character playing this role")
+    role_type: CoercedRoleType = "protagonist"
+    context: str = ""
+    confidence: float = Field(1.0, ge=0.0, le=1.0, description="Extraction confidence score")
+    extraction_text: str = ""
+    char_offset_start: int = -1
+    char_offset_end: int = -1
+
+
+# ── 16. SocialRelationship (GOLEM G4) ───────────────────────────────────
+
+_RELATIONSHIP_TYPES = {
+    "friendship",
+    "rivalry",
+    "romance",
+    "family",
+    "mentorship",
+    "patron",
+    "alliance",
+    "enmity",
+    "professional",
+    "worship",
+}
+_coerce_relationship_type = _make_coercer(_RELATIONSHIP_TYPES, "friendship")
+CoercedRelationshipType = Annotated[str, BeforeValidator(_coerce_relationship_type)]
+
+
+class ExtractedSocialRelationship(BaseModel):
+    entity_type: Literal["social_relationship"] = "social_relationship"
+    type_rationale: str = Field(
+        default="",
+        description="One sentence: why is this entity this type and not another?",
+    )
+    participants: list[str] = Field(
+        ..., min_length=2, description="2+ characters involved in this relationship"
+    )
+    relationship_type: CoercedRelationshipType = "friendship"
+    name: str = ""
+    description: str = ""
+    trigger_event: str = ""
+    confidence: float = Field(1.0, ge=0.0, le=1.0, description="Extraction confidence score")
+    extraction_text: str = ""
+    char_offset_start: int = -1
+    char_offset_end: int = -1
+
+
+# ── 17. TextualFeature (GOLEM G18 — programmatic, not LLM-extracted) ────
+
+
+class ExtractedTextualFeature(BaseModel):
+    entity_type: Literal["textual_feature"] = "textual_feature"
+    feature_type: str = ""  # pov, narrative_voice, dialogue_density, pacing, tone
+    name: str = Field(..., description="Feature name (e.g. 'first_person_pov')")
+    value: str = ""
+
+
+# ── 18. GenreEntity (catch-all) ──────────────────────────────────────────
 
 
 class ExtractedGenreEntity(BaseModel):
@@ -346,14 +498,20 @@ EntityUnion = Annotated[
     ExtractedCharacter
     | ExtractedEvent
     | ExtractedLocation
-    | ExtractedItem
+    | ExtractedObject
     | ExtractedCreature
     | ExtractedFaction
     | ExtractedConcept
-    | ExtractedArc
+    | ExtractedNarrativeSequence
     | ExtractedProphecy
     | ExtractedLevelChange
     | ExtractedStatChange
+    | ExtractedPsychologicalState
+    | ExtractedSetting
+    | ExtractedCharacterFeature
+    | ExtractedNarrativeRole
+    | ExtractedSocialRelationship
+    | ExtractedTextualFeature
     | ExtractedGenreEntity,
     Field(discriminator="entity_type"),
 ]
@@ -366,14 +524,20 @@ _VALID_ENTITY_TYPES = {
     "character",
     "event",
     "location",
-    "item",
+    "object",
     "creature",
     "faction",
     "concept",
-    "arc",
+    "narrative_sequence",
     "prophecy",
     "level_change",
     "stat_change",
+    "psychological_state",
+    "setting",
+    "character_feature",
+    "narrative_role",
+    "social_relationship",
+    "textual_feature",
     "genre_entity",
 }
 

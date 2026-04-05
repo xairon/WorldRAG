@@ -189,7 +189,7 @@ validation_rules:
         - charisma
         - dexterity
       reason: "Game stats — use stat_change or genre_entity(sub_type=stat)"
-    item:
+    object:
       excluded_terms:
         - stamina
         - mana
@@ -199,7 +199,7 @@ validation_rules:
         - xp
         - free points
         - skill points
-      reason: "Game stats — not items"
+      reason: "Game stats — not objects"
   domain_range:
     HAS_SKILL:
       from: [character]
@@ -214,7 +214,7 @@ validation_rules:
       from: [character]
       to: [genre_entity]
     LOCATED_AT:
-      from: [character, item, event, creature, faction]
+      from: [character, object, event, creature, faction]
       to: [location]
     MEMBER_OF:
       from: [character]
@@ -224,7 +224,7 @@ validation_rules:
       to: [event]
     POSSESSES:
       from: [character]
-      to: [item, genre_entity]
+      to: [object, genre_entity]
     IS_RACE:
       from: [character]
       to: [genre_entity, creature]

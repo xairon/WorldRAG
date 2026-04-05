@@ -7,11 +7,11 @@ class TestOntologyVersion:
     def test_core_has_version(self):
         loader = OntologyLoader.from_layers()
         assert loader.version is not None
-        assert loader.version.startswith("3.")
+        assert loader.version.startswith("4.")
 
     def test_combined_version_string(self):
         loader = OntologyLoader.from_layers(genre="litrpg", series="primal_hunter")
-        assert "3.0.0" in loader.version
+        assert "4.0.0" in loader.version
 
     def test_layer_names(self):
         loader = OntologyLoader.from_layers(genre="litrpg", series="primal_hunter")
@@ -53,14 +53,14 @@ class TestOntologySchemaExport:
         assert "properties" in schema["Character"]
         assert "name" in schema["Character"]["properties"]
         assert "Event" in schema
-        assert "event_type" in schema["Event"]["properties"]
+        assert "event_category" in schema["Event"]["properties"]
 
     def test_to_json_schema_includes_enum_values(self):
         loader = OntologyLoader.from_layers(genre="litrpg")
         schema = loader.to_json_schema(["Character"])
-        role_prop = schema["Character"]["properties"]["role"]
-        assert "values" in role_prop
-        assert "protagonist" in role_prop["values"]
+        agency_prop = schema["Character"]["properties"]["agency"]
+        assert "values" in agency_prop
+        assert "active" in agency_prop["values"]
 
     def test_to_json_schema_all_types(self):
         loader = OntologyLoader.from_layers(genre="litrpg")
@@ -187,11 +187,82 @@ class TestBackwardCompatibility:
         loader = OntologyLoader.from_layers(genre="litrpg")
         errors = loader.validate_entity(
             "Character",
-            {"name": "Jake", "canonical_name": "jake thayne", "role": "protagonist"},
+            {"name": "Jake", "canonical_name": "jake thayne", "agency": "active", "book_id": "book1"},
         )
         assert len(errors) == 0
 
     def test_enum_constraints_still_populated(self):
         loader = OntologyLoader.from_layers(genre="litrpg")
         assert "Character" in loader.enum_constraints
-        assert "role" in loader.enum_constraints["Character"]
+        assert "agency" in loader.enum_constraints["Character"]
+
+
+class TestGolemAlignment:
+    def test_golem_alignment_parsed(self):
+        loader = OntologyLoader.from_layers(genre="litrpg")
+        assert loader.node_types["Character"].golem_alignment == "G1_Character"
+        assert loader.node_types["Event"].golem_alignment == "G5_Narrative_Event"
+        assert loader.node_types["Setting"].golem_alignment == "G12_Setting"
+
+    def test_description_parsed(self):
+        loader = OntologyLoader.from_layers(genre="litrpg")
+        assert "character" in loader.node_types["Character"].description.lower()
+        assert "event" in loader.node_types["Event"].description.lower()
+
+    def test_new_golem_types_loaded(self):
+        loader = OntologyLoader.from_layers(genre="litrpg")
+        all_types = loader.get_all_node_types()
+        for golem_type in [
+            "CharacterStoff",
+            "PsychologicalState",
+            "SocialRelationship",
+            "Setting",
+            "CharacterFeature",
+            "NarrativeRole",
+            "NarrativeSequence",
+            "NarrativeStoff",
+            "TextualFeature",
+            "Object",
+        ]:
+            assert golem_type in all_types, f"{golem_type} not found in loaded types"
+
+    def test_item_renamed_to_object(self):
+        loader = OntologyLoader.from_layers(genre="litrpg")
+        all_types = loader.get_all_node_types()
+        assert "Object" in all_types
+        assert "Item" not in all_types
+
+    def test_arc_renamed_to_narrative_sequence(self):
+        loader = OntologyLoader.from_layers(genre="litrpg")
+        all_types = loader.get_all_node_types()
+        assert "NarrativeSequence" in all_types
+        assert "Arc" not in all_types
+
+    def test_disjointness_loaded(self):
+        loader = OntologyLoader.from_layers(genre="litrpg")
+        assert len(loader.disjointness) == 8
+        assert loader.are_disjoint("character", "creature")
+        assert loader.are_disjoint("setting", "location")
+        assert loader.are_disjoint("event", "psychological_state")
+        assert not loader.are_disjoint("character", "event")
+
+    def test_to_induction_context(self):
+        loader = OntologyLoader.from_layers(genre="litrpg")
+        ctx = loader.to_induction_context()
+        assert len(ctx) > 0
+        names = {entry["name"] for entry in ctx}
+        assert "Character" in names
+        assert "Setting" in names
+        for entry in ctx:
+            assert entry["description"] != ""
+
+    def test_domain_range_golem_relations(self):
+        loader = OntologyLoader.from_layers(genre="litrpg")
+        dr = loader.get_domain_range("HAS_STATE")
+        assert dr is not None
+        assert "character" in dr[0]
+        assert "psychological_state" in dr[1]
+
+        dr2 = loader.get_domain_range("IN_SETTING")
+        assert dr2 is not None
+        assert "setting" in dr2[1]
