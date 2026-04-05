@@ -17,6 +17,9 @@ or affect each other.
 progression over chapters, cause-and-effect sequences.
 - "analytical": Complex multi-part questions, thematic analysis, comparisons, \
 "why" questions requiring synthesis of multiple passages.
+- "psychological_qa": Questions about a character's emotions, mental state, \
+motivations, psychological arc, or feelings — "how does X feel?", \
+"what is X's emotional arc?", "X's state of mind", "why is X afraid?".
 - "global_summary": Questions about overall themes, factions, world-building, \
 character groups, power systems overview, or story-level summaries that span \
 many entities rather than focusing on specific ones.
@@ -151,12 +154,22 @@ KG_QUERY_SYSTEM = """\
 You are an entity extraction engine for a fiction novel Knowledge Graph.
 Given a user's question about entities, extract:
 1. Entity names mentioned (be precise with spelling)
-2. The type of query: "entity_lookup", "relationship", "stat_progression", or "skills"
+2. The type of query:
+   - "entity_lookup": who/what is X, stats, attributes
+   - "relationship": how X and Y are related
+   - "stat_progression": level/stat changes over time
+   - "skills": what skills/abilities does X have
+   - "psychological": emotions, feelings, mental state, motivations of X
+   - "social_evolution": how a relationship between X and Y evolved over time
+   - "stoff_comparison": compare a character across books/series
 
 Examples:
 - "Who is Jake?" → {{"entities": ["Jake"], "query_type": "entity_lookup"}}
 - "What skills does Aira have?" → {{"entities": ["Aira"], "query_type": "skills"}}
 - "How are Jake and Mira related?" → {{"entities": ["Jake", "Mira"], "query_type": "relationship"}}
+- "How does Jake feel after the battle?" → {{"entities": ["Jake"], "query_type": "psychological"}}
+- "How did Jake and Casper's friendship evolve?" → {{"entities": ["Jake", "Casper"], "query_type": "social_evolution"}}
+- "How does Jake change across the series?" → {{"entities": ["Jake"], "query_type": "stoff_comparison"}}
 
 Respond with a JSON object:
 {{

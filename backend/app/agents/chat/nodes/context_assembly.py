@@ -113,7 +113,46 @@ async def assemble_context(
             line += f" (relevance: {score:.2f})"
             parts.append(line)
 
+    # GOLEM-specific context (psychological states, social evolution, stoff comparison)
+    golem_context = state.get("golem_context", [])
+    if golem_context:
+        route = state.get("route", "")
+        if route == "psychological_qa" or any("state_type" in gc for gc in golem_context):
+            parts.append("\n## Psychological States\n")
+            for gc in golem_context:
+                line = f"- Ch.{gc.get('chapter', '?')}: {gc.get('character', '?')} — {gc.get('state_name', '?')} ({gc.get('state_type', '')})"
+                if gc.get("intensity"):
+                    line += f" [intensity: {gc['intensity']:.1f}]"
+                if gc.get("trigger_event"):
+                    line += f" triggered by: {gc['trigger_event']}"
+                if gc.get("description"):
+                    line += f" — {gc['description']}"
+                parts.append(line)
+        elif any("relationship_type" in gc for gc in golem_context):
+            parts.append("\n## Relationship Evolution\n")
+            for gc in golem_context:
+                line = f"- {gc.get('relationship_name', '?')} ({gc.get('relationship_type', '')})"
+                line += f" ch.{gc.get('from_chapter', '?')}"
+                if gc.get("to_chapter"):
+                    line += f"–{gc['to_chapter']}"
+                if gc.get("description"):
+                    line += f": {gc['description']}"
+                parts.append(line)
+        elif any("features" in gc for gc in golem_context):
+            parts.append("\n## Character Across Books\n")
+            for gc in golem_context:
+                line = f"- Book {gc.get('book_id', '?')}: features={gc.get('features', [])}, roles={gc.get('roles', [])}"
+                parts.append(line)
+
     context = "\n".join(parts)
+
+    # Token budget enforcement (§6sexies.4)
+    max_context_chars = 12_000  # ~8000 tokens
+    if len(context) > max_context_chars:
+        context = context[:max_context_chars]
+        logger.warning(
+            "context_truncated", original_len=len("\n".join(parts)), max_chars=max_context_chars
+        )
 
     logger.info(
         "context_assembled",
@@ -121,6 +160,7 @@ async def assemble_context(
         entities=len(kg_entities),
         communities=len(community_context),
         relationships=len(relationship_context),
+        golem_context=len(golem_context),
         context_len=len(context),
     )
 

@@ -49,6 +49,8 @@ def _route_after_router(state: dict[str, Any]) -> str:
     route = state.get("route", "entity_qa")
     if route == "factual_lookup":
         return "kg_query"
+    if route == "psychological_qa":
+        return "kg_query"  # KG-first: PsychologicalState chains via Cypher
     if route == "conversational":
         return "generate"
     if route == "global_summary":
@@ -144,9 +146,7 @@ def build_chat_graph(
         multi_hop_results: list[dict[str, Any]] = []
         if route in ("relationship_qa", "analytical"):
             # Use entity names from KG query results for multi-hop traversal
-            entity_candidates = [
-                e["name"] for e in state.get("kg_entities", []) if e.get("name")
-            ]
+            entity_candidates = [e["name"] for e in state.get("kg_entities", []) if e.get("name")]
             multi_hop_task = _multi_hop_graph_search(
                 repo,
                 query_entities=entity_candidates,
@@ -201,13 +201,15 @@ def build_chat_graph(
         # Convert community summaries into reranked_chunks format for context assembly
         chunks = []
         for i, s in enumerate(summaries):
-            chunks.append({
-                "node_id": f"community_{s.get('community_id', i)}",
-                "text": s.get("text", ""),
-                "chapter_number": 0,
-                "chapter_title": f"Community (level {s.get('level', '?')}, {s.get('member_count', 0)} members)",
-                "relevance_score": 1.0 - i * 0.05,
-            })
+            chunks.append(
+                {
+                    "node_id": f"community_{s.get('community_id', i)}",
+                    "text": s.get("text", ""),
+                    "chapter_number": 0,
+                    "chapter_title": f"Community (level {s.get('level', '?')}, {s.get('member_count', 0)} members)",
+                    "relevance_score": 1.0 - i * 0.05,
+                }
+            )
         community_ctx = [
             {
                 "community_summary": s.get("text", ""),

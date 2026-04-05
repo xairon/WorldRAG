@@ -167,6 +167,69 @@ async def kg_search(
             {"names": entity_names_found, "book_id": book_id},
         )
 
+    # Step 6: GOLEM-specific traversals based on query_type
+    golem_context: list[dict[str, Any]] = []
+
+    if query_type == "psychological" and entity_names_found:
+        # PsychologicalState chains (§6sexies.3)
+        golem_context = await repo.execute_read(
+            """
+            UNWIND $names AS ename
+            MATCH (c:Character {book_id: $book_id})-[:HAS_STATE]->(ps:PsychologicalState)
+            WHERE c.canonical_name = toLower(ename) OR c.name = ename
+            OPTIONAL MATCH (ps)-[:STATE_TRIGGERED_BY]->(ev:Event)
+            RETURN c.canonical_name AS character,
+                   ps.name AS state_name, ps.state_type AS state_type,
+                   ps.chapter_start AS chapter, ps.intensity AS intensity,
+                   ps.description AS description,
+                   ev.name AS trigger_event
+            ORDER BY ps.chapter_start
+            LIMIT 30
+            """,
+            {"names": entity_names_found, "book_id": book_id},
+        )
+
+    elif query_type == "social_evolution" and len(entity_names_found) >= 2:
+        # SocialRelationship evolution (§6sexies.3)
+        golem_context = await repo.execute_read(
+            """
+            MATCH (c1:Character {book_id: $book_id})-[:INVOLVED_IN]->(sr:SocialRelationship)
+                  <-[:INVOLVED_IN]-(c2:Character {book_id: $book_id})
+            WHERE (c1.canonical_name = toLower($name1) OR c1.name = $name1)
+              AND (c2.canonical_name = toLower($name2) OR c2.name = $name2)
+            RETURN sr.name AS relationship_name,
+                   sr.relationship_type AS relationship_type,
+                   sr.valid_from_chapter AS from_chapter,
+                   sr.valid_to_chapter AS to_chapter,
+                   sr.description AS description
+            ORDER BY sr.valid_from_chapter
+            LIMIT 20
+            """,
+            {
+                "name1": entity_names_found[0],
+                "name2": entity_names_found[1],
+                "book_id": book_id,
+            },
+        )
+
+    elif query_type == "stoff_comparison" and entity_names_found:
+        # Stoff comparison across books (§6sexies.3)
+        golem_context = await repo.execute_read(
+            """
+            MATCH (cs:CharacterStoff {canonical_name: toLower($name)})
+                  <-[:INSTANCE_OF_STOFF]-(c:Character)
+            OPTIONAL MATCH (c)-[:HAS_FEATURE]->(cf:CharacterFeature)
+            OPTIONAL MATCH (c)-[:PLAYS_ROLE]->(nr:NarrativeRole)
+            RETURN c.book_id AS book_id,
+                   c.canonical_name AS character,
+                   collect(DISTINCT cf.name) AS features,
+                   collect(DISTINCT nr.role_type) AS roles
+            ORDER BY c.book_id
+            LIMIT 20
+            """,
+            {"name": entity_names_found[0]},
+        )
+
     # Apply degree centrality weighting: higher-degree entities get more context space
     # Normalize degrees to a 0-1 range and use as importance weight
     max_degree = max(degree_map.values()) if degree_map else 1
@@ -197,4 +260,5 @@ async def kg_search(
         ],
         "reranked_chunks": chunks,
         "community_context": community_context,
+        "golem_context": golem_context,
     }

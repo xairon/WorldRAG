@@ -25,6 +25,7 @@ VALID_ROUTES = {
     "factual_lookup",
     "entity_qa",
     "relationship_qa",
+    "psychological_qa",
     "timeline_qa",
     "analytical",
     "global_summary",
