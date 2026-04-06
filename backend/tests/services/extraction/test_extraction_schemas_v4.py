@@ -524,12 +524,16 @@ def test_relationship_type_coercion():
     assert rel.relationship_type == "friendship"
 
 
-def test_social_relationship_requires_two_participants():
-    with pytest.raises(ValidationError):
-        ExtractedSocialRelationship(
-            participants=["jake"],
-            extraction_text="alone.",
-        )
+def test_social_relationship_accepts_one_participant_for_llm_robustness():
+    """min_length removed from Pydantic to avoid rejecting entire JSON.
+
+    Validation of ≥2 participants is now done by verify node Check 8.
+    """
+    sr = ExtractedSocialRelationship(
+        participants=["jake"],
+        extraction_text="alone.",
+    )
+    assert len(sr.participants) == 1  # accepted at schema level, filtered by verify
 
 
 # ── 14. Unknown entity types are dropped ─────────────────────────────

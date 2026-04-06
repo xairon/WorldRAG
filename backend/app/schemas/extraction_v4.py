@@ -436,7 +436,8 @@ class ExtractedSocialRelationship(BaseModel):
         description="One sentence: why is this entity this type and not another?",
     )
     participants: list[str] = Field(
-        ..., min_length=2, description="2+ characters involved in this relationship"
+        default_factory=list,
+        description="2+ characters involved in this relationship (validated by verify node)",
     )
     relationship_type: CoercedRelationshipType = "friendship"
     name: str = ""
