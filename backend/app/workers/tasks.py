@@ -815,7 +815,7 @@ async def process_book_extraction_v4(
     except Exception:
         logger.warning("v4_programmatic_golem_edges_failed", book_id=book_id, exc_info=True)
 
-    # Book-level 6: CharacterStoff creation (GOLEM G0, Phase E)
+    # Book-level 11: CharacterStoff creation (GOLEM G0, Phase E)
     try:
         book_repo_stoff = BookRepository(driver)
         series_name = await book_repo_stoff.get_series_name_for_book(book_id)

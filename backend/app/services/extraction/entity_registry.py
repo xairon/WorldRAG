@@ -82,9 +82,12 @@ class EntityRegistry:
 
     @staticmethod
     def _strip_articles(name: str) -> str:
-        """Strip leading definite/indefinite articles for matching."""
+        """Strip leading definite/indefinite articles for matching.
+
+        Only strips if the remainder is ≥3 chars (avoids breaking "a-train" etc.)
+        """
         for prefix in ("the ", "a ", "an ", "le ", "la ", "les ", "l'"):
-            if name.startswith(prefix):
+            if name.startswith(prefix) and len(name) - len(prefix) >= 3:
                 return name[len(prefix) :]
         return name
 

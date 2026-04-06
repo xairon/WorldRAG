@@ -1253,6 +1253,28 @@ async def infer_golem_edges(driver, book_id: str) -> dict[str, int]:
         record = await result.single()
         counts["RELATIONSHIP_CAUSED_BY"] = record["created"] if record else 0
 
+        # 5. ROLE_IN_SEQUENCE: link NarrativeRoles to NarrativeSequences
+        # If a NarrativeRole's character participates in events of a sequence,
+        # the role applies to that sequence
+        result = await session.run(
+            """
+            MATCH (nr:NarrativeRole {book_id: $book_id})
+            WHERE NOT (nr)-[:ROLE_IN_SEQUENCE]->(:NarrativeSequence)
+            MATCH (c:Character {book_id: $book_id, canonical_name: nr.character_name})
+            MATCH (c)-[:PARTICIPATES_IN]->(ev:Event)-[:SEQUENCED_IN]->(ns:NarrativeSequence)
+            WITH nr, ns, count(ev) AS ev_count
+            WHERE ev_count >= 1
+            WITH nr, ns ORDER BY ev_count DESC
+            WITH nr, head(collect(ns)) AS best_seq
+            WHERE best_seq IS NOT NULL
+            MERGE (nr)-[:ROLE_IN_SEQUENCE {inferred: true}]->(best_seq)
+            RETURN count(*) AS created
+            """,
+            {"book_id": book_id},
+        )
+        record = await result.single()
+        counts["ROLE_IN_SEQUENCE"] = record["created"] if record else 0
+
     logger.info("infer_golem_edges_completed", book_id=book_id, counts=counts)
     return counts
 

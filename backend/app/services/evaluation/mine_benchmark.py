@@ -49,10 +49,12 @@ async def generate_chapter_facts(
             {
                 "role": "system",
                 "content": (
-                    f"Extract exactly {k} important factual statements from this fiction chapter. "
-                    "Each fact should be a single sentence that captures a key piece of information "
-                    "(character actions, relationships, events, locations, items, emotional states). "
-                    "Return ONLY the facts, one per line, numbered 1-{k}."
+                    f"Extract exactly {k} SPECIFIC factual statements from this fiction chapter. "
+                    "Each fact MUST mention at least one named entity (character, location, item, skill). "
+                    "Facts should be concrete and verifiable, NOT vague ('Jake is a character'). "
+                    "Good: 'Jake used Shadow Step to dodge the attack in the Tutorial arena.' "
+                    "Bad: 'A character fought.' "
+                    f"Return ONLY the {k} facts, one per line, numbered 1-{k}."
                 ),
             },
             {"role": "user", "content": chapter_text[:8000]},
@@ -105,16 +107,18 @@ async def score_fact_against_kg(
 ) -> bool:
     """Score whether a fact is inferable from the KG subgraph.
 
-    1. Fulltext search for most relevant nodes
+    1. Hybrid retrieval: fulltext keyword search + entity name matching
     2. Expand to 2-hop neighborhood
     3. LLM judges inferability
     """
     from app.llm.providers import get_instructor_for_task
 
-    # Step 1: Fulltext search for relevant nodes
+    # Step 1: Hybrid retrieval — fulltext + entity name extraction
     async with driver.session() as session:
-        # Extract key terms for search
-        search_terms = " ".join(fact.split()[:10])  # first 10 words
+        # Extract key terms: all capitalized words (likely entity names) + first 10 words
+        words = fact.split()
+        entity_candidates = [w.strip(".,;:!?'\"") for w in words if w[0:1].isupper() and len(w) > 2]
+        search_terms = " ".join(entity_candidates) if entity_candidates else " ".join(words[:10])
         # Escape Lucene special chars
         for char in r'\+-&|!(){}[]^"~*?:/':
             search_terms = search_terms.replace(char, f"\\{char}")
