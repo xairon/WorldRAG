@@ -1660,6 +1660,70 @@ async def reconcile_and_persist_v4_node(state: dict[str, Any]) -> dict[str, Any]
                         field_name = err.split(".")[1].split("=")[0]
                         entity_dict.pop(field_name, None)
 
+    # 4c. Sanitize relation types — reject hallucinated types, map RELATES_TO
+    _VALID_RELATION_TYPES = {
+        "RELATES_TO",
+        "PARTICIPATES_IN",
+        "OCCURS_AT",
+        "CAUSES",
+        "ENABLES",
+        "PRECEDES",
+        "FOLLOWS",
+        "POSSESSES",
+        "LOCATED_AT",
+        "MEMBER_OF",
+        "LOCATION_PART_OF",
+        "CONNECTED_TO",
+        "PERCEIVED_BY",
+        "MENTIONED_IN",
+        "GROUNDED_IN",
+        "FULFILLS",
+        "RETCONNED_BY",
+        "HAS_SKILL",
+        "HAS_CLASS",
+        "HAS_TITLE",
+        "AT_LEVEL",
+        "IS_RACE",
+        "EVOLVES_INTO",
+        "SKILL_EVOLVES_INTO",
+        "BELONGS_TO",
+        "INHABITS",
+        "HAS_BLOODLINE",
+        "HAS_PROFESSION",
+        "WORSHIPS",
+        "HAS_RECIPE",
+        "HAS_STATE",
+        "STATE_TRIGGERED_BY",
+        "TRIGGERS_EVENT",
+        "FOLLOWS_STATE",
+        "IN_SETTING",
+        "SETTING_CONTAINS",
+        "HAS_FEATURE",
+        "HAS_TEXTUAL_FEATURE",
+        "PLAYS_ROLE",
+        "ROLE_IN_SEQUENCE",
+        "INVOLVED_IN",
+        "RELATIONSHIP_CAUSED_BY",
+        "SEQUENCED_IN",
+        "STRUCTURED_BY",
+        "UNIT_REFERS_TO",
+        "UNIT_IN_WORK",
+        "INSTANCE_OF_STOFF",
+        "CHARACTER_IN_WORK",
+        "SETTING_OF_WORK",
+        "USED_IN",
+    }
+    cleaned_relations = []
+    for rel in relations:
+        rt = rel.get("relation_type", "").upper().replace(" ", "_")
+        if rt in _VALID_RELATION_TYPES:
+            cleaned_relations.append(rel)
+        elif len(rt) > 30 or rt.count("_") > 4:
+            logger.debug("relation_hallucinated_dropped", relation_type=rt)
+        else:
+            cleaned_relations.append(rel)  # keep unknown but reasonable types
+    relations = cleaned_relations
+
     # 5. Relation type constraint validation
     from app.services.extraction.validation import validate_relations
 

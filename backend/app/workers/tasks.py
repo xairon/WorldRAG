@@ -752,7 +752,29 @@ async def process_book_extraction_v4(
     except Exception:
         logger.warning("v4_community_cluster_failed", book_id=book_id, exc_info=True)
 
-    # Book-level 5: CharacterStoff creation (GOLEM G0, Phase E)
+    # Book-level 5: Programmatic GOLEM edges (CHARACTER_IN_WORK, SETTING_OF_WORK)
+    try:
+        await entity_repo.execute_write(
+            """
+            MATCH (c:Character {book_id: $book_id})
+            MATCH (b:Book {id: $book_id})
+            MERGE (c)-[:CHARACTER_IN_WORK]->(b)
+            """,
+            {"book_id": book_id},
+        )
+        await entity_repo.execute_write(
+            """
+            MATCH (s:Setting {book_id: $book_id})
+            MATCH (b:Book {id: $book_id})
+            MERGE (s)-[:SETTING_OF_WORK]->(b)
+            """,
+            {"book_id": book_id},
+        )
+        logger.info("v4_programmatic_golem_edges_done", book_id=book_id)
+    except Exception:
+        logger.warning("v4_programmatic_golem_edges_failed", book_id=book_id, exc_info=True)
+
+    # Book-level 6: CharacterStoff creation (GOLEM G0, Phase E)
     try:
         book_repo_stoff = BookRepository(driver)
         series_name = await book_repo_stoff.get_series_name_for_book(book_id)

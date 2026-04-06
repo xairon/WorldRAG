@@ -80,14 +80,30 @@ class EntityRegistry:
         for alias in aliases or []:
             self._alias_map[alias.lower().strip()] = canonical
 
+    @staticmethod
+    def _strip_articles(name: str) -> str:
+        """Strip leading definite/indefinite articles for matching."""
+        for prefix in ("the ", "a ", "an ", "le ", "la ", "les ", "l'"):
+            if name.startswith(prefix):
+                return name[len(prefix) :]
+        return name
+
     def lookup(self, name: str) -> RegistryEntry | None:
-        """Look up an entity by name or alias (case-insensitive)."""
+        """Look up an entity by name or alias (case-insensitive, article-tolerant)."""
         key = name.lower().strip()
         if key in self._entities:
             return self._entities[key]
         canonical = self._alias_map.get(key)
         if canonical:
             return self._entities.get(canonical)
+        # Fallback: try without leading articles ("the malefic viper" → "malefic viper")
+        stripped = self._strip_articles(key)
+        if stripped != key:
+            if stripped in self._entities:
+                return self._entities[stripped]
+            canonical = self._alias_map.get(stripped)
+            if canonical:
+                return self._entities.get(canonical)
         return None
 
     def update_last_seen(self, name: str, chapter: int) -> None:

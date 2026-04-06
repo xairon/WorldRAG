@@ -227,11 +227,18 @@ def _verify_single_entity(
             if char_ref not in chapter_text_lower:
                 return False, f"golem_character_not_found:{entity_type}:{char_ref}"
 
-    # Check 8: SocialRelationship must have ≥2 participants
+    # Check 8: SocialRelationship must have ≥2 participants + quality checks
     if entity_type == "social_relationship":
         participants = entity.get("participants", [])
         if len(participants) < 2:
             return False, f"golem_insufficient_participants:{name}:{len(participants)}"
+        # SR name should not be a character name (indicates bad naming)
+        if known_character_names and name_lower in known_character_names:
+            return False, f"golem_sr_named_after_character:{name}"
+        # SR name should not look like an event (contains verb-like patterns)
+        event_verbs = {"kills", "attacks", "chops", "pats", "hits", "defeats", "stabs", "slashes"}
+        if any(v in name_lower for v in event_verbs):
+            return False, f"golem_sr_looks_like_event:{name}"
 
     # Check 9: Setting should not be a physical location
     if entity_type == "setting":

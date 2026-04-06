@@ -71,15 +71,18 @@ core:
       OBJECT (GOLEM G16, ex-Item):
       - name: object name as used in text
       - canonical_name: full name lowercase, no articles
+      - description: REQUIRED — brief description of the object (what it does, why it matters)
       - object_type: weapon | armor | consumable | artifact | key_item | tool | material
       - rarity: common | uncommon | rare | epic | legendary | unique
       - effects: list of mechanical or narrative effects
       - owner: canonical_name of current possessor
       - extraction_text: exact source passage
+      IMPORTANT: Always provide a description, even if brief. "A powerful bow" is better than empty.
     fr: |
       OBJECT (GOLEM G16, ex-Item) :
       - name : nom de l'objet tel qu'utilise dans le texte
       - canonical_name : nom complet en minuscules, sans articles
+      - description : OBLIGATOIRE — breve description de l'objet (fonction, importance)
       - object_type : weapon | armor | consumable | artifact | key_item | tool | material
       - rarity : common | uncommon | rare | epic | legendary | unique
       - effects : liste des effets mecaniques ou narratifs
@@ -150,8 +153,10 @@ core:
       - sequence_type: main_plot | subplot | character_arc | world_arc
       - status: active | completed | abandoned
       - sequence_order: position in the work (integer)
+      - related_events: IMPORTANT — list event names that belong to this sequence (enables event-to-arc linking)
       - description: brief description in chapter context
       - extraction_text: exact source passage
+      Always try to list the events that belong to this narrative arc in related_events.
     fr: |
       NARRATIVE_SEQUENCE (GOLEM G7, ex-Arc) :
       - name : nom de la sequence narrative ou arc
@@ -185,11 +190,11 @@ core:
       - state_type: emotion | motivation | belief | goal | fear
       - name: state name (e.g. "determination", "fear of failure", "desire for power")
       - description: brief description of the state in context
-      - trigger_event: name of the event that caused this state (if identifiable)
+      - trigger_event: IMPORTANT — name of the event that caused this state. Try hard to identify what triggered this emotion/belief/motivation.
       - intensity: 0.0 to 1.0 (how strong is this state)
       - extraction_text: exact source passage
       A PSYCHOLOGICAL_STATE is a temporal mental state of a character, NOT an action or event.
-      - VALID: "Jake felt a surge of determination" → state_type=emotion, name="determination"
+      - VALID: "Jake felt a surge of determination after the battle" → state_type=emotion, name="determination", trigger_event="Battle of the Arena"
       - NOT a psychological_state: "Jake ran fast" (action/event), "Jake is brave" (character_feature)
     fr: |
       PSYCHOLOGICAL_STATE (GOLEM G3) :
@@ -263,20 +268,21 @@ core:
   social_relationship:
     en: |
       SOCIAL_RELATIONSHIP (GOLEM G4):
-      - participants: list of 2+ character canonical_names involved
+      - participants: list of 2+ character canonical_names involved (MUST have at least 2)
       - relationship_type: friendship | rivalry | romance | family | mentorship | patron | alliance | enmity | professional | worship
-      - name: optional relationship name (e.g. "Jake-Casper friendship")
+      - name: DESCRIPTIVE name like "Jake-Casper friendship" or "Viper mentorship of Jake". NEVER use a character name alone.
       - description: brief description of the relationship
       - trigger_event: name of the event that created or changed this relationship
       - extraction_text: exact source passage
       A SOCIAL_RELATIONSHIP is a reified relationship between characters — it has its own history.
-      - VALID: "The friendship between Jake and Casper deepened" → friendship between jake and casper
+      - VALID: "The friendship between Jake and Casper deepened" → name="jake-casper friendship", participants=["jake","casper"]
+      - WRONG name: "jake" — this is a character name, not a relationship name
       - NOT a social_relationship: "Jake hit Casper" (Event), "Jake likes Casper" (PsychologicalState)
     fr: |
       SOCIAL_RELATIONSHIP (GOLEM G4) :
-      - participants : liste de 2+ canonical_names de personnages impliques
+      - participants : liste de 2+ canonical_names de personnages impliques (MINIMUM 2)
       - relationship_type : friendship | rivalry | romance | family | mentorship | patron | alliance | enmity | professional | worship
-      - name : nom optionnel de la relation
+      - name : nom DESCRIPTIF comme "jake-casper friendship". JAMAIS un nom de personnage seul.
       - description : breve description de la relation
       - trigger_event : nom de l'evenement createur ou modificateur
       - extraction_text : passage source exact

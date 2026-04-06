@@ -209,6 +209,15 @@ class EntityRepository(Neo4jRepository):
                     "relation_type_empty_skipped", source=rel["source"], target=rel["target"]
                 )
                 continue
+            # Reject hallucinated edge types (>30 chars or not in whitelist)
+            if len(rel_type) > 30 or rel_type.count("_") > 4:
+                logger.warning(
+                    "relation_type_hallucinated",
+                    rel_type=rel_type,
+                    source=rel["source"],
+                    target=rel["target"],
+                )
+                continue
             _, summary = await self.execute_write_with_summary(
                 f"""
                 WITH $rel AS r
