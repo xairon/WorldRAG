@@ -10,6 +10,7 @@ import { getEntityHex, ENTITY_HEX_FALLBACK } from "@/lib/constants"
 interface GraphCanvasProps {
   graph: MultiDirectedGraph | null
   selectedNodeId: string | null
+  activeLabels: string[]
   onNodeClick: (nodeId: string) => void
   onNodeDoubleClick: (nodeId: string) => void
   onCanvasClick: () => void
@@ -29,6 +30,7 @@ const LAYOUT_CHECK_INTERVAL = 500
 export function GraphCanvas({
   graph,
   selectedNodeId,
+  activeLabels,
   onNodeClick,
   onNodeDoubleClick,
   onCanvasClick,
@@ -40,8 +42,12 @@ export function GraphCanvas({
   const layoutRef = useRef<Forceatlas2Layout | null>(null)
   const hoveredRef = useRef<string | null>(null)
   const cameraRatioRef = useRef(1)
+  const activeLabelsRef = useRef<Set<string>>(new Set())
   // Pre-computed color map for performance (built once per graph change)
   const colorMapRef = useRef<Map<string, string>>(new Map())
+
+  // Keep activeLabels ref in sync
+  activeLabelsRef.current = new Set(activeLabels)
 
   // Build color map from graph node attributes
   useEffect(() => {
@@ -90,6 +96,14 @@ export function GraphCanvas({
         const res = { ...data }
         const entityType = graph.getNodeAttribute(node, "entityType") as string
         res.color = colorMapRef.current.get(entityType) ?? ENTITY_HEX_FALLBACK
+
+        // Multi-label filtering: hide nodes not in active label set
+        const labels = activeLabelsRef.current
+        if (labels.size > 0 && !labels.has(entityType)) {
+          res.hidden = true
+          return res
+        }
+
         const hovered = hoveredRef.current
         const selected = selectedNodeId
 

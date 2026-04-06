@@ -39,9 +39,7 @@ async def rerank_results(state: dict[str, Any]) -> dict[str, Any]:
     scores = await loop.run_in_executor(None, lambda: reranker.predict(pairs))
 
     # Build ranked list sorted by score descending
-    indexed_scores = sorted(
-        enumerate(scores), key=lambda x: float(x[1]), reverse=True
-    )
+    indexed_scores = sorted(enumerate(scores), key=lambda x: float(x[1]), reverse=True)
 
     # Filter to top-N and attach relevance_score
     result = [

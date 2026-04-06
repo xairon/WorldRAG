@@ -12,6 +12,16 @@ import {
   Bug,
   Flag,
   Lightbulb,
+  Heart,
+  Globe,
+  Link2,
+  Fingerprint,
+  Theater,
+  BookOpen,
+  ScrollText,
+  Palette,
+  Layers,
+  UserCheck,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { getEntityHex } from "@/lib/constants"
@@ -23,10 +33,23 @@ const ENTITY_ICONS: Record<string, React.ElementType> = {
   Title: Crown,
   Event: Swords,
   Location: MapPin,
-  Item: Gem,
+  Object: Gem,
   Creature: Bug,
   Faction: Flag,
   Concept: Lightbulb,
+  Prophecy: ScrollText,
+  Setting: Globe,
+  PsychologicalState: Heart,
+  SocialRelationship: Link2,
+  CharacterFeature: Fingerprint,
+  NarrativeRole: Theater,
+  NarrativeSequence: BookOpen,
+  CharacterStoff: UserCheck,
+  NarrativeStoff: Layers,
+  TextualFeature: Palette,
+  Race: Users,
+  Level: Sparkles,
+  System: Shield,
 }
 
 interface EntityBadgeProps {

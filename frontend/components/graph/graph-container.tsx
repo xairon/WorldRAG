@@ -326,6 +326,7 @@ export function GraphContainer({
         <GraphCanvas
           graph={filteredGraph}
           selectedNodeId={selectedNodeId}
+          activeLabels={activeLabels}
           onNodeClick={handleNodeClick}
           onNodeDoubleClick={handleNodeDoubleClick}
           onCanvasClick={handleCanvasClick}

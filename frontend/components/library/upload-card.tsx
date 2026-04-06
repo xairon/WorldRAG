@@ -26,7 +26,10 @@ export function UploadCard({ slug }: { slug: string }) {
         const form = new FormData()
         form.append("file", file)
         form.append("book_num", "1")
-        const res = await fetch(`/api/projects/${slug}/books`, { method: "POST", body: form })
+        const headers: Record<string, string> = {}
+        const apiKey = process.env.NEXT_PUBLIC_API_KEY
+        if (apiKey) headers["X-API-Key"] = apiKey
+        const res = await fetch(`/api/projects/${slug}/books`, { method: "POST", body: form, headers })
         if (!res.ok) {
           const body = await res.text()
           throw new Error(body || `Upload failed (${res.status})`)

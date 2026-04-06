@@ -33,7 +33,7 @@ export function DeleteProjectDialog({
     setDeleting(true)
     try {
       await apiFetch(`/projects/${slug}`, { method: "DELETE" })
-      router.push("/projects")
+      router.push("/")
     } finally {
       setDeleting(false)
     }
