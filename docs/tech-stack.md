@@ -8,7 +8,7 @@ Every technology in WorldRAG was chosen with specific trade-offs in mind. This d
 |-------|-----------|---------|------|----------------------|
 | API Framework | FastAPI | >= 0.115 | Async REST API | Django, Flask |
 | Graph Database | Neo4j | 5.x | Entity & relationship storage | PostgreSQL + pg_graphql, ArangoDB |
-| Extraction (V4 SOTA) | Instructor | >= 1.7 | Single-pass KGGen-style extraction (15 entity types, 16 relation types) | LangExtract, raw LLM prompting, spaCy NER |
+| Extraction (V4 SOTA) | Instructor | >= 1.7 | Single-pass KGGen-style extraction (18 entity types, 24+ relation types, GOLEM v1.1 ontology) | LangExtract, raw LLM prompting, spaCy NER |
 | Extraction (Structured) | Instructor | >= 1.7 | Pydantic-validated LLM output | LangChain output parsers |
 | Orchestration | LangGraph | >= 0.3 | Parallel extraction with typed state | Raw asyncio.gather, Celery |
 | Embeddings | Voyage AI | voyage-3.5 | 1024d document/query embeddings | OpenAI text-embedding-3, Cohere embed |
@@ -17,6 +17,7 @@ Every technology in WorldRAG was chosen with specific trade-offs in mind. This d
 | Frontend | Next.js | 16 | React SSR/SSG with App Router | Nuxt, SvelteKit, Remix |
 | Monitoring | LangFuse | 2.x | LLM observability (self-hosted) | Weights & Biases, custom logging |
 | Resilience | tenacity + custom | >= 9.0 | Retry, circuit breaking, rate limiting | pybreaker, backoff |
+| Ontology Framework | GOLEM v1.1 | - | 3-layer ontology (18 entity types, 24+ relation types), inspired by KGGen/AutoSchemaKG/LightKG | Manual ontology, no formal framework |
 | Logging | structlog | >= 24.0 | Structured JSON logging | loguru, standard logging |
 
 ```mermaid
@@ -105,9 +106,9 @@ graph TB
 
 **Why Instructor**:
 - **Pydantic output validation**: Define the expected output as a Pydantic model, and Instructor ensures the LLM returns exactly that schema. If validation fails, it retries with the error message.
-- **Type safety**: 15 entity types and 16 relation types are all Pydantic models with field-level validation.
+- **Type safety**: 18 entity types and 24+ relation types (GOLEM v1.1 ontology) are all Pydantic models with field-level validation.
 - **Multi-provider**: `providers.py` provides `get_instructor_client(provider)` supporting Gemini, OpenRouter, and Ollama backends via `provider:model` spec (e.g. `gemini:gemini-2.5-flash`, `openrouter:deepseek/deepseek-chat-v3-0324`, `local:qwen3:32b`).
-- **V4 pipeline**: Single-pass extraction through a 4-node LangGraph pipeline: extract_entities, extract_relations, mention_detect, reconcile_persist.
+- **V4 pipeline**: Single-pass extraction through a 6-node LangGraph pipeline with GOLEM v1.1 ontology: extract_entities, extract_relations, mention_detect, reconcile_persist, plus book-level post-processing steps.
 - **Used for reconciliation**: The 3-tier deduplication's LLM-as-Judge step uses Instructor to produce `EntityMergeCandidate` objects with structured confidence scores.
 
 ## Orchestration: LangGraph over asyncio.gather or Celery
@@ -120,7 +121,7 @@ graph TB
 - **Checkpointing**: LangGraph supports `AsyncPostgresSaver` for crash recovery mid-extraction (planned, not yet wired).
 - **Visual debugging**: LangGraph execution traces can be visualized for debugging complex extraction failures.
 
-**Why not Celery for orchestration**: Celery is designed for distributed task queues, not for orchestrating a stateful multi-step pipeline within a single process. We do use a task queue (arq) for the outer extraction/embedding jobs, but the inner 4-pass extraction is an in-process LangGraph pipeline.
+**Why not Celery for orchestration**: Celery is designed for distributed task queues, not for orchestrating a stateful multi-step pipeline within a single process. We do use a task queue (arq) for the outer extraction/embedding jobs, but the inner 6-node extraction (GOLEM v1.1) is an in-process LangGraph pipeline.
 
 ## Embeddings: Voyage AI over OpenAI or Cohere
 

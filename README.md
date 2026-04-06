@@ -29,8 +29,8 @@ flowchart TB
     end
 
     subgraph Extraction["V4 Extraction (arq worker)"]
-        NEO4J_STORE --> ENTITIES["1. Extract entities<br/>(Instructor — 15 types)"]
-        ENTITIES --> RELATIONS["2. Extract relations<br/>(Instructor — 16 types)"]
+        NEO4J_STORE --> ENTITIES["1. Extract entities<br/>(Instructor — 18 types)"]
+        ENTITIES --> RELATIONS["2. Extract relations<br/>(Instructor — 24+ types)"]
         RELATIONS --> MENTIONS["3. Mention detect<br/>(programmatic matching)"]
         MENTIONS --> RECONCILE["4. Reconcile + persist<br/>(3-tier dedup → Neo4j)"]
     end
@@ -65,7 +65,7 @@ flowchart TB
 |-----------|-----------|---------|
 | **API** | FastAPI (async) | REST API, SSE streaming, file upload |
 | **Extraction** | Instructor (structured output) | Single-pass KGGen-style pipeline (V4) |
-| **Orchestration** | LangGraph | 4-node extraction pipeline, 17-node chat agent |
+| **Orchestration** | LangGraph | 6-node extraction pipeline (GOLEM v1.1), 17-node chat agent |
 | **Graph DB** | Neo4j 5.x + GDS + APOC | Entity/relation storage, Cypher queries, community detection |
 | **Extraction LLM** | DeepSeek V3.2 (OpenRouter) | Entity + relation extraction via Instructor |
 | **Chat LLM** | Gemini 2.5 Flash | Answer generation with chain-of-thought |
@@ -158,7 +158,7 @@ WorldRAG/
 │   ├── api/routes/             # books, chat, graph, admin, health, stream, ...
 │   ├── core/                   # Logging, resilience, cost tracking, DLQ, ontology
 │   ├── llm/                    # LLM providers, embeddings (VoyageAI), reranker
-│   ├── schemas/                # Pydantic models (15 entity types, 16 relation types)
+│   ├── schemas/                # Pydantic models (18 entity types, 24+ relation types)
 │   ├── repositories/           # Neo4j data access (book, entity, graph repos)
 │   ├── services/               # Extraction pipeline, embedding, ingestion, chat
 │   ├── agents/                 # LangGraph graphs (extraction, chat)
@@ -177,10 +177,10 @@ WorldRAG/
 
 ## Extraction Pipeline
 
-The V4 pipeline uses **Instructor** for structured LLM output in a 4-node LangGraph graph, processing one chapter at a time:
+The V4 pipeline uses **Instructor** for structured LLM output in a 6-node LangGraph graph (GOLEM v1.1 ontology), processing one chapter at a time:
 
-1. **Extract entities** -- 15 types (Character, Location, Item, Skill, Class, Event, ...) in a single Instructor call
-2. **Extract relations** -- 16 relation types between extracted entities
+1. **Extract entities** -- 18 types (Character, Location, Object, Skill, Class, Event, NarrativeSequence, ...) in a single Instructor call
+2. **Extract relations** -- 24+ relation types between extracted entities
 3. **Mention detect** -- Programmatic name/alias matching for source grounding
 4. **Reconcile + persist** -- 3-tier entity resolution (exact, fuzzy, embedding similarity) then Neo4j upsert
 
@@ -193,7 +193,7 @@ The legacy V3 pipeline (4-pass LangExtract parallel fan-out) remains available v
 ## Testing
 
 ```bash
-# Run all tests (1000+)
+# Run all tests (1100+)
 uv run pytest backend/tests/ -x -v
 
 # Linting + formatting

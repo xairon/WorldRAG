@@ -321,7 +321,7 @@ Full-text search across all entity types using the `entity_fulltext` Neo4j index
 | `book_id` | query | string | ❌ | Scope to a specific book |
 | `limit` | query | int | ❌ | Max results (1-100, default: 20) |
 
-**Allowed labels**: `Character`, `Skill`, `Class`, `Title`, `Event`, `Location`, `Item`, `Creature`, `Faction`, `Concept`
+**Allowed labels**: `Character`, `Skill`, `Class`, `Title`, `Event`, `Location`, `Object`, `Creature`, `Faction`, `Concept`, `NarrativeSequence`
 
 **Response** `200`:
 ```json
@@ -351,7 +351,7 @@ Get full properties of any entity by its Neo4j element ID.
     "name": "Jake Thayne",
     "aliases": ["Jake", "Thayne"],
     "description": "...",
-    "role": "protagonist",
+    "agency": "protagonist",
     "level": 88,
     "first_appearance_chapter": 1
   }
@@ -415,7 +415,7 @@ Rich character profile aggregating skills, classes, titles, relationships, and e
   "id": "4:abc123:0",
   "properties": {
     "canonical_name": "Jake Thayne",
-    "role": "protagonist",
+    "agency": "protagonist",
     "level": 88
   },
   "skills": [
@@ -431,7 +431,7 @@ Rich character profile aggregating skills, classes, titles, relationships, and e
     {"name": "Villy", "rel_type": "patron", "since_chapter": 5}
   ],
   "events": [
-    {"name": "Hydra Trial", "type": "action", "significance": "major", "chapter": 42}
+    {"name": "Hydra Trial", "event_category": "action", "significance": "major", "chapter": 42}
   ]
 }
 ```
@@ -454,7 +454,7 @@ Chronological event timeline for a book, filterable by significance.
   {
     "name": "Hydra Trial",
     "description": "Jake defeats the Scalding Hydra in the arena",
-    "type": "action",
+    "event_category": "action",
     "significance": "major",
     "chapter": 42,
     "participants": ["Jake Thayne"],

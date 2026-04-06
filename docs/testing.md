@@ -1,6 +1,6 @@
 # Testing Strategy
 
-> Test architecture, golden dataset design, fixture patterns, and quality metrics for WorldRAG's 1000+ test suite.
+> Test architecture, golden dataset design, fixture patterns, and quality metrics for WorldRAG's 1100+ test suite.
 
 **Back to**: [Documentation Hub](./README.md)
 
@@ -61,7 +61,7 @@ graph TB
     style Unit fill:#1e3a5f,stroke:#4a90d9,color:#fff
 ```
 
-**Total: 1000+ tests** — all pass, all fast, zero network calls.
+**Total: 1100+ tests** — all pass, all fast, zero network calls.
 
 ---
 
@@ -85,7 +85,7 @@ Contains wiki-sourced data for The Primal Hunter, series:
 
 | Dataset | Count | Fields |
 |---------|-------|--------|
-| `CHARACTERS` | 10+ | `canonical_name`, `name`, `aliases`, `species`, `role`, `description` |
+| `CHARACTERS` | 10+ | `canonical_name`, `name`, `aliases`, `species`, `agency`, `description` |
 | `SKILLS` | 15+ | `name`, `owner`, `rank`, `skill_type` |
 | `CLASSES` | 8+ | `name`, `owner`, `tier` |
 | `TITLES` | 10+ | `name`, `owner`, `effects` |
@@ -320,7 +320,7 @@ python -m uv run pyright backend/
 
 ### CI Expectations
 
-- **1000+ tests pass**
+- **1100+ tests pass**
 - **Zero network calls** (no LLM, no Neo4j, no Redis)
 - **ruff check** passes with zero warnings
 - **ruff format** leaves zero changes
@@ -361,6 +361,15 @@ python -m uv run pyright backend/
 | | Graph endpoints | ⚠️ | Low (manual) |
 
 **Legend**: ✅✅ = Excellent | ✅ = Good | ⚠️ = Needs improvement
+
+### GOLEM v1.1 Tests
+
+The GOLEM ontology refactor added 109+ tests covering:
+- GOLEM rule verification (CDC v3.2 compliance)
+- CharacterStoff batch optimization
+- Object/NarrativeSequence type validation
+- Chat RAG + GOLEM traversals
+- Token budget management
 
 ### Known Gaps
 

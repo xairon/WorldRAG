@@ -255,12 +255,17 @@ graph TD
         A1[Character]
         A2[Event]
         A3[Location]
-        A4[Item]
+        A4[Object]
         A5[Creature]
         A6[Faction]
         A7[Concept]
-        A8[Arc]
+        A8[NarrativeSequence]
         A9[Prophecy]
+        A10[PsychologicalState]
+        A11[Setting]
+        A12[CharacterFeature]
+        A13[NarrativeRole]
+        A14[SocialRelationship]
     end
 
     subgraph "Couche 2 — Genre (LitRPG)"
@@ -548,7 +553,7 @@ graph TD
 
 **6.4 — Resolution cross-chapitre** : Chaque entite est comparee au registre des chapitres precedents. Si un nom est similaire a 90% (fuzzy matching), il est resolu vers le nom canonique du registre.
 
-**6.5 — Validation ontologie** : Les valeurs enum (role, status, event_type) sont validees contre le schema de l'ontologie. Les valeurs invalides sont retirees.
+**6.5 — Validation ontologie** : Les valeurs enum (agency, status, event_category) sont validees contre le schema de l'ontologie (GOLEM v1.1). Les valeurs invalides sont retirees.
 
 **6.6 — Validation des relations** : Chaque relation est verifiee contre les contraintes domain/range de l'ontologie. Exemple : `HAS_SKILL` doit aller de Character vers Skill. Une relation `HAS_SKILL` de Event vers Concept est supprimee.
 
@@ -561,7 +566,7 @@ Les entites et relations validees sont ecrites dans Neo4j avec le pattern **MERG
 ```cypher
 -- Entites : MERGE sur (canonical_name, book_id)
 MERGE (ch:Character {canonical_name: "jake thayne", book_id: "abc123"})
-ON CREATE SET ch.name = "Jake Thayne", ch.role = "protagonist", ...
+ON CREATE SET ch.name = "Jake Thayne", ch.agency = "protagonist", ...
 ON MATCH SET ch.description = CASE WHEN size($desc) > size(ch.description)
                               THEN $desc ELSE ch.description END
 

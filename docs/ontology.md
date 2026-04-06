@@ -100,7 +100,7 @@ graph TB
 graph TB
     L3["🎯 Layer 3: Series-Specific<br/><i>Primal Hunter: Bloodline, PrimordialChurch,<br/>AlchemyRecipe, Profession, Floor</i>"]
     L2["⚔️ Layer 2: Genre (LitRPG)<br/><i>System, Class, Skill, Title, Level,<br/>Race, Creature + progression rels</i>"]
-    L1["📖 Layer 1: Core Narrative<br/><i>Series, Book, Chapter, Chunk, Character,<br/>Event, Location, Item, Faction, Concept,<br/>Arc, Prophecy, NarrativeFunction</i>"]
+    L1["📖 Layer 1: Core Narrative (GOLEM v1.1)<br/><i>Character, CharacterStoff, PsychologicalState,<br/>SocialRelationship, Event, NarrativeSequence,<br/>Setting, Location, Object, NarrativeRole + 10 more</i>"]
 
     L3 --> |extends| L2
     L2 --> |extends| L1
@@ -425,9 +425,9 @@ app.state.ontology = ontology
 
 **Enum constraint example**:
 ```python
-# The ontology defines: event_type: { type: enum, values: [action, state_change, ...] }
-ontology.validate_value("Event", "event_type", "action")      # ✅
-ontology.validate_value("Event", "event_type", "invalid_type") # ❌ raises
+# The ontology defines: event_category: { type: enum, values: [action, state_change, ...] }
+ontology.validate_value("Event", "event_category", "action")      # ✅
+ontology.validate_value("Event", "event_category", "invalid_type") # ❌ raises
 ```
 
 ---

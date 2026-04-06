@@ -34,7 +34,7 @@ The target genres are **LitRPG**, **progression fantasy**, **cultivation**, and 
 
 V4 is the current **SOTA extraction pipeline**. It replaces the legacy V3 pipeline (4-pass parallel fan-out via LangExtract) with a simpler, more accurate approach:
 
-- **Single-pass entity extraction**: One LLM call extracts all 12 entity types at once using Instructor (structured output via Pydantic)
+- **Single-pass entity extraction**: One LLM call extracts all 18 entity types at once using Instructor (structured output via Pydantic)
 - **Single-pass relation extraction**: One LLM call extracts all relation types, with temporal invalidation support
 - **Programmatic mention detection**: Free (no LLM), word-boundary regex matching for precise char-offset spans
 - **3-tier deduplication + reconciliation**: Exact match, fuzzy (thefuzz), embedding similarity
@@ -74,7 +74,7 @@ flowchart TB
 
         subgraph PerChapter["Per Chapter (sequential)"]
             direction TB
-            Node1["Node 1: extract_entities<br/>(Instructor — 12 entity types)"]
+            Node1["Node 1: extract_entities<br/>(Instructor — 18 entity types)"]
             Node2["Node 2: extract_relations<br/>(Instructor — relation types)"]
             Node3["Node 3: mention_detect<br/>(programmatic — FREE)"]
             Node4["Node 4: reconcile_persist<br/>(3-tier dedup + Neo4j upsert)"]
@@ -114,7 +114,7 @@ flowchart TB
 | Relation extraction node | `backend/app/services/extraction/relations.py` | LangGraph Node 2 |
 | Mention detector | `backend/app/services/extraction/mention_detector.py` | LangGraph Node 3 |
 | Reconciler | `backend/app/services/extraction/reconciler.py` | LangGraph Node 4 |
-| Pydantic schemas | `backend/app/schemas/extraction_v4.py` | 12-type discriminated union |
+| Pydantic schemas | `backend/app/schemas/extraction_v4.py` | 18-type discriminated union (GOLEM v1.1) |
 | Ontology loader | `backend/app/core/ontology_loader.py` | 3-layer YAML loader |
 | Prompt builder | `backend/app/prompts/extraction_unified.py` | Dynamic prompt generation |
 | Prompt base | `backend/app/prompts/base.py` | Template structure |
@@ -153,13 +153,13 @@ Universal narrative entities present in all fiction:
 | Book | title, order_in_series | FRBRoo/LRMoo |
 | Chapter | number, title, summary | FRBRoo/LRMoo |
 | Chunk | text, position, embedding | - |
-| Character | name, canonical_name, role, species, aliases | OntoMedia + Bamman |
+| Character | name, canonical_name, agency, species, aliases | OntoMedia + Bamman |
 | Faction | name, type, alignment | - |
-| Event | name, event_type, significance, is_flashback | SEM + DOLCE |
-| Arc | name, arc_type, status | Propp + Narratology |
+| Event | name, event_category, significance, is_flashback | SEM + DOLCE |
+| NarrativeSequence | name, sequence_type, status | Propp + Narratology |
 | NarrativeFunction | name, propp_code | Propp |
 | Location | name, location_type, parent_location | CIDOC-CRM |
-| Item | name, item_type, rarity | - |
+| Object | name, object_type, rarity | - |
 | Concept | name, domain | - |
 | Prophecy | name, status | - |
 
@@ -177,14 +177,14 @@ Universal narrative entities present in all fiction:
 | CAUSES | Event | Event | - |
 | ENABLES | Event | Event | - |
 | OCCURS_BEFORE | Event | Event | - |
-| PART_OF | Event | Arc | - |
+| PART_OF | Event | NarrativeSequence | - |
 | MENTIONED_IN | * | Chunk | char_offset_start/end |
-| STRUCTURED_BY | Arc | NarrativeFunction | order |
+| STRUCTURED_BY | NarrativeSequence | NarrativeFunction | order |
 | FULFILLS | Event | NarrativeFunction | - |
 | LOCATION_PART_OF | Location | Location | - |
 | CONNECTED_TO | Location | Location | method |
 | LOCATED_AT | Character | Location | valid_from/to_chapter |
-| POSSESSES | Character | Item | valid_from/to_chapter, acquisition_method |
+| POSSESSES | Character | Object | valid_from/to_chapter, acquisition_method |
 | RETCONNED_BY | * | * | retcon_chapter, reason |
 | PERCEIVED_BY | Event | Character | reliability, confidence |
 
@@ -244,27 +244,27 @@ ontology.get_relationship_type_names()  # ['CONTAINS_WORK', 'HAS_CHAPTER', ...]
 
 # Validate an entity against ontology constraints
 errors = ontology.validate_entity("Character", {"role": "wizard"})
-# -> ["Character.role='wizard' not in ['protagonist', 'antagonist', ...]"]
+# -> ["Character.agency='wizard' not in ['protagonist', 'antagonist', ...]"]
 ```
 
 ---
 
 ## 4. Pydantic Schema
 
-The V4 pipeline uses a **12-type discriminated union** via `Annotated[..., Field(discriminator="entity_type")]`. Each entity type is a Pydantic BaseModel with a `Literal` discriminator field.
+The V4 pipeline uses a **18-type discriminated union (GOLEM v1.1)** via `Annotated[..., Field(discriminator="entity_type")]`. Each entity type is a Pydantic BaseModel with a `Literal` discriminator field.
 
 ### Entity Types
 
 | # | Type | entity_type Literal | Category | Key Fields |
 |---|---|---|---|---|
-| 1 | `ExtractedCharacter` | `"character"` | Core | name, canonical_name, role, species, aliases, status |
-| 2 | `ExtractedEvent` | `"event"` | Core | name, event_type, significance, participants, is_flashback |
+| 1 | `ExtractedCharacter` | `"character"` | Core | name, canonical_name, agency, species, aliases, status |
+| 2 | `ExtractedEvent` | `"event"` | Core | name, event_category, significance, participants, is_flashback |
 | 3 | `ExtractedLocation` | `"location"` | Core | name, location_type, parent_location |
-| 4 | `ExtractedItem` | `"item"` | Core | name, item_type, rarity, effects, owner |
+| 4 | `ExtractedObject` | `"object"` | Core | name, object_type, rarity, effects, owner |
 | 5 | `ExtractedCreature` | `"creature"` | Core | name, species, threat_level, habitat |
 | 6 | `ExtractedFaction` | `"faction"` | Core | name, faction_type, alignment |
 | 7 | `ExtractedConcept` | `"concept"` | Core | name, domain |
-| 8 | `ExtractedArc` | `"arc"` | Core | name, arc_type, status |
+| 8 | `ExtractedNarrativeSequence` | `"narrative_sequence"` | Core | name, sequence_type, status |
 | 9 | `ExtractedProphecy` | `"prophecy"` | Core | name, status |
 | 10 | `ExtractedLevelChange` | `"level_change"` | Progression | character, old_level, new_level, realm |
 | 11 | `ExtractedStatChange` | `"stat_change"` | Progression | character, stat_name, value |
@@ -286,9 +286,9 @@ LLMs generate close-but-not-exact values. Instead of rejecting with a `Validatio
 
 | Field | Coercer | Allowed Values | Default |
 |---|---|---|---|
-| role | `_coerce_role` | protagonist, antagonist, mentor, sidekick, ally, minor, neutral | `"minor"` |
+| agency | `_coerce_agency` | protagonist, antagonist, mentor, sidekick, ally, minor, neutral | `"minor"` |
 | status | `_coerce_status` | alive, dead, unknown, transformed | `"unknown"` |
-| event_type | `_coerce_event_type` | action, state_change, achievement, process, dialogue, encounter, discovery, revelation, transition, combat | `"action"` |
+| event_category | `_coerce_event_category` | action, state_change, achievement, process, dialogue, encounter, discovery, revelation, transition, combat | `"action"` |
 | significance | `_coerce_significance` | minor, moderate, major, critical, arc_defining | `"moderate"` |
 
 The coercer normalizes input by lowering, stripping hyphens/underscores/spaces, then looks up in a precomputed map. If no match, returns the default.
@@ -317,7 +317,7 @@ class RelationEnd(BaseModel):
 
 ```python
 class EntityExtractionResult(BaseModel):
-    entities: list[EntityUnion]   # 12-type discriminated union
+    entities: list[EntityUnion]   # 18-type discriminated union (GOLEM v1.1)
     chapter_number: int = 0
 
 class RelationExtractionResult(BaseModel):
@@ -480,7 +480,7 @@ flowchart TB
 - The `EntityRegistry` provides context about entities found in previous chapters (name, type, aliases, description). This prevents the LLM from re-extracting known entities with different names.
 - Phase 0 regex hints are injected into the prompt as `[CONTEXT]` to help the LLM locate blue box system notifications.
 - Grounding validation checks that `extraction_text` actually appears in `chapter_text` and fixes char offsets if needed.
-- The response model is `EntityExtractionResult` which contains `list[EntityUnion]` -- the 12-type discriminated union.
+- The response model is `EntityExtractionResult` which contains `list[EntityUnion]` -- the 18-type discriminated union (GOLEM v1.1).
 
 **Instructor call**:
 

@@ -120,7 +120,7 @@ sequenceDiagram
         W->>LG: extract_chapter(text, genre)
         LG->>LG: route -> fan-out [chars|sys|evt|lore]
         LG->>LG: merge results
-        LG->>LG: reconcile (dedup all 10 entity types)
+        LG->>LG: reconcile (dedup all 18 entity types)
         LG-->>W: ChapterExtractionResult + alias_map
         W->>W: apply alias_map normalization
         W->>ER: upsert_extraction_result (13 methods)
@@ -186,7 +186,7 @@ All Neo4j access goes through typed repository classes. Services never execute C
 
 **`EntityRepository`** (13 upsert + 1 orchestrator): Handles all Knowledge Graph entities. The `upsert_extraction_result()` orchestrator executes in three phases:
 1. **Sequential**: Characters, then Relationships (relationships reference characters)
-2. **Parallel** (`asyncio.gather`): Skills, Classes, Titles, LevelChanges, StatChanges, Events, Locations, Items, Creatures, Factions, Concepts
+2. **Parallel** (`asyncio.gather`): Skills, Classes, Titles, LevelChanges, StatChanges, Events, Locations, Objects, Creatures, Factions, Concepts, NarrativeSequences
 
 Every write carries a `batch_id` UUID for rollback capability.
 

@@ -43,7 +43,7 @@ graph TB
         Character --> |HAS_SKILL| Skill
         Character --> |HAS_CLASS| Class
         Character --> |HAS_TITLE| Title
-        Character --> |POSSESSES| Item
+        Character --> |POSSESSES| Object
         Character --> |HAS_STAT| Concept
     end
 
@@ -61,8 +61,8 @@ graph TB
 ```
 
 **Key Numbers** (per fully processed book):
-- **14 node labels** in the schema
-- **15+ relationship types** (core + genre-specific)
+- **18+ node labels** in the schema (GOLEM v1.1 ontology)
+- **24+ relationship types** (core + genre-specific)
 - **15 uniqueness constraints**
 - **47 indexes** (property, fulltext, vector, relationship)
 
@@ -83,13 +83,13 @@ graph TB
 
 | Label | Key Property | Notable Properties |
 |-------|-------------|-------------------|
-| `Character` | `canonical_name` (unique) | `name`, `aliases[]`, `description`, `role`, `species`, `first_appearance_chapter`, `level` |
+| `Character` | `canonical_name` (unique) | `name`, `aliases[]`, `description`, `agency`, `species`, `first_appearance_chapter`, `level` |
 | `Skill` | `name` (unique) | `description`, `skill_type`, `rank`, `book_id` |
 | `Class` | `name` (unique) | `description`, `tier`, `book_id` |
 | `Title` | `name` (unique) | `description`, `effects[]`, `book_id` |
-| `Event` | `(name, chapter_start)` | `description`, `event_type`, `significance`, `is_flashback` |
+| `Event` | `(name, chapter_start)` | `description`, `event_category`, `significance`, `is_flashback` |
 | `Location` | `name` (unique) | `description`, `location_type`, `book_id` |
-| `Item` | `name` (unique) | `description`, `item_type`, `rarity`, `book_id` |
+| `Object` | `name` (unique) | `description`, `object_type`, `rarity`, `book_id` |
 | `Creature` | `name` (unique) | `description`, `species`, `threat_level`, `habitat` |
 | `Faction` | `name` (unique) | `description`, `type`, `alignment` |
 | `Concept` | `name` (unique) | `description`, `domain` (e.g., "stat", "magic", "cosmology") |
@@ -130,7 +130,7 @@ graph TB
 | `HAS_SKILL` | Character → Skill | `valid_from_chapter` |
 | `HAS_CLASS` | Character → Class | `valid_from_chapter` |
 | `HAS_TITLE` | Character → Title | `acquired_chapter` |
-| `POSSESSES` | Character → Item | `valid_from_chapter` |
+| `POSSESSES` | Character → Object | `valid_from_chapter` |
 | `HAS_STAT` | Character → Concept | `value`, `valid_from_chapter` |
 
 ### Events
@@ -223,7 +223,7 @@ CREATE CONSTRAINT character_unique FOR (c:Character) REQUIRE c.canonical_name IS
 CREATE CONSTRAINT skill_unique     FOR (s:Skill)     REQUIRE s.name IS UNIQUE;
 CREATE CONSTRAINT class_unique     FOR (c:Class)     REQUIRE c.name IS UNIQUE;
 CREATE CONSTRAINT title_unique     FOR (t:Title)     REQUIRE t.name IS UNIQUE;
-CREATE CONSTRAINT item_unique      FOR (i:Item)      REQUIRE i.name IS UNIQUE;
+CREATE CONSTRAINT object_unique     FOR (o:Object)    REQUIRE o.name IS UNIQUE;
 CREATE CONSTRAINT creature_unique  FOR (cr:Creature) REQUIRE cr.name IS UNIQUE;
 CREATE CONSTRAINT location_unique  FOR (l:Location)  REQUIRE l.name IS UNIQUE;
 CREATE CONSTRAINT faction_unique   FOR (f:Faction)   REQUIRE f.name IS UNIQUE;
@@ -249,11 +249,11 @@ All entity writes use `MERGE` (never `CREATE`) to rely on these constraints for 
 | `character_first_appearance` | Character | `first_appearance_chapter` | Timeline queries |
 | `event_chapter` | Event | `chapter_start` | Chapter-scoped event queries |
 | `event_significance` | Event | `significance` | Significance filtering |
-| `event_type` | Event | `event_type` | Type filtering |
+| `event_category` | Event | `event_category` | Category filtering |
 | `skill_name` | Skill | `name` | Fast lookup |
 | `class_name` | Class | `name` | Fast lookup |
-| `item_name` | Item | `name` | Fast lookup |
-| `arc_status` | Arc | `status` | Active arc filtering |
+| `object_name` | Object | `name` | Fast lookup |
+| `narrative_sequence_status` | NarrativeSequence | `status` | Active sequence filtering |
 | `chunk_chapter` | Chunk | `chapter_id` | Chunk retrieval by chapter |
 | `chunk_position` | Chunk | `position` | Ordered chunk access |
 | `chunk_chapter_position` | Chunk | `(chapter_id, position)` | Embedding pipeline write-back |
@@ -264,7 +264,7 @@ Every entity label has a `batch_id` index for bulk deletion when an extraction n
 
 ```
 character_batch, event_batch, skill_batch, class_batch,
-item_batch, creature_batch, location_batch, faction_batch,
+object_batch, creature_batch, location_batch, faction_batch,
 concept_batch, title_batch
 ```
 
@@ -279,10 +279,10 @@ Lucene-based fulltext indexes for keyword search in the hybrid retrieval pipelin
 | `location_fulltext` | Location | `name`, `description` |
 | `skill_fulltext` | Skill | `name`, `description` |
 | `class_fulltext` | Class | `name`, `description` |
-| `item_fulltext` | Item | `name`, `description` |
+| `object_fulltext` | Object | `name`, `description` |
 | `concept_fulltext` | Concept | `name`, `description` |
 | `chunk_fulltext` | Chunk | `text` |
-| **`entity_fulltext`** | Character\|Skill\|Class\|Title\|Event\|Location\|Item\|Creature\|Faction\|Concept | `name`, `description` |
+| **`entity_fulltext`** | Character\|Skill\|Class\|Title\|Event\|Location\|Object\|Creature\|Faction\|Concept | `name`, `description` |
 
 The `entity_fulltext` cross-label index powers the Graph Explorer search endpoint.
 
@@ -347,7 +347,7 @@ ON CREATE SET
     ch.name = c.name,
     ch.aliases = c.aliases,
     ch.description = c.description,
-    ch.role = c.role,
+    ch.agency = c.agency,
     ch.book_id = $book_id,
     ch.batch_id = $batch_id,
     ch.created_at = timestamp()
@@ -369,7 +369,8 @@ ON MATCH SET
 ```
 Phase 1 (sequential):   Characters → Relationships  (rels reference chars)
 Phase 2 (parallel):     Skills, Classes, Titles, LevelChanges, StatChanges,
-                         Events, Locations, Items, Creatures, Factions, Concepts
+                         Events, Locations, Objects, Creatures, Factions, Concepts,
+                         NarrativeSequences
 ```
 
 ---
