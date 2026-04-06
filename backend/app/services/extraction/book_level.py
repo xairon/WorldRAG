@@ -1245,3 +1245,135 @@ async def infer_golem_edges(driver, book_id: str) -> dict[str, int]:
 
     logger.info("infer_golem_edges_completed", book_id=book_id, counts=counts)
     return counts
+
+
+# ── KG Quality: Relation reclassification ─────────────────────────────
+
+
+async def reclassify_untyped_relations(driver, book_id: str) -> dict[str, int]:
+    """Reclassify RELATES_TO edges into proper typed edges.
+
+    Strategy 1: Character-Character RELATES_TO → SocialRelationship + INVOLVED_IN
+    Strategy 2: Delete hallucinated edge types (count=1, long names)
+
+    Returns: dict of action counts.
+    """
+    counts: dict[str, int] = {"char_char_reified": 0, "hallucinated_deleted": 0}
+
+    async with driver.session() as session:
+        # Strategy 1: Character-Character RELATES_TO → SocialRelationship
+        result = await session.run(
+            """
+            MATCH (a:Character {book_id: $book_id})-[r:RELATES_TO]->(b:Character {book_id: $book_id})
+            WITH a, b, r,
+                 a.canonical_name + ' — ' + b.canonical_name AS sr_name,
+                 CASE
+                     WHEN r.type IS NOT NULL THEN r.type
+                     WHEN r.subtype IS NOT NULL THEN r.subtype
+                     ELSE 'professional'
+                 END AS rel_type,
+                 coalesce(r.valid_from_chapter, 1) AS vfc
+            CREATE (sr:SocialRelationship {
+                name: sr_name,
+                relationship_type: rel_type,
+                book_id: $book_id,
+                valid_from_chapter: vfc,
+                valid_to_chapter: r.valid_to_chapter,
+                description: coalesce(r.context, ''),
+                batch_id: 'reclassify_post_extraction',
+                created_at: timestamp()
+            })
+            CREATE (a)-[:INVOLVED_IN {role: 'participant', valid_from_chapter: vfc}]->(sr)
+            CREATE (b)-[:INVOLVED_IN {role: 'participant', valid_from_chapter: vfc}]->(sr)
+            DELETE r
+            RETURN count(sr) AS reified
+            """,
+            {"book_id": book_id},
+        )
+        record = await result.single()
+        counts["char_char_reified"] = record["reified"] if record else 0
+
+        # Strategy 2: Delete hallucinated edge types (count=1, >25 chars or >3 underscores)
+        result = await session.run(
+            """
+            MATCH (a {book_id: $book_id})-[r]->(b)
+            WITH type(r) AS rt, collect(r) AS rels, count(r) AS cnt
+            WHERE cnt = 1 AND (size(rt) > 25 OR size(rt) - size(replace(rt, '_', '')) > 3)
+            UNWIND rels AS r
+            DELETE r
+            RETURN count(*) AS deleted
+            """,
+            {"book_id": book_id},
+        )
+        record = await result.single()
+        counts["hallucinated_deleted"] = record["deleted"] if record else 0
+
+    logger.info("reclassify_relations_completed", book_id=book_id, counts=counts)
+    return counts
+
+
+# ── KG Quality: AutoSchemaKG-style conceptualization ──────────────────
+
+
+async def conceptualize_genre_entities(driver, book_id: str) -> dict[str, int]:
+    """Conceptualize GenreEntity catch-all into proper typed nodes.
+
+    Groups GenreEntity nodes by sub_type and promotes frequent sub_types
+    (≥3 instances) to proper Neo4j labels. Less frequent ones are kept
+    as GenreEntity.
+
+    Returns: dict of sub_type → count promoted.
+    """
+    counts: dict[str, int] = {}
+
+    async with driver.session() as session:
+        # Find sub_types with enough instances to promote
+        result = await session.run(
+            """
+            MATCH (ge:GenreEntity {book_id: $book_id})
+            WHERE ge.sub_type IS NOT NULL AND ge.sub_type <> ''
+            RETURN ge.sub_type AS sub_type, count(ge) AS cnt
+            ORDER BY cnt DESC
+            """,
+            {"book_id": book_id},
+        )
+        sub_types = [r async for r in result]
+
+    # Known promotable sub_types → Neo4j label mapping
+    _PROMOTABLE = {
+        "stat": "StatBlock",
+        "spell": "Skill",
+        "ability": "Skill",
+        "potion": "Object",
+        "enchantment": "Skill",
+        "material": "Object",
+        "rank": "Title",
+        "skill_upgrade": "Skill",
+        "skill_improvement": "Skill",
+    }
+
+    async with driver.session() as session:
+        for row in sub_types:
+            sub_type = row["sub_type"]
+            count = row["cnt"]
+
+            target_label = _PROMOTABLE.get(sub_type.lower())
+            if not target_label:
+                continue
+
+            # Add the target label to matching GenreEntity nodes
+            result = await session.run(
+                f"""
+                MATCH (ge:GenreEntity {{book_id: $book_id, sub_type: $sub_type}})
+                SET ge:{target_label}
+                RETURN count(ge) AS promoted
+                """,
+                {"book_id": book_id, "sub_type": sub_type},
+            )
+            record = await result.single()
+            promoted = record["promoted"] if record else 0
+            if promoted:
+                counts[sub_type] = promoted
+
+    logger.info("conceptualize_genre_entities_completed", book_id=book_id, counts=counts)
+    return counts

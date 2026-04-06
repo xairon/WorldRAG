@@ -714,11 +714,13 @@ async def process_book_extraction_v4(
     # Book-level post-processing (each step isolated so failures don't cascade)
     from app.services.extraction.book_level import (
         community_cluster,
+        conceptualize_genre_entities,
         enrich_entity_descriptions,
         generate_entity_summaries,
         generate_state_snapshots,
         infer_golem_edges,
         iterative_cluster,
+        reclassify_untyped_relations,
         resolve_orphan_golem_entities,
     )
 
@@ -776,7 +778,21 @@ async def process_book_extraction_v4(
     except Exception:
         logger.warning("v4_description_enrichment_failed", book_id=book_id, exc_info=True)
 
-    # Book-level 8: Programmatic GOLEM edges (CHARACTER_IN_WORK, SETTING_OF_WORK)
+    # Book-level 8: Reclassify RELATES_TO → SocialRelationship + cleanup hallucinated edges
+    try:
+        reclass = await reclassify_untyped_relations(driver, book_id)
+        logger.info("v4_relation_reclassification_done", counts=reclass)
+    except Exception:
+        logger.warning("v4_relation_reclassification_failed", book_id=book_id, exc_info=True)
+
+    # Book-level 9: Conceptualize GenreEntity catch-all → proper labels
+    try:
+        concepts = await conceptualize_genre_entities(driver, book_id)
+        logger.info("v4_conceptualization_done", counts=concepts)
+    except Exception:
+        logger.warning("v4_conceptualization_failed", book_id=book_id, exc_info=True)
+
+    # Book-level 10: Programmatic GOLEM edges (CHARACTER_IN_WORK, SETTING_OF_WORK)
     try:
         await entity_repo.execute_write(
             """
