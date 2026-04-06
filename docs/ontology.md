@@ -38,32 +38,38 @@ Our design principles:
 
 ## Academic Foundations
 
-The ontology synthesizes concepts from eight established knowledge representation frameworks:
+The ontology is formally aligned with **GOLEM v1.1** (General Ontology for Literary and Narrative Entities and Metadata), which in turn imports from established knowledge representation frameworks:
 
 ```mermaid
 graph TB
-    subgraph "Bibliographic"
-        FRBRoo["FRBRoo / LRMoo<br/><i>Series → Book → Chapter</i>"]
+    subgraph "Primary Alignment"
+        GOLEM["<b>GOLEM v1.1</b><br/><i>18 classes for fiction narrative</i><br/><i>Pianzola et al. (2024)</i>"]
     end
 
-    subgraph "Events & Time"
-        SEM["SEM<br/><i>Event → Actor → Place → Time</i>"]
-        DOLCE["DOLCE<br/><i>action | state_change | process | achievement</i>"]
+    subgraph "Foundation Ontologies (imported by GOLEM)"
+        DOLCE["DOLCE<br/><i>Upper ontology: endurant/perdurant</i>"]
         CIDOC["CIDOC-CRM (ISO 21127)<br/><i>Event-temporal model</i>"]
+        LRMoo["LRMoo (IFLA/CIDOC)<br/><i>Work/Expression hierarchy</i>"]
+        ExtDnS["ExtendedDnS<br/><i>Roles, situations, social</i>"]
     end
 
-    subgraph "Narrative"
-        OntoMedia["OntoMedia<br/><i>Narrative entities, fabula/sjuzhet</i>"]
-        Bamman["Bamman et al.<br/><i>Character model (role, agency)</i>"]
+    subgraph "Extraction SOTA"
+        KGGen["KGGen (NeurIPS 2025)<br/><i>S-BERT clustering, MINE benchmark</i>"]
+        AutoSchema["AutoSchemaKG (HKUST 2025)<br/><i>Schema induction, conceptualization</i>"]
+        LightKGG["LightKGG (2025)<br/><i>Topology-enhanced inference</i>"]
     end
 
-    subgraph "Reference"
+    subgraph "Additional References"
+        SEM["SEM<br/><i>Event → Actor → Place → Time</i>"]
+        Bamman["Bamman et al.<br/><i>Character model (agency)</i>"]
         Wikidata["Wikidata<br/><i>valid_from / valid_to qualifiers</i>"]
-        GOLEM["GOLEM (MDPI 2025)<br/><i>Formal fiction ontology</i>"]
     end
 
+    GOLEM --> DOLCE
+    GOLEM --> CIDOC
+    GOLEM --> LRMoo
+    GOLEM --> ExtDnS
     CIDOC --> SEM
-    SEM --> OntoMedia
     Wikidata --> |temporal qualifiers| CIDOC
     DOLCE --> SEM
     Bamman --> OntoMedia
@@ -120,27 +126,37 @@ ontology/
 **File**: `ontology/core.yaml`
 **Applies to**: All fiction, regardless of genre
 
-### Node Types (13)
+### Node Types (24, GOLEM v1.1 aligned)
 
-| Category | Type | Key Properties | Academic Source |
-|----------|------|---------------|----------------|
-| **Bibliographic** | `Series` | `name`, `author`, `genre` | FRBRoo |
-| | `Book` | `title`, `order_in_series` | FRBRoo |
-| | `Chapter` | `number`, `title`, `word_count`, `summary` | FRBRoo |
-| | `Chunk` | `text`, `position`, `token_count`, `embedding` | RAG practice |
-| **Characters** | `Character` | `canonical_name`, `aliases[]`, `role`, `species` | Bamman + OntoMedia |
-| | `Faction` | `name`, `type`, `alignment` | OntoMedia |
-| **Events** | `Event` | `name`, `event_type`, `significance`, `chapter_start`, `is_flashback`, `fabula_order` | SEM + DOLCE + OntoMedia |
-| | `Arc` | `name`, `arc_type`, `chapter_start`, `chapter_end`, `status` | Narratology |
-| | `NarrativeFunction` | `name`, `propp_code` | Propp / structuralism |
-| **World** | `Location` | `name`, `location_type`, `parent_location_name` | CIDOC-CRM |
-| | `Item` | `name`, `item_type`, `rarity` | Domain |
-| | `Concept` | `name`, `domain` | General KR |
-| | `Prophecy` | `name`, `status` (unfulfilled/fulfilled/subverted) | OntoMedia |
+| Category | Type | GOLEM | Key Properties | Source |
+|----------|------|-------|---------------|--------|
+| **Bibliographic** | `Series` | — | `name`, `author`, `genre` | LRMoo |
+| | `Book` | F1 Work | `title`, `order_in_series` | LRMoo |
+| | `Chapter` | F2 Expression | `number`, `title`, `word_count`, `summary` | LRMoo |
+| | `Chunk` | — | `text`, `position`, `token_count`, `embedding` | RAG practice |
+| **Characters** | `Character` | G1 | `canonical_name`, `aliases[]`, `agency`, `species`, `book_id` | GOLEM + Bamman |
+| | `CharacterStoff` | G0 | `canonical_name`, `series_id` — cross-work archetype | GOLEM |
+| | `CharacterFeature` | G17 | `name`, `feature_type` (bio/physical/psych), `character_name` | GOLEM |
+| **Psychology** | `PsychologicalState` | G3 | `name`, `state_type`, `character_name`, `intensity`, `chapter_start` | GOLEM + DOLCE |
+| **Social** | `SocialRelationship` | G4 | `name`, `relationship_type`, `valid_from_chapter`, `book_id` | GOLEM + ExtDnS |
+| **Events** | `Event` | G5 | `name`, `event_category`, `significance`, `chapter_start`, `is_flashback` | GOLEM + DOLCE |
+| | `NarrativeUnit` | G9 | `proposition`, `chapter` — programmatic (1 per Event) | GOLEM |
+| **Narrative** | `NarrativeSequence` | G7 | `name`, `sequence_type`, `status`, `sequence_order` — ex-Arc | GOLEM |
+| | `NarrativeFunction` | G10 | `name`, `propp_code`, `scope` | GOLEM + Propp |
+| | `NarrativeRole` | G11 | `role_type`, `character_name`, `context`, `valid_from_chapter` | GOLEM |
+| **World** | `Setting` | G12 | `name`, `setting_type` — narrative world, NOT physical location | GOLEM |
+| | `Location` | G13 | `name`, `location_type`, `fictional_status`, `setting_name` | GOLEM |
+| | `Object` | G16 | `name`, `object_type`, `rarity` — ex-Item | GOLEM |
+| **Stoff** | `NarrativeStoff` | G14 | `name`, `pattern_type` — cross-work narrative archetype | GOLEM |
+| | `TextualFeature` | G18 | `name`, `feature_type`, `value` — programmatic (POV, pacing) | GOLEM |
+| **Non-GOLEM** | `Concept` | — | `name`, `domain` | General KR |
+| | `Prophecy` | — | `name`, `status` | Domain |
+| | `Faction` | — | `name`, `type`, `alignment` | Domain |
+| | `Creature` | — | `name`, `species`, `threat_level` | Domain |
 
 ### Event Taxonomy (DOLCE-derived)
 
-The `event_type` enum maps to DOLCE's upper ontology:
+The `event_category` enum maps to DOLCE's upper ontology:
 
 | Value | DOLCE Class | Example |
 |-------|------------|---------|
@@ -149,6 +165,11 @@ The `event_type` enum maps to DOLCE's upper ontology:
 | `achievement` | Achievement | "Jake earns the Hydra Slayer title" |
 | `process` | Process | "The war between factions escalates" |
 | `dialogue` | Stative | "Villy warns Jake about the trial" |
+| `combat` | Accomplishment | "Battle of the Tutorial Arena" |
+| `encounter` | Event | "Jake meets the Malefic Viper" |
+| `discovery` | Achievement | "Jake discovers the hidden dungeon" |
+| `revelation` | Stative | "The system reveals Jake's bloodline" |
+| `transition` | Achievement | "Jake enters the new world" |
 
 ### Significance Scale
 
@@ -160,23 +181,33 @@ The `event_type` enum maps to DOLCE's upper ontology:
 | `critical` | Arc-defining moment | 1-3 per book |
 | `arc_defining` | Changes the entire story direction | 0-1 per book |
 
-### Relationship Types (20)
+### Relationship Types (30+)
 
-Grouped by function:
+Grouped by GOLEM domain:
 
-**Bibliographic**: `CONTAINS_WORK`, `HAS_CHAPTER`, `HAS_CHUNK`
+**Bibliographic**: `CONTAINS_WORK`, `HAS_CHAPTER`, `HAS_CHUNK`, `CHARACTER_IN_WORK`, `SETTING_OF_WORK`
 
-**Character**: `RELATES_TO` (with temporal `type`: ally/enemy/mentor/family/romantic/rival/patron/subordinate), `MEMBER_OF`, `LOCATED_AT`
+**Social (GOLEM G4)**: `INVOLVED_IN` (Character → SocialRelationship, with `role: str` property), `RELATIONSHIP_CAUSED_BY`, `MEMBER_OF`
 
-**Events**: `PARTICIPATES_IN` (with role: agent/patient/beneficiary/witness/cause), `OCCURS_AT`, `CAUSES`, `ENABLES`, `OCCURS_BEFORE`, `PART_OF`
+**Psychology (GOLEM G3)**: `HAS_STATE`, `STATE_TRIGGERED_BY`, `TRIGGERS_EVENT`, `FOLLOWS_STATE`, `STATE_INCLUDES`
 
-**Grounding**: `MENTIONED_IN`
+**Events (GOLEM G5)**: `PARTICIPATES_IN` (with role: agent/patient/beneficiary/witness/cause), `OCCURS_AT`, `CAUSES`, `ENABLES`, `PRECEDES`, `FOLLOWS`, `USED_IN`
 
-**Narrative**: `STRUCTURED_BY`, `FULFILLS`
+**Narrative (GOLEM G7-G11)**: `SEQUENCED_IN`, `STRUCTURED_BY`, `FULFILLS`, `PLAYS_ROLE`, `ROLE_IN_SEQUENCE`, `UNIT_REFERS_TO`, `UNIT_IN_WORK`
 
-**World**: `LOCATION_PART_OF`, `CONNECTED_TO`, `POSSESSES`
+**Features (GOLEM G17-G18)**: `HAS_FEATURE`, `HAS_TEXTUAL_FEATURE`
 
-**Coherence**: `RETCONNED_BY` (retcon tracking), `PERCEIVED_BY` (POV reliability)
+**World (GOLEM G12-G13)**: `IN_SETTING`, `SETTING_CONTAINS`, `LOCATION_PART_OF`, `CONNECTED_TO`, `LOCATED_AT`
+
+**Objects (GOLEM G16)**: `POSSESSES`
+
+**Stoff (GOLEM G0, G14)**: `INSTANCE_OF_STOFF`, `SEQUENCE_INSTANCE_OF`
+
+**Grounding**: `MENTIONED_IN`, `GROUNDED_IN`
+
+**Coherence**: `RETCONNED_BY`, `PERCEIVED_BY`
+
+**Deprecated**: `RELATES_TO` (Character → Character, migrated to SocialRelationship + INVOLVED_IN), `OCCURS_BEFORE` (→ PRECEDES)
 
 ---
 
