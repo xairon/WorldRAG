@@ -1036,9 +1036,7 @@ async def resolve_orphan_golem_entities(driver, book_id: str) -> dict[str, int]:
             if record:
                 fixes[fix_key] += record["fixed"]
 
-        # Strategy 2: Fuzzy match via MENTIONED_IN co-occurrence
-        # If orphan entity and a character are both mentioned in the same chunk,
-        # they likely refer to each other
+        # Strategy 2: Substring containment match (no APOC dependency)
         for label, edge_type, fix_key in [
             ("PsychologicalState", "HAS_STATE", "psychological_state"),
             ("CharacterFeature", "HAS_FEATURE", "character_feature"),
@@ -1048,13 +1046,18 @@ async def resolve_orphan_golem_entities(driver, book_id: str) -> dict[str, int]:
                 MATCH (ps:{label} {{book_id: $book_id}})
                 WHERE NOT (:Character)-[:{edge_type}]->(ps)
                   AND ps.character_name IS NOT NULL
+                  AND size(ps.character_name) > 2
                 WITH ps
                 MATCH (c:Character {{book_id: $book_id}})
                 WHERE c.canonical_name CONTAINS ps.character_name
                    OR ps.character_name CONTAINS c.canonical_name
-                WITH ps, c, apoc.text.jaroWinklerDistance(ps.character_name, c.canonical_name) AS sim
-                WHERE sim > 0.85
-                WITH ps, c ORDER BY sim DESC
+                   OR ANY(alias IN coalesce(c.aliases, []) WHERE alias CONTAINS ps.character_name)
+                WITH ps, c,
+                     toFloat(size(ps.character_name)) /
+                     toFloat(CASE WHEN size(c.canonical_name) > size(ps.character_name)
+                                  THEN size(c.canonical_name) ELSE size(ps.character_name) END) AS overlap
+                WHERE overlap > 0.5
+                WITH ps, c ORDER BY overlap DESC
                 WITH ps, head(collect(c)) AS best_char
                 WHERE best_char IS NOT NULL
                 MERGE (best_char)-[:{edge_type}]->(ps)
@@ -1119,37 +1122,44 @@ async def enrich_entity_descriptions(
         logger.warning("enrich_descriptions_no_llm", exc_info=True)
         return 0
 
+    sem = asyncio.Semaphore(5)  # max 5 concurrent LLM calls
     enriched = 0
-    for entity in entities_to_enrich:
-        try:
-            response = await client.chat.completions.create(
-                model=model,
-                response_model=None,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "Generate a brief 1-2 sentence description for a fiction entity based on context passages. Return ONLY the description text.",
-                    },
-                    {
-                        "role": "user",
-                        "content": f"Entity: {entity['name']} (type: {entity['label']})\nContext: {entity['context'][:1000]}",
-                    },
-                ],
-                max_tokens=100,
-            )
-            desc = response.choices[0].message.content.strip() if response.choices else ""
-            if desc and len(desc) > 10:
-                async with driver.session() as session:
-                    await session.run(
-                        """
-                        MATCH (e) WHERE elementId(e) = $eid
-                        SET e.description = $desc
-                        """,
-                        {"eid": entity["eid"], "desc": desc},
-                    )
-                enriched += 1
-        except Exception:
-            logger.debug("enrich_description_failed", entity=entity["name"], exc_info=True)
+
+    async def _enrich_one(entity: dict) -> bool:
+        async with sem:
+            try:
+                response = await client.chat.completions.create(
+                    model=model,
+                    response_model=None,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "Generate a brief 1-2 sentence description for a fiction entity based on context passages. Return ONLY the description text.",
+                        },
+                        {
+                            "role": "user",
+                            "content": f"Entity: {entity['name']} (type: {entity['label']})\nContext: {entity['context'][:1000]}",
+                        },
+                    ],
+                    max_tokens=100,
+                )
+                desc = response.choices[0].message.content.strip() if response.choices else ""
+                if desc and len(desc) > 10:
+                    async with driver.session() as session:
+                        await session.run(
+                            """
+                            MATCH (e) WHERE elementId(e) = $eid
+                            SET e.description = $desc
+                            """,
+                            {"eid": entity["eid"], "desc": desc},
+                        )
+                    return True
+            except Exception:
+                logger.debug("enrich_description_failed", entity=entity["name"], exc_info=True)
+            return False
+
+    results = await asyncio.gather(*[_enrich_one(e) for e in entities_to_enrich])
+    enriched = sum(1 for r in results if r)
 
     logger.info(
         "enrich_descriptions_completed",
@@ -1199,7 +1209,7 @@ async def infer_golem_edges(driver, book_id: str) -> dict[str, int]:
             WITH ps, ev, rand() AS r ORDER BY r
             WITH ps, head(collect(ev)) AS nearest_event
             WHERE nearest_event IS NOT NULL
-            MERGE (ps)-[:STATE_TRIGGERED_BY]->(nearest_event)
+            MERGE (ps)-[:STATE_TRIGGERED_BY {inferred: true}]->(nearest_event)
             RETURN count(*) AS created
             """,
             {"book_id": book_id},
@@ -1235,7 +1245,7 @@ async def infer_golem_edges(driver, book_id: str) -> dict[str, int]:
             WITH sr, ev, rand() AS r ORDER BY r
             WITH sr, head(collect(ev)) AS trigger_ev
             WHERE trigger_ev IS NOT NULL
-            MERGE (sr)-[:RELATIONSHIP_CAUSED_BY]->(trigger_ev)
+            MERGE (sr)-[:RELATIONSHIP_CAUSED_BY {inferred: true}]->(trigger_ev)
             RETURN count(*) AS created
             """,
             {"book_id": book_id},
@@ -1273,18 +1283,16 @@ async def reclassify_untyped_relations(driver, book_id: str) -> dict[str, int]:
                      ELSE 'professional'
                  END AS rel_type,
                  coalesce(r.valid_from_chapter, 1) AS vfc
-            CREATE (sr:SocialRelationship {
-                name: sr_name,
-                relationship_type: rel_type,
-                book_id: $book_id,
-                valid_from_chapter: vfc,
-                valid_to_chapter: r.valid_to_chapter,
-                description: coalesce(r.context, ''),
-                batch_id: 'reclassify_post_extraction',
-                created_at: timestamp()
-            })
-            CREATE (a)-[:INVOLVED_IN {role: 'participant', valid_from_chapter: vfc}]->(sr)
-            CREATE (b)-[:INVOLVED_IN {role: 'participant', valid_from_chapter: vfc}]->(sr)
+            MERGE (sr:SocialRelationship {name: sr_name, book_id: $book_id})
+            ON CREATE SET
+                sr.relationship_type = rel_type,
+                sr.valid_from_chapter = vfc,
+                sr.valid_to_chapter = r.valid_to_chapter,
+                sr.description = coalesce(r.context, ''),
+                sr.batch_id = 'reclassify_post_extraction',
+                sr.created_at = timestamp()
+            MERGE (a)-[:INVOLVED_IN {role: 'participant', valid_from_chapter: vfc}]->(sr)
+            MERGE (b)-[:INVOLVED_IN {role: 'participant', valid_from_chapter: vfc}]->(sr)
             DELETE r
             RETURN count(sr) AS reified
             """,

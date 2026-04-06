@@ -764,26 +764,27 @@ async def process_book_extraction_v4(
     except Exception:
         logger.warning("v4_orphan_resolution_failed", book_id=book_id, exc_info=True)
 
-    # Book-level 6: Infer missing GOLEM edges (topology-enhanced, LightKGG-inspired)
+    # Book-level 6: Reclassify RELATES_TO → SocialRelationship (BEFORE topology inference)
+    try:
+        reclass = await reclassify_untyped_relations(driver, book_id)
+        logger.info("v4_relation_reclassification_done", counts=reclass)
+    except Exception:
+        logger.warning("v4_relation_reclassification_failed", book_id=book_id, exc_info=True)
+
+    # Book-level 7: Infer missing GOLEM edges (topology-enhanced, LightKGG-inspired)
+    # Runs AFTER reclassification so newly created SRs get RELATIONSHIP_CAUSED_BY
     try:
         inferred = await infer_golem_edges(driver, book_id)
         logger.info("v4_golem_edge_inference_done", counts=inferred)
     except Exception:
         logger.warning("v4_golem_edge_inference_failed", book_id=book_id, exc_info=True)
 
-    # Book-level 7: Enrich entity descriptions (LLM batch)
+    # Book-level 8: Enrich entity descriptions (LLM batch, concurrent with semaphore)
     try:
         enriched = await enrich_entity_descriptions(driver, book_id, batch_id=book_batch_id)
         logger.info("v4_description_enrichment_done", enriched=enriched)
     except Exception:
         logger.warning("v4_description_enrichment_failed", book_id=book_id, exc_info=True)
-
-    # Book-level 8: Reclassify RELATES_TO → SocialRelationship + cleanup hallucinated edges
-    try:
-        reclass = await reclassify_untyped_relations(driver, book_id)
-        logger.info("v4_relation_reclassification_done", counts=reclass)
-    except Exception:
-        logger.warning("v4_relation_reclassification_failed", book_id=book_id, exc_info=True)
 
     # Book-level 9: Conceptualize GenreEntity catch-all → proper labels
     try:
