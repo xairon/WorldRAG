@@ -714,9 +714,12 @@ async def process_book_extraction_v4(
     # Book-level post-processing (each step isolated so failures don't cascade)
     from app.services.extraction.book_level import (
         community_cluster,
+        enrich_entity_descriptions,
         generate_entity_summaries,
         generate_state_snapshots,
+        infer_golem_edges,
         iterative_cluster,
+        resolve_orphan_golem_entities,
     )
 
     book_batch_id = f"book-level:{book_id}:{int(time.time())}"
@@ -752,7 +755,28 @@ async def process_book_extraction_v4(
     except Exception:
         logger.warning("v4_community_cluster_failed", book_id=book_id, exc_info=True)
 
-    # Book-level 5: Programmatic GOLEM edges (CHARACTER_IN_WORK, SETTING_OF_WORK)
+    # Book-level 5: Resolve orphan GOLEM entities (article stripping + fuzzy match)
+    try:
+        orphan_fixes = await resolve_orphan_golem_entities(driver, book_id)
+        logger.info("v4_orphan_resolution_done", fixes=orphan_fixes)
+    except Exception:
+        logger.warning("v4_orphan_resolution_failed", book_id=book_id, exc_info=True)
+
+    # Book-level 6: Infer missing GOLEM edges (topology-enhanced, LightKGG-inspired)
+    try:
+        inferred = await infer_golem_edges(driver, book_id)
+        logger.info("v4_golem_edge_inference_done", counts=inferred)
+    except Exception:
+        logger.warning("v4_golem_edge_inference_failed", book_id=book_id, exc_info=True)
+
+    # Book-level 7: Enrich entity descriptions (LLM batch)
+    try:
+        enriched = await enrich_entity_descriptions(driver, book_id, batch_id=book_batch_id)
+        logger.info("v4_description_enrichment_done", enriched=enriched)
+    except Exception:
+        logger.warning("v4_description_enrichment_failed", book_id=book_id, exc_info=True)
+
+    # Book-level 8: Programmatic GOLEM edges (CHARACTER_IN_WORK, SETTING_OF_WORK)
     try:
         await entity_repo.execute_write(
             """

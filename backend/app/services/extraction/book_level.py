@@ -184,10 +184,14 @@ async def iterative_cluster(
                         WHERE id(alias) = $alias_id AND id(target) <> $canonical_id
                         RETURN type(r) AS rel_type, properties(r) AS props, id(target) AS tid
                         """,
-                        alias_id=alias_id, canonical_id=canonical_id,
+                        alias_id=alias_id,
+                        canonical_id=canonical_id,
                     )
                     for rec in await out_rels.data():
-                        rt = "".join(c for c in rec["rel_type"] if c.isalnum() or c == "_") or "RELATED"
+                        rt = (
+                            "".join(c for c in rec["rel_type"] if c.isalnum() or c == "_")
+                            or "RELATED"
+                        )
                         await session.run(
                             f"""
                             MATCH (canon) WHERE id(canon) = $cid
@@ -195,7 +199,9 @@ async def iterative_cluster(
                             MERGE (canon)-[nr:{rt}]->(target)
                             SET nr += $props
                             """,
-                            cid=canonical_id, tid=rec["tid"], props=rec["props"],
+                            cid=canonical_id,
+                            tid=rec["tid"],
+                            props=rec["props"],
                         )
 
                     # Transfer incoming rels
@@ -205,10 +211,14 @@ async def iterative_cluster(
                         WHERE id(alias) = $alias_id AND id(source) <> $canonical_id
                         RETURN type(r) AS rel_type, properties(r) AS props, id(source) AS sid
                         """,
-                        alias_id=alias_id, canonical_id=canonical_id,
+                        alias_id=alias_id,
+                        canonical_id=canonical_id,
                     )
                     for rec in await in_rels.data():
-                        rt = "".join(c for c in rec["rel_type"] if c.isalnum() or c == "_") or "RELATED"
+                        rt = (
+                            "".join(c for c in rec["rel_type"] if c.isalnum() or c == "_")
+                            or "RELATED"
+                        )
                         await session.run(
                             f"""
                             MATCH (source) WHERE id(source) = $sid
@@ -216,7 +226,9 @@ async def iterative_cluster(
                             MERGE (source)-[nr:{rt}]->(canon)
                             SET nr += $props
                             """,
-                            sid=rec["sid"], cid=canonical_id, props=rec["props"],
+                            sid=rec["sid"],
+                            cid=canonical_id,
+                            props=rec["props"],
                         )
 
                     # Delete the alias node and all its remaining relationships
@@ -889,13 +901,15 @@ async def run_consistency_checks(
         )
         orphans = [{"name": r["name"], "label": r["label"]} async for r in result]
         if orphans:
-            checks.append({
-                "type": "orphan_entities",
-                "severity": "warning",
-                "count": len(orphans),
-                "message": f"{len(orphans)} entities have no meaningful relations",
-                "entities": orphans,
-            })
+            checks.append(
+                {
+                    "type": "orphan_entities",
+                    "severity": "warning",
+                    "count": len(orphans),
+                    "message": f"{len(orphans)} entities have no meaningful relations",
+                    "entities": orphans,
+                }
+            )
 
         # 2. Cross-type duplicates — same canonical_name, different labels
         result = await session.run(
@@ -916,17 +930,18 @@ async def run_consistency_checks(
             {"book_id": book_id},
         )
         dupes = [
-            {"name": r["name"], "types": r["types"], "count": r["node_count"]}
-            async for r in result
+            {"name": r["name"], "types": r["types"], "count": r["node_count"]} async for r in result
         ]
         if dupes:
-            checks.append({
-                "type": "cross_type_duplicates",
-                "severity": "error",
-                "count": len(dupes),
-                "message": f"{len(dupes)} entity names appear with multiple types",
-                "entities": dupes,
-            })
+            checks.append(
+                {
+                    "type": "cross_type_duplicates",
+                    "severity": "error",
+                    "count": len(dupes),
+                    "message": f"{len(dupes)} entity names appear with multiple types",
+                    "entities": dupes,
+                }
+            )
 
         # 3. Relation type violations (HAS_SKILL on non-character source, etc.)
         result = await session.run(
@@ -959,13 +974,15 @@ async def run_consistency_checks(
             async for r in result
         ]
         if violations:
-            checks.append({
-                "type": "relation_type_violations",
-                "severity": "error",
-                "count": len(violations),
-                "message": f"{len(violations)} relations have invalid source/target types",
-                "examples": violations[:20],
-            })
+            checks.append(
+                {
+                    "type": "relation_type_violations",
+                    "severity": "error",
+                    "count": len(violations),
+                    "message": f"{len(violations)} relations have invalid source/target types",
+                    "examples": violations[:20],
+                }
+            )
 
     logger.info(
         "consistency_checks_completed",
@@ -975,3 +992,256 @@ async def run_consistency_checks(
     )
 
     return checks
+
+
+# ── KG Quality: Orphan GOLEM entity resolution ────────────────────────
+
+
+async def resolve_orphan_golem_entities(driver, book_id: str) -> dict[str, int]:
+    """Fix orphan PsychologicalState/CharacterFeature nodes by fuzzy-matching character_name.
+
+    Runs after iterative_cluster to leverage merged aliases. Uses multiple
+    strategies: exact match, article stripping, fuzzy matching, and
+    MENTIONED_IN co-occurrence.
+
+    Returns: dict of fix counts per type.
+    """
+    fixes: dict[str, int] = {"psychological_state": 0, "character_feature": 0}
+
+    async with driver.session() as session:
+        # Strategy 1: Article stripping ("the X" → "X")
+        for label, edge_type, fix_key in [
+            ("PsychologicalState", "HAS_STATE", "psychological_state"),
+            ("CharacterFeature", "HAS_FEATURE", "character_feature"),
+        ]:
+            result = await session.run(
+                f"""
+                MATCH (ps:{label} {{book_id: $book_id}})
+                WHERE NOT (:Character)-[:{edge_type}]->(ps)
+                  AND ps.character_name IS NOT NULL
+                WITH ps, CASE
+                    WHEN ps.character_name STARTS WITH 'the ' THEN substring(ps.character_name, 4)
+                    WHEN ps.character_name STARTS WITH 'a ' THEN substring(ps.character_name, 2)
+                    ELSE ps.character_name
+                END AS stripped
+                MATCH (c:Character {{book_id: $book_id}})
+                WHERE c.canonical_name = stripped
+                   OR stripped IN c.aliases
+                MERGE (c)-[:{edge_type}]->(ps)
+                RETURN count(ps) AS fixed
+                """,
+                {"book_id": book_id},
+            )
+            record = await result.single()
+            if record:
+                fixes[fix_key] += record["fixed"]
+
+        # Strategy 2: Fuzzy match via MENTIONED_IN co-occurrence
+        # If orphan entity and a character are both mentioned in the same chunk,
+        # they likely refer to each other
+        for label, edge_type, fix_key in [
+            ("PsychologicalState", "HAS_STATE", "psychological_state"),
+            ("CharacterFeature", "HAS_FEATURE", "character_feature"),
+        ]:
+            result = await session.run(
+                f"""
+                MATCH (ps:{label} {{book_id: $book_id}})
+                WHERE NOT (:Character)-[:{edge_type}]->(ps)
+                  AND ps.character_name IS NOT NULL
+                WITH ps
+                MATCH (c:Character {{book_id: $book_id}})
+                WHERE c.canonical_name CONTAINS ps.character_name
+                   OR ps.character_name CONTAINS c.canonical_name
+                WITH ps, c, apoc.text.jaroWinklerDistance(ps.character_name, c.canonical_name) AS sim
+                WHERE sim > 0.85
+                WITH ps, c ORDER BY sim DESC
+                WITH ps, head(collect(c)) AS best_char
+                WHERE best_char IS NOT NULL
+                MERGE (best_char)-[:{edge_type}]->(ps)
+                RETURN count(ps) AS fixed
+                """,
+                {"book_id": book_id},
+            )
+            record = await result.single()
+            if record:
+                fixes[fix_key] += record["fixed"]
+
+    logger.info("orphan_golem_resolution", book_id=book_id, fixes=fixes)
+    return fixes
+
+
+async def enrich_entity_descriptions(
+    driver,
+    book_id: str,
+    batch_id: str = "",
+) -> int:
+    """Generate descriptions for entities that have empty descriptions.
+
+    For each entity without description:
+    1. Fetch chunks where entity is MENTIONED_IN
+    2. LLM generates 1-3 sentence description
+    3. Write back to Neo4j
+
+    Returns: number of entities enriched.
+    """
+    from app.llm.providers import get_instructor_for_task
+
+    if not batch_id:
+        batch_id = f"enrich:{book_id}:{int(time.time())}"
+
+    # Fetch entities without descriptions (focus on Object, Profession, Creature)
+    async with driver.session() as session:
+        result = await session.run(
+            """
+            MATCH (e {book_id: $book_id})
+            WHERE (e:Object OR e:Creature OR e:Faction OR e:Location OR e:Concept)
+              AND (e.description IS NULL OR e.description = '')
+              AND e.name IS NOT NULL
+            OPTIONAL MATCH (e)-[:MENTIONED_IN|GROUNDED_IN]->(chunk:Chunk)
+            WITH e, labels(e)[0] AS label,
+                 collect(DISTINCT left(chunk.text, 300))[..3] AS passages
+            WHERE size(passages) > 0
+            RETURN elementId(e) AS eid, e.name AS name, label,
+                   reduce(s = '', p IN passages | s + p + ' ') AS context
+            LIMIT 200
+            """,
+            {"book_id": book_id},
+        )
+        entities_to_enrich = [r async for r in result]
+
+    if not entities_to_enrich:
+        logger.info("enrich_descriptions_nothing_to_do", book_id=book_id)
+        return 0
+
+    try:
+        client, model = get_instructor_for_task("summary")
+    except Exception:
+        logger.warning("enrich_descriptions_no_llm", exc_info=True)
+        return 0
+
+    enriched = 0
+    for entity in entities_to_enrich:
+        try:
+            response = await client.chat.completions.create(
+                model=model,
+                response_model=None,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "Generate a brief 1-2 sentence description for a fiction entity based on context passages. Return ONLY the description text.",
+                    },
+                    {
+                        "role": "user",
+                        "content": f"Entity: {entity['name']} (type: {entity['label']})\nContext: {entity['context'][:1000]}",
+                    },
+                ],
+                max_tokens=100,
+            )
+            desc = response.choices[0].message.content.strip() if response.choices else ""
+            if desc and len(desc) > 10:
+                async with driver.session() as session:
+                    await session.run(
+                        """
+                        MATCH (e) WHERE elementId(e) = $eid
+                        SET e.description = $desc
+                        """,
+                        {"eid": entity["eid"], "desc": desc},
+                    )
+                enriched += 1
+        except Exception:
+            logger.debug("enrich_description_failed", entity=entity["name"], exc_info=True)
+
+    logger.info(
+        "enrich_descriptions_completed",
+        book_id=book_id,
+        enriched=enriched,
+        total=len(entities_to_enrich),
+    )
+    return enriched
+
+
+async def infer_golem_edges(driver, book_id: str) -> dict[str, int]:
+    """Topology-enhanced inference: generate missing GOLEM edges from graph structure.
+
+    Inspired by LightKGG (2025). Uses temporal proximity and structural patterns.
+
+    Returns: dict of edge counts created per type.
+    """
+    counts: dict[str, int] = {}
+
+    async with driver.session() as session:
+        # 1. FOLLOWS_STATE: consecutive PsychologicalStates for same character
+        result = await session.run(
+            """
+            MATCH (c:Character {book_id: $book_id})-[:HAS_STATE]->(ps:PsychologicalState)
+            WITH c, ps ORDER BY ps.chapter_start
+            WITH c, collect(ps) AS states
+            WHERE size(states) > 1
+            UNWIND range(0, size(states)-2) AS i
+            WITH states[i] AS prev, states[i+1] AS next
+            WHERE NOT (prev)-[:FOLLOWS_STATE]->(next)
+            MERGE (prev)-[:FOLLOWS_STATE]->(next)
+            RETURN count(*) AS created
+            """,
+            {"book_id": book_id},
+        )
+        record = await result.single()
+        counts["FOLLOWS_STATE"] = record["created"] if record else 0
+
+        # 2. TRIGGERS_EVENT: link PsychologicalState to Event in same chapter
+        result = await session.run(
+            """
+            MATCH (ps:PsychologicalState {book_id: $book_id})
+            WHERE NOT (ps)-[:STATE_TRIGGERED_BY]->(:Event)
+            MATCH (c:Character {book_id: $book_id})-[:HAS_STATE]->(ps)
+            MATCH (c)-[:PARTICIPATES_IN]->(ev:Event {book_id: $book_id})
+            WHERE ev.chapter_start = ps.chapter_start
+            WITH ps, ev, rand() AS r ORDER BY r
+            WITH ps, head(collect(ev)) AS nearest_event
+            WHERE nearest_event IS NOT NULL
+            MERGE (ps)-[:STATE_TRIGGERED_BY]->(nearest_event)
+            RETURN count(*) AS created
+            """,
+            {"book_id": book_id},
+        )
+        record = await result.single()
+        counts["STATE_TRIGGERED_BY"] = record["created"] if record else 0
+
+        # 3. SEQUENCED_IN: link Events to NarrativeSequences by chapter overlap
+        result = await session.run(
+            """
+            MATCH (ns:NarrativeSequence {book_id: $book_id})
+            WHERE ns.valid_from_chapter IS NOT NULL
+            MATCH (ev:Event {book_id: $book_id})
+            WHERE ev.chapter_start >= ns.valid_from_chapter
+              AND (ns.chapter_end IS NULL OR ev.chapter_start <= ns.chapter_end)
+              AND NOT (ev)-[:SEQUENCED_IN]->(ns)
+            MERGE (ev)-[:SEQUENCED_IN {inferred: true}]->(ns)
+            RETURN count(*) AS created
+            """,
+            {"book_id": book_id},
+        )
+        record = await result.single()
+        counts["SEQUENCED_IN"] = record["created"] if record else 0
+
+        # 4. RELATIONSHIP_CAUSED_BY: link SocialRelationship to Event via trigger
+        result = await session.run(
+            """
+            MATCH (sr:SocialRelationship {book_id: $book_id})
+            WHERE NOT (sr)-[:RELATIONSHIP_CAUSED_BY]->(:Event)
+              AND sr.valid_from_chapter IS NOT NULL
+            MATCH (ev:Event {book_id: $book_id})
+            WHERE ev.chapter_start = sr.valid_from_chapter
+            WITH sr, ev, rand() AS r ORDER BY r
+            WITH sr, head(collect(ev)) AS trigger_ev
+            WHERE trigger_ev IS NOT NULL
+            MERGE (sr)-[:RELATIONSHIP_CAUSED_BY]->(trigger_ev)
+            RETURN count(*) AS created
+            """,
+            {"book_id": book_id},
+        )
+        record = await result.single()
+        counts["RELATIONSHIP_CAUSED_BY"] = record["created"] if record else 0
+
+    logger.info("infer_golem_edges_completed", book_id=book_id, counts=counts)
+    return counts
